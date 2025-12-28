@@ -1,0 +1,39 @@
+from __future__ import annotations
+
+from ...types import Player, ActionResponse
+from ...world import get_location
+from ...db import upsert_player
+
+
+def move(player: Player, to_label_or_id: str) -> ActionResponse:
+    from_loc = get_location(player.location)
+    needle = to_label_or_id.strip().lower()
+
+    exit_match = None
+    for e in from_loc.exits:
+        if e.label.lower() == needle or e.to.lower() == needle:
+            exit_match = e
+            break
+
+    if not exit_match:
+        exits = ", ".join([e.label for e in from_loc.exits]) if from_loc.exits else "none"
+        return ActionResponse(ok=False, error=f'No exit matching "{to_label_or_id}". Exits: {exits}')
+
+    player.location = exit_match.to
+    upsert_player(player)
+
+    to_loc = get_location(player.location)
+    return ActionResponse(
+        ok=True,
+        messages=[f"You travel to {to_loc.name}.", to_loc.description],
+        state={
+            "player": player.model_dump(),
+            "location": {
+                "id": to_loc.id,
+                "name": to_loc.name,
+                "description": to_loc.description,
+                "exits": [{"to": e.to, "label": e.label} for e in to_loc.exits],
+            },
+        },
+    )
+
