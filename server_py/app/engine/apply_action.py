@@ -3,12 +3,15 @@ from __future__ import annotations
 from typing import Optional, Any
 
 from pydantic import TypeAdapter
+from server_py.app.engine.actions.inventory import inventory
 
 from ..types import ActionRequest, ActionResponse
 from ..db import get_player, log_action
 from .actions.create_player import create_player
 from .actions.look import look
 from .actions.move import move
+from .actions.attack import attack
+from .actions.stats import stats
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -39,6 +42,12 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = look(player)
     elif req.action == "move":
         result = move(player, req.args.to)
+    elif req.action == "attack":
+        result = attack(player, req.args.target)
+    elif req.action == "stats":
+        result = stats(player)
+    elif req.action == "inventory":
+        result = inventory(player)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 

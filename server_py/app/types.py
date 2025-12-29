@@ -28,6 +28,20 @@ class Player(BaseModel):
     xp: int
     hp: int
     max_hp: int
+    inventory: dict[str, int] = {}
+
+class AttackArgs(BaseModel):
+    target: str
+
+
+class AttackReq(BaseModel):
+    action: Literal["attack"]
+    args: AttackArgs
+
+class InventoryReq(BaseModel):
+    action: Literal["inventory"]
+
+
 
 
 # ----- Action Requests (discriminated union) -----
@@ -49,13 +63,24 @@ class LookReq(BaseModel):
 class MoveArgs(BaseModel):
     to: str = Field(min_length=1, max_length=64)
 
+class StatsReq(BaseModel):
+    action: Literal["stats"]
+
 
 class MoveReq(BaseModel):
     action: Literal["move"]
     args: MoveArgs
 
 
-ActionRequest = Union[CreatePlayerReq, LookReq, MoveReq]
+
+
+ActionRequest = Union[
+    CreatePlayerReq,
+    LookReq,
+    MoveReq,
+    AttackReq,
+    StatsReq
+]
 
 
 class ActionResponse(BaseModel):
@@ -63,4 +88,3 @@ class ActionResponse(BaseModel):
     messages: List[str] = Field(default_factory=list)
     state: Optional[dict] = None
     error: Optional[str] = None
-

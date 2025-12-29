@@ -30,7 +30,8 @@ def init_db() -> None:
               level INTEGER NOT NULL,
               xp INTEGER NOT NULL,
               hp INTEGER NOT NULL,
-              max_hp INTEGER NOT NULL
+              max_hp INTEGER NOT NULL,
+              inventory_json TEXT NOT NULL
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -54,7 +55,9 @@ def get_player(player_id: str) -> Optional[Player]:
         row = conn.execute("SELECT * FROM players WHERE player_id = ?", (player_id,)).fetchone()
         if not row:
             return None
-        return Player(**dict(row))
+        return Player(
+            **{**dict(row), "inventory": json.loads(row["inventory_json"])}
+        )
     finally:
         conn.close()
 
@@ -65,7 +68,7 @@ def upsert_player(p: Player) -> None:
         conn.execute(
             """
             INSERT INTO players (player_id, name, location, level, xp, hp, max_hp)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -74,7 +77,7 @@ def upsert_player(p: Player) -> None:
               hp=excluded.hp,
               max_hp=excluded.max_hp
             """,
-            (p.player_id, p.name, p.location, p.level, p.xp, p.hp, p.max_hp),
+            (p.player_id, p.name, p.location, p.level, p.xp, p.hp, p.max_hp, json.dumps(p.inventory)),
         )
         conn.commit()
     finally:

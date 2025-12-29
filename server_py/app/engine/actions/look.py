@@ -2,19 +2,29 @@ from __future__ import annotations
 
 from ...types import Player, ActionResponse
 from ...world import get_location
+from ..entities import get_entities_at
 
 
 def look(player: Player) -> ActionResponse:
     loc = get_location(player.location)
-    exits = ", ".join([e.label for e in loc.exits]) if loc.exits else "none"
+    entities = get_entities_at(player.location)
+
+    messages = [
+        f"You are at {loc.name}.",
+        loc.description,
+    ]
+
+    if entities:
+        messages.append(
+            "You see: " + ", ".join(e.name for e in entities)
+        )
+
+    exits = ", ".join(e.label for e in loc.exits) if loc.exits else "none"
+    messages.append(f"Exits: {exits}")
 
     return ActionResponse(
         ok=True,
-        messages=[
-            f"You are at {loc.name}.",
-            loc.description,
-            f"Exits: {exits}",
-        ],
+        messages=messages,
         state={
             "player": player.model_dump(),
             "location": {
@@ -25,4 +35,3 @@ def look(player: Player) -> ActionResponse:
             },
         },
     )
-
