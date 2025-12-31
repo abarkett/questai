@@ -10,6 +10,8 @@ build/
 
 # SQLite
 *.sqlite
+*.sqlite-wal
+*.sqlite-shm
 *.sqlite3
 
 # macOS

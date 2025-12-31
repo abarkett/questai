@@ -67,7 +67,16 @@ def upsert_player(p: Player) -> None:
     try:
         conn.execute(
             """
-            INSERT INTO players (player_id, name, location, level, xp, hp, max_hp)
+            INSERT INTO players (
+              player_id,
+              name,
+              location,
+              level,
+              xp,
+              hp,
+              max_hp,
+              inventory_json
+            )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
@@ -75,14 +84,23 @@ def upsert_player(p: Player) -> None:
               level=excluded.level,
               xp=excluded.xp,
               hp=excluded.hp,
-              max_hp=excluded.max_hp
+              max_hp=excluded.max_hp,
+              inventory_json=excluded.inventory_json
             """,
-            (p.player_id, p.name, p.location, p.level, p.xp, p.hp, p.max_hp, json.dumps(p.inventory)),
+            (
+                p.player_id,
+                p.name,
+                p.location,
+                p.level,
+                p.xp,
+                p.hp,
+                p.max_hp,
+                json.dumps(p.inventory),
+            ),
         )
         conn.commit()
     finally:
         conn.close()
-
 
 def log_action(*, player_id: str, action: str, args: Any, result: Any) -> None:
     conn = get_conn()
