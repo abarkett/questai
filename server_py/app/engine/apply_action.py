@@ -13,6 +13,10 @@ from .actions.move import move
 from .actions.attack import attack
 from .actions.stats import stats
 from .actions.inventory import inventory
+from .actions.use import use 
+from .actions.talk import talk
+from .actions.buy import buy
+from .actions.accept_quest import accept_quest
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -58,6 +62,15 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = stats(player)
     elif req.action == "inventory":
         result = inventory(player)
+    elif req.action == "use":
+        result = use(player, req.args.item)
+    elif req.action == "talk":
+        result = talk(player, req.args.target)
+    elif req.action == "buy":
+        result = buy(player, req.args.item)
+    elif req.action == "accept_quest":
+        result = accept_quest(player, req.args.quest_id)
+
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 

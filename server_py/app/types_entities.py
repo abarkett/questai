@@ -4,7 +4,7 @@ from typing import Literal
 from pydantic import BaseModel
 
 
-EntityType = Literal["monster", "item"]
+EntityType = Literal["monster", "item", "npc", "player"]
 
 
 class Entity(BaseModel):
@@ -16,5 +16,9 @@ class Entity(BaseModel):
     hp: int | None = None
     attack: int | None = None
     xp_reward: int | None = None
-  
     loot: dict[str, int] | None = None
+
+    # npc-relevant
+    role: str | None = None          # e.g. "shop"
+    inventory: dict[str, dict] | None = None
+    quests: list[str] | None = None

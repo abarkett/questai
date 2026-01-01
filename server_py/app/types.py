@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Literal, Optional, Union, List
 from pydantic import BaseModel, Field
+from .types_quests import Quest
 
 
 LocationId = str
@@ -29,6 +30,7 @@ class Player(BaseModel):
     hp: int
     max_hp: int
     inventory: dict[str, int] = {}
+    quests: dict[str, Quest] = {}
 
 class AttackArgs(BaseModel):
     target: str
@@ -66,12 +68,37 @@ class MoveArgs(BaseModel):
 class StatsReq(BaseModel):
     action: Literal["stats"]
 
+class UseArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
 
 class MoveReq(BaseModel):
     action: Literal["move"]
     args: MoveArgs
 
+class TalkArgs(BaseModel):
+    target: str = Field(min_length=1, max_length=64)
 
+class TalkReq(BaseModel):
+    action: Literal["talk"]
+    args: TalkArgs
+
+class BuyArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+class BuyReq(BaseModel):
+    action: Literal["buy"]
+    args: BuyArgs
+
+class UseReq(BaseModel):
+    action: Literal["use"]
+    args: UseArgs
+
+class AcceptQuestArgs(BaseModel):
+    quest_id: str
+
+class AcceptQuestReq(BaseModel):
+    action: Literal["accept_quest"]
+    args: AcceptQuestArgs
 
 
 ActionRequest = Union[
@@ -79,7 +106,12 @@ ActionRequest = Union[
     LookReq,
     MoveReq,
     AttackReq,
-    StatsReq
+    StatsReq,
+    InventoryReq,
+    UseReq,
+    TalkReq,
+    BuyReq,
+    AcceptQuestReq
 ]
 
 

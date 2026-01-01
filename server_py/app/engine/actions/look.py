@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from ...types import Player, ActionResponse
 from ...world import get_location
-from ..entities import get_entities_at
+from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
 
 
 def look(player: Player) -> ActionResponse:
@@ -33,5 +33,7 @@ def look(player: Player) -> ActionResponse:
                 "description": loc.description,
                 "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
             },
+            "entities": [serialize_entity(e) for e in entities],
+            "adjacent_scenes": get_adjacent_scenes(loc.id),
         },
     )

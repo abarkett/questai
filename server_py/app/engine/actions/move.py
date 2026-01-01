@@ -3,6 +3,7 @@ from __future__ import annotations
 from ...types import Player, ActionResponse
 from ...world import get_location
 from ...db import upsert_player
+from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
 
 
 def move(player: Player, to_label_or_id: str) -> ActionResponse:
@@ -17,15 +18,26 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
 
     if not exit_match:
         exits = ", ".join([e.label for e in from_loc.exits]) if from_loc.exits else "none"
-        return ActionResponse(ok=False, error=f'No exit matching "{to_label_or_id}". Exits: {exits}')
+        return ActionResponse(
+            ok=False,
+            error=f'No exit matching "{to_label_or_id}". Exits: {exits}'
+        )
 
+    # Move player
     player.location = exit_match.to
     upsert_player(player)
 
     to_loc = get_location(player.location)
+
+    # NEW: fetch entities at destination
+    entities = get_entities_at(player.location)
+
     return ActionResponse(
         ok=True,
-        messages=[f"You travel to {to_loc.name}.", to_loc.description],
+        messages=[
+            f"You travel to {to_loc.name}.",
+            to_loc.description,
+        ],
         state={
             "player": player.model_dump(),
             "location": {
@@ -34,6 +46,7 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
                 "description": to_loc.description,
                 "exits": [{"to": e.to, "label": e.label} for e in to_loc.exits],
             },
+            "entities": [serialize_entity(e) for e in entities],
+            "adjacent_scenes": get_adjacent_scenes(to_loc.id),
         },
     )
-

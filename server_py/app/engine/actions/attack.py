@@ -1,66 +1,109 @@
 from __future__ import annotations
 
 from ...types import Player, ActionResponse
-from ..entities import find_entity, remove_entity
 from ...db import upsert_player
+from ...world import get_location
+from ..entities import (
+    find_entity,
+    find_player_by_name_at,
+    get_entities_at,
+    serialize_entity,
+    remove_entity,
+    get_adjacent_scenes,
+)
+
+
+# Simple shared combat constants
+PLAYER_DAMAGE = 3
+RESPAWN_LOCATION = "town_square"
 
 
 def attack(player: Player, target_name: str) -> ActionResponse:
-    entity = find_entity(player.location, target_name)
-
-    if not entity:
-        return ActionResponse(ok=False, error=f"No '{target_name}' here to attack.")
-
-    if entity.type != "monster":
-        return ActionResponse(ok=False, error=f"You can't attack the {entity.name}.")
-
     messages: list[str] = []
 
-    # ---- Player attacks ----
-    player_damage = 3
-    entity.hp -= player_damage
-    messages.append(f"You attack the {entity.name} for {player_damage} damage.")
+    # -------------------------------------------------
+    # Try PvE first (monsters)
+    # -------------------------------------------------
+    entity = find_entity(player.location, target_name)
+    if entity and entity["type"] == "monster":
+        # Monster combat (unchanged)
+        monster_hp = entity["hp"] - PLAYER_DAMAGE
+        messages.append(f"You attack the {entity['name']} for {PLAYER_DAMAGE} damage.")
 
-    # ---- Monster defeated ----
-    if entity.hp <= 0:
-        remove_entity(player.location, entity)
+        if monster_hp <= 0:
+            remove_entity(player.location, entity["id"])
+            messages.append(f"The {entity['name']} is defeated.")
+        else:
+            # Update monster HP in world state
+            for e in get_world_entities_at(player.location):
+                if e.entity_id == entity["id"]:
+                    e.hp = monster_hp
+                    break
 
-        player.xp += entity.xp_reward or 0
-        messages.append(f"The {entity.name} is defeated.")
-        messages.append(f"You gain {entity.xp_reward} XP.")
-
-        if entity.loot:
-            for item_id, qty in entity.loot.items():
-                player.inventory[item_id] = player.inventory.get(item_id, 0) + qty
-                messages.append(f"You loot {qty} {item_id}.")
+            retaliation = 2
+            player.hp -= retaliation
+            messages.append(f"The {entity['name']} hits you for {retaliation} damage.")
 
         upsert_player(player)
+
+        loc = get_location(player.location)
+        entities = get_entities_at(player.location)
+
         return ActionResponse(
             ok=True,
             messages=messages,
-            state={"player": player.model_dump()},
+            state={
+                "player": player.model_dump(),
+                "location": {
+                    "id": loc.id,
+                    "name": loc.name,
+                    "description": loc.description,
+                    "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
+                },
+                "entities": entities,
+                "adjacent_scenes": get_adjacent_scenes(loc.id),
+            },
         )
 
-    # ---- Monster retaliates ----
-    retaliation = entity.attack or 0
-    player.hp -= retaliation
-    messages.append(f"The {entity.name} hits you for {retaliation} damage.")
+    # -------------------------------------------------
+    # PvP combat
+    # -------------------------------------------------
+    target_player = find_player_by_name_at(player.location, target_name)
 
-    # ---- Player death ----
-    if player.hp <= 0:
-        lost_coins = player.inventory.get("coin", 0) // 2
-        if lost_coins > 0:
-            player.inventory["coin"] -= lost_coins
-            messages.append(f"You drop {lost_coins} coins.")
+    if not target_player:
+        return ActionResponse(ok=False, error="There is no one here by that name.")
 
-        player.hp = player.max_hp
-        player.location = "town_square"
-        messages.append("You collapse and wake up back in the Town Square.")
+    if target_player.player_id == player.player_id:
+        return ActionResponse(ok=False, error="You can't attack yourself.")
 
+    messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
+
+    target_player.hp -= PLAYER_DAMAGE
+
+    if target_player.hp <= 0:
+        messages.append(f"{target_player.name} is defeated!")
+        target_player.hp = target_player.max_hp
+        target_player.location = RESPAWN_LOCATION
+        messages.append(f"{target_player.name} is sent back to the Town Square.")
+
+    upsert_player(target_player)
     upsert_player(player)
+
+    loc = get_location(player.location)
+    entities = get_entities_at(player.location)
 
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={"player": player.model_dump()},
+        state={
+            "player": player.model_dump(),
+            "location": {
+                "id": loc.id,
+                "name": loc.name,
+                "description": loc.description,
+                "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
+            },
+            "entities": entities,
+            "adjacent_scenes": get_adjacent_scenes(loc.id),
+        },
     )

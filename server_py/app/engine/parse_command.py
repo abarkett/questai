@@ -68,5 +68,29 @@ def parse_command(text: str) -> Dict[str, Any]:
             "args": {"target": " ".join(rest)}
         }
 
+    # ---- TALK ----
+    if verb == "talk" and rest:
+        return {
+            "action": "talk",
+            "args": {
+                "target": " ".join(rest)
+            }
+        }
+
+    # ---- BUY ----
+    if verb == "buy" and rest:
+        return {
+            "action": "buy",
+            "args": {
+                "item": " ".join(rest)
+            }
+        }
+    
+    if verb == "accept" and rest:
+        return {
+            "action": "accept_quest",
+            "args": {"quest_id": rest[0]}
+        }
+
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")
