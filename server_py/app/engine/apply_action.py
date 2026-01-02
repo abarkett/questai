@@ -17,6 +17,8 @@ from .actions.use import use
 from .actions.talk import talk
 from .actions.buy import buy
 from .actions.accept_quest import accept_quest
+from .actions.offer_trade import offer_trade
+from .actions.accept_trade import accept_trade
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -70,7 +72,15 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = buy(player, req.args.item)
     elif req.action == "accept_quest":
         result = accept_quest(player, req.args.quest_id)
-
+    elif req.action == "offer_trade":
+        result = offer_trade(
+            player,
+            req.args.to_player,
+            req.args.offer_items,
+            req.args.request_items,
+        )
+    elif req.action == "accept_trade":
+        result = accept_trade(player, req.args.trade_id)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
