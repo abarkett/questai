@@ -14,7 +14,7 @@ from .db import (
     get_world_turn,
     log_world_event,
 )
-from .world_entities import get_world_entities_at
+from .engine.entities import get_world_entities_at
 
 
 class WorldRule:

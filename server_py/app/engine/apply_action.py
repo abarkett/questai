@@ -104,7 +104,14 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
     if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation"]:
-        increment_world_turn()
+        new_turn = increment_world_turn()
+        
+        # Evaluate world evolution rules periodically (every 5 turns)
+        if new_turn % 5 == 0:
+            from ..world_rules import evaluate_world_rules
+            triggered_rules = evaluate_world_rules()
+            if triggered_rules and result.messages:
+                result.messages.append(f"[World changed: {', '.join(triggered_rules)}]")
 
     log_action(
         player_id=player.player_id,

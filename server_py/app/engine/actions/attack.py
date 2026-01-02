@@ -102,6 +102,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             # Update quest progress
             quest_messages = update_quest_progress(player, entity["name"])
             messages.extend(quest_messages)
+            
+            # Phase 8: Track monster deaths for world evolution
+            from ...world_rules import track_monster_survival
+            track_monster_survival(player.location)
         else:
             # Update monster HP in world state
             for e in get_world_entities_at(player.location):
