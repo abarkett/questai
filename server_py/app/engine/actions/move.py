@@ -3,7 +3,7 @@ from __future__ import annotations
 from ...types import Player, ActionResponse
 from ...world import get_location
 from ...db import upsert_player
-from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
+from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes, filter_current_player
 
 
 def move(player: Player, to_label_or_id: str) -> ActionResponse:
@@ -31,6 +31,7 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
 
     # NEW: fetch entities at destination
     entities = get_entities_at(player.location)
+    entities = filter_current_player(entities, player.player_id)
     
     # Phase 8: Track monster survival for world evolution
     from ...world_rules import track_monster_survival

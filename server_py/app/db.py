@@ -167,28 +167,44 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     conn.commit()
 
 
+def _build_player_from_row(row: sqlite3.Row) -> Player:
+    """Helper function to build a Player object from a database row."""
+    data = dict(row)
+    data["inventory"] = json.loads(data["inventory_json"])
+    
+    # Handle quest fields for backwards compatibility
+    data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
+    data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
+    data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
+    
+    # Deprecated: keep empty for backwards compatibility
+    data["quests"] = {}
+    
+    # Handle new optional fields for backwards compatibility
+    data.setdefault("last_defeated_at", None)
+    data.setdefault("last_attacked_target", None)
+    data.setdefault("last_attacked_at", None)
+    return Player(**data)
+
+
 def get_player(player_id: str) -> Optional[Player]:
     conn = get_conn()
     try:
         row = conn.execute("SELECT * FROM players WHERE player_id = ?", (player_id,)).fetchone()
         if not row:
             return None
-        data = dict(row)
-        data["inventory"] = json.loads(data["inventory_json"])
-        
-        # Handle quest fields for backwards compatibility
-        data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
-        data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
-        data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
-        
-        # Deprecated: keep empty for backwards compatibility
-        data["quests"] = {}
-        
-        # Handle new optional fields for backwards compatibility
-        data.setdefault("last_defeated_at", None)
-        data.setdefault("last_attacked_target", None)
-        data.setdefault("last_attacked_at", None)
-        return Player(**data)
+        return _build_player_from_row(row)
+    finally:
+        conn.close()
+
+def get_player_by_name(name: str) -> Optional[Player]:
+    """Get a player by their name (case-insensitive)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM players WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
+        if not row:
+            return None
+        return _build_player_from_row(row)
     finally:
         conn.close()
 
@@ -202,22 +218,7 @@ def get_players_at_location(location_id: str) -> List[Player]:
 
         players = []
         for row in rows:
-            data = dict(row)
-            data["inventory"] = json.loads(data["inventory_json"])
-            
-            # Handle quest fields for backwards compatibility
-            data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
-            data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
-            data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
-            
-            # Deprecated: keep empty for backwards compatibility
-            data["quests"] = {}
-            
-            # Handle new optional fields for backwards compatibility
-            data.setdefault("last_defeated_at", None)
-            data.setdefault("last_attacked_target", None)
-            data.setdefault("last_attacked_at", None)
-            players.append(Player(**data))
+            players.append(_build_player_from_row(row))
 
         return players
     finally:

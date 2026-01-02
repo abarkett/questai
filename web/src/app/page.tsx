@@ -58,14 +58,14 @@ function StatusPane({state, onCommand}: {state: any | null; onCommand: (cmd: str
     <div className="text-green-400 font-bold">People Here</div>
       <div className="space-y-1">
         {state.entities
-          .filter((e: any) => e.type === "npc")
-          .map((npc: any) => (
+          .filter((e: any) => e.type === "npc" || e.type === "player")
+          .map((entity: any) => (
             <button
-              key={npc.id}
+              key={entity.id}
               className="block text-left hover:underline"
-              onClick={() => onCommand(`talk ${npc.id}`)}
+              onClick={() => onCommand(`talk ${entity.id}`)}
             >
-              {npc.name}
+              {entity.name} {entity.type === "player" ? "(player)" : ""}
             </button>
           ))}
       </div>
