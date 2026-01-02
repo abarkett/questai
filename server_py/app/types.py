@@ -30,6 +30,10 @@ class Player(BaseModel):
     hp: int
     max_hp: int
     inventory: dict[str, int] = {}
+    active_quests: dict[str, Quest] = {}
+    completed_quests: dict[str, Quest] = {}
+    archived_quests: dict[str, Quest] = {}
+    # Deprecated: keeping for backwards compatibility during migration
     quests: dict[str, Quest] = {}
     last_defeated_at: Optional[int] = None
     last_attacked_target: Optional[str] = None
@@ -103,6 +107,13 @@ class AcceptQuestReq(BaseModel):
     action: Literal["accept_quest"]
     args: AcceptQuestArgs
 
+class TurnInQuestArgs(BaseModel):
+    quest_id: str
+
+class TurnInQuestReq(BaseModel):
+    action: Literal["turn_in_quest"]
+    args: TurnInQuestArgs
+
 
 class OfferTradeArgs(BaseModel):
     to_player: str = Field(min_length=1, max_length=32)
@@ -135,6 +146,7 @@ ActionRequest = Union[
     TalkReq,
     BuyReq,
     AcceptQuestReq,
+    TurnInQuestReq,
     OfferTradeReq,
     AcceptTradeReq
 ]

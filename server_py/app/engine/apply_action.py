@@ -17,6 +17,7 @@ from .actions.use import use
 from .actions.talk import talk
 from .actions.buy import buy
 from .actions.accept_quest import accept_quest
+from .actions.turn_in_quest import turn_in_quest
 from .actions.offer_trade import offer_trade
 from .actions.accept_trade import accept_trade
 
@@ -72,6 +73,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = buy(player, req.args.item)
     elif req.action == "accept_quest":
         result = accept_quest(player, req.args.quest_id)
+    elif req.action == "turn_in_quest":
+        result = turn_in_quest(player, req.args.quest_id)
     elif req.action == "offer_trade":
         result = offer_trade(
             player,

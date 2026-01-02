@@ -32,6 +32,9 @@ def init_db() -> None:
               hp INTEGER NOT NULL,
               max_hp INTEGER NOT NULL,
               inventory_json TEXT NOT NULL,
+              active_quests_json TEXT DEFAULT '{}',
+              completed_quests_json TEXT DEFAULT '{}',
+              archived_quests_json TEXT DEFAULT '{}',
               last_defeated_at INTEGER,
               last_attacked_target TEXT,
               last_attacked_at INTEGER
@@ -69,6 +72,15 @@ def get_player(player_id: str) -> Optional[Player]:
             return None
         data = dict(row)
         data["inventory"] = json.loads(data["inventory_json"])
+        
+        # Handle quest fields for backwards compatibility
+        data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
+        data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
+        data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
+        
+        # Deprecated: keep empty for backwards compatibility
+        data["quests"] = {}
+        
         # Handle new optional fields for backwards compatibility
         data.setdefault("last_defeated_at", None)
         data.setdefault("last_attacked_target", None)
@@ -89,6 +101,15 @@ def get_players_at_location(location_id: str) -> List[Player]:
         for row in rows:
             data = dict(row)
             data["inventory"] = json.loads(data["inventory_json"])
+            
+            # Handle quest fields for backwards compatibility
+            data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
+            data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
+            data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
+            
+            # Deprecated: keep empty for backwards compatibility
+            data["quests"] = {}
+            
             # Handle new optional fields for backwards compatibility
             data.setdefault("last_defeated_at", None)
             data.setdefault("last_attacked_target", None)
@@ -113,11 +134,14 @@ def upsert_player(p: Player) -> None:
               hp,
               max_hp,
               inventory_json,
+              active_quests_json,
+              completed_quests_json,
+              archived_quests_json,
               last_defeated_at,
               last_attacked_target,
               last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -126,6 +150,9 @@ def upsert_player(p: Player) -> None:
               hp=excluded.hp,
               max_hp=excluded.max_hp,
               inventory_json=excluded.inventory_json,
+              active_quests_json=excluded.active_quests_json,
+              completed_quests_json=excluded.completed_quests_json,
+              archived_quests_json=excluded.archived_quests_json,
               last_defeated_at=excluded.last_defeated_at,
               last_attacked_target=excluded.last_attacked_target,
               last_attacked_at=excluded.last_attacked_at
@@ -139,6 +166,9 @@ def upsert_player(p: Player) -> None:
                 p.hp,
                 p.max_hp,
                 json.dumps(p.inventory),
+                json.dumps({k: v.model_dump() for k, v in p.active_quests.items()}),
+                json.dumps({k: v.model_dump() for k, v in p.completed_quests.items()}),
+                json.dumps({k: v.model_dump() for k, v in p.archived_quests.items()}),
                 p.last_defeated_at,
                 p.last_attacked_target,
                 p.last_attacked_at,

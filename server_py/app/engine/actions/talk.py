@@ -21,7 +21,10 @@ def talk(player: Player, target: str) -> ActionResponse:
     if npc.role == "quest_giver":
         available = []
         for qid in npc.quests or []:
-            if qid not in player.quests:
+            # Only offer quests that aren't already active, completed, or archived
+            if (qid not in player.active_quests and 
+                qid not in player.completed_quests and 
+                qid not in player.archived_quests):
                 available.append(qid)
 
         if not available:
