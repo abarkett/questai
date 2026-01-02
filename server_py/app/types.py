@@ -135,6 +135,34 @@ class AcceptTradeReq(BaseModel):
     args: AcceptTradeArgs
 
 
+class PartyInviteArgs(BaseModel):
+    target_player: str = Field(min_length=1, max_length=32)
+
+
+class PartyInviteReq(BaseModel):
+    action: Literal["party_invite"]
+    args: PartyInviteArgs
+
+
+class AcceptPartyInviteArgs(BaseModel):
+    invite_id: str
+
+
+class AcceptPartyInviteReq(BaseModel):
+    action: Literal["accept_party_invite"]
+    args: AcceptPartyInviteArgs
+
+
+class LeavePartyReq(BaseModel):
+    action: Literal["leave_party"]
+    args: Optional[dict] = None
+
+
+class PartyStatusReq(BaseModel):
+    action: Literal["party_status"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -148,7 +176,11 @@ ActionRequest = Union[
     AcceptQuestReq,
     TurnInQuestReq,
     OfferTradeReq,
-    AcceptTradeReq
+    AcceptTradeReq,
+    PartyInviteReq,
+    AcceptPartyInviteReq,
+    LeavePartyReq,
+    PartyStatusReq
 ]
 
 

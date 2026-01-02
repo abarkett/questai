@@ -5,7 +5,7 @@ from typing import Optional, Any
 from pydantic import TypeAdapter
 
 from ..types import ActionRequest, ActionResponse
-from ..db import get_player, log_action
+from ..db import get_player, log_action, increment_world_turn, get_world_turn
 
 from .actions.create_player import create_player
 from .actions.look import look
@@ -20,6 +20,10 @@ from .actions.accept_quest import accept_quest
 from .actions.turn_in_quest import turn_in_quest
 from .actions.offer_trade import offer_trade
 from .actions.accept_trade import accept_trade
+from .actions.party_invite import party_invite
+from .actions.accept_party_invite import accept_party_invite
+from .actions.leave_party import leave_party
+from .actions.party_status import party_status
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -84,8 +88,20 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         )
     elif req.action == "accept_trade":
         result = accept_trade(player, req.args.trade_id)
+    elif req.action == "party_invite":
+        result = party_invite(player, req.args.target_player)
+    elif req.action == "accept_party_invite":
+        result = accept_party_invite(player, req.args.invite_id)
+    elif req.action == "leave_party":
+        result = leave_party(player)
+    elif req.action == "party_status":
+        result = party_status(player)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
+
+    # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status"]:
+        increment_world_turn()
 
     log_action(
         player_id=player.player_id,
