@@ -2,8 +2,9 @@ from __future__ import annotations
 
 import time
 from ...types import Player, ActionResponse
-from ...db import upsert_player
+from ...db import upsert_player, log_reputation_event
 from ...world import get_location
+from ...factions import get_npc_faction, get_location_factions, get_reputation_event_value
 from ..entities import (
     find_entity,
     find_player_by_name_at,
@@ -101,6 +102,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             # Update quest progress
             quest_messages = update_quest_progress(player, entity["name"])
             messages.extend(quest_messages)
+            
+            # Phase 8: Track monster deaths for world evolution
+            from ...world_rules import track_monster_survival
+            track_monster_survival(player.location)
         else:
             # Update monster HP in world state
             for e in get_world_entities_at(player.location):
@@ -163,6 +168,21 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     # Update attacker's last attack info
     player.last_attacked_target = target_player.name
     player.last_attacked_at = current_time_ms
+
+    # Phase 9: Log reputation events for PvP in faction territory
+    location_factions = get_location_factions(player.location)
+    if location_factions:
+        # Attacking in faction territory damages reputation
+        for faction in location_factions:
+            value = get_reputation_event_value("attacked_in_territory")
+            log_reputation_event(
+                player_id=player.player_id,
+                faction_id=faction.faction_id,
+                event_type="attacked_in_territory",
+                value=value,
+                description=f"Attacked {target_player.name} in {faction.name} territory",
+                location_id=player.location
+            )
 
     upsert_player(target_player)
     upsert_player(player)

@@ -160,6 +160,37 @@ def parse_command(text: str) -> Dict[str, Any]:
             "action": "accept_trade",
             "args": {"trade_id": rest[0]}
         }
+    
+    # ---- PARTY COMMANDS ----
+    if verb == "party":
+        if not rest:
+            return {"action": "party_status"}
+        
+        subcommand = rest[0].lower()
+        
+        if subcommand == "invite" and len(rest) >= 2:
+            return {
+                "action": "party_invite",
+                "args": {"target_player": " ".join(rest[1:])}
+            }
+        
+        if subcommand == "leave":
+            return {"action": "leave_party"}
+        
+        if subcommand in ("status", "info"):
+            return {"action": "party_status"}
+        
+        raise ParseError("Party commands: party invite <player>, party leave, party status")
+    
+    if verb == "accept_party_invite" and rest:
+        return {
+            "action": "accept_party_invite",
+            "args": {"invite_id": rest[0]}
+        }
+    
+    # ---- REPUTATION ----
+    if verb in ("reputation", "rep", "factions"):
+        return {"action": "reputation"}
 
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")

@@ -4,8 +4,9 @@ from fastapi import FastAPI, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from .engine.parse_command import parse_command, ParseError
 
-from .db import init_db
+from .db import init_db, create_faction
 from .engine.apply_action import apply_action
+from .factions import FACTIONS
 
 app = FastAPI(title="RPG World Server", version="0.1.0")
 
@@ -21,6 +22,18 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Initialize factions
+    for faction_id, faction in FACTIONS.items():
+        create_faction(
+            faction_id=faction_id,
+            name=faction.name,
+            alignment=faction.alignment,
+            data={
+                "influence_locations": faction.influence_locations,
+                "npc_members": faction.npc_members,
+                "description": faction.description,
+            }
+        )
 
 
 @app.get("/health")

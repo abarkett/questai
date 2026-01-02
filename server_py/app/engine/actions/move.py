@@ -31,6 +31,10 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
 
     # NEW: fetch entities at destination
     entities = get_entities_at(player.location)
+    
+    # Phase 8: Track monster survival for world evolution
+    from ...world_rules import track_monster_survival
+    track_monster_survival(player.location)
 
     return ActionResponse(
         ok=True,
