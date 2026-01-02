@@ -10,17 +10,17 @@ def buy(player: Player, item_name: str) -> ActionResponse:
     # Find a shop NPC at this location
     shop = None
     for e in get_entities_at(player.location):
-        if e.type == "npc" and e.role == "shop":
+        if e["type"] == "npc" and e.get("role") == "shop":
             shop = e
             break
 
     if not shop:
         return ActionResponse(ok=False, error="There is no shop here.")
 
-    if not shop.inventory or item_name not in shop.inventory:
+    if not shop.get("inventory") or item_name not in shop["inventory"]:
         return ActionResponse(ok=False, error="That item is not for sale.")
 
-    price = shop.inventory[item_name]["price"]
+    price = shop["inventory"][item_name]["price"]
 
     coins = player.inventory.get("coin", 0)
     if coins < price:

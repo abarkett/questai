@@ -30,6 +30,7 @@ def update_quest_progress(player: Player, target_name: str) -> list[str]:
     Returns list of quest completion messages.
     """
     messages = []
+    completed_quest_ids = []
     
     for quest_id, quest in player.active_quests.items():
         if quest.status != "accepted":
@@ -45,11 +46,14 @@ def update_quest_progress(player: Player, target_name: str) -> list[str]:
                     if all(obj.progress >= obj.required for obj in quest.objectives):
                         quest.status = "completed"
                         quest.completed_at = int(time.time() * 1000)
-                        # Move quest to completed_quests
-                        player.completed_quests[quest_id] = quest
-                        del player.active_quests[quest_id]
+                        completed_quest_ids.append(quest_id)
                         messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
                     break
+    
+    # Move completed quests after iteration
+    for quest_id in completed_quest_ids:
+        player.completed_quests[quest_id] = player.active_quests[quest_id]
+        del player.active_quests[quest_id]
     
     return messages
 
