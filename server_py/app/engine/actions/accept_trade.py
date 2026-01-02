@@ -55,13 +55,13 @@ def accept_trade(player: Player, trade_id: str) -> ActionResponse:
     # Remove offered items from from_player
     for item_name, quantity in offered_items.items():
         from_player.inventory[item_name] -= quantity
-        if from_player.inventory[item_name] <= 0:
+        if from_player.inventory[item_name] == 0:
             del from_player.inventory[item_name]
 
     # Remove requested items from to_player (current player)
     for item_name, quantity in requested_items.items():
         player.inventory[item_name] -= quantity
-        if player.inventory[item_name] <= 0:
+        if player.inventory[item_name] == 0:
             del player.inventory[item_name]
 
     # Add offered items to to_player (current player)

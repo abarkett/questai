@@ -39,7 +39,7 @@ def offer_trade(
             )
 
     # Create the trade
-    trade_id = str(uuid.uuid4())[:8]  # Short UUID for easier reference
+    trade_id = str(uuid.uuid4())[:16]  # Use 16 chars for better collision resistance
     create_pending_trade(
         trade_id=trade_id,
         from_player_id=player.player_id,

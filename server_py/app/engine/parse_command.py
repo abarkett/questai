@@ -120,9 +120,17 @@ def parse_command(text: str) -> Dict[str, Any]:
                     if "x" in token:
                         # Format: "2x"
                         qty_str = token.split("x")[0]
+                        try:
+                            qty = int(qty_str)
+                        except ValueError:
+                            raise ParseError(f"Invalid quantity: {qty_str}")
+                        
+                        if qty <= 0:
+                            raise ParseError(f"Invalid quantity: {qty_str}")
+                        
                         if i + 1 < len(tokens):
                             item_name = tokens[i + 1]
-                            items[item_name] = int(qty_str)
+                            items[item_name] = qty
                             i += 2
                         else:
                             i += 1
