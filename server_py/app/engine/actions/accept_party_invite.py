@@ -46,14 +46,25 @@ def accept_party_invite(player: Player, invite_id: str) -> ActionResponse:
     # Delete the invitation
     delete_party_invite(invite_id)
     
+    # Get updated party with new member
+    updated_party = get_party(party["party_id"])
+    
+    # Get member names
+    from ...db import get_player
+    member_names = []
+    for member_id in updated_party["members"]:
+        member = get_player(member_id)
+        if member:
+            member_names.append(member.name)
+    
     return ActionResponse(
         ok=True,
         messages=[
             f"You joined the party!",
-            f"Party members: {', '.join(party['members'] + [player.player_id])}"
+            f"Party members: {', '.join(member_names)}"
         ],
         state={
             "player": player.model_dump(),
-            "party": party
+            "party": updated_party
         }
     )
