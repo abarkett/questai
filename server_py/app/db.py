@@ -137,6 +137,36 @@ def init_db() -> None:
         conn.close()
 
 
+def _remove_duplicate_players(conn: sqlite3.Connection) -> None:
+    """Remove duplicate player records, keeping the first created player by player_id."""
+    cursor = conn.cursor()
+    
+    # Find players with duplicate names (case-insensitive)
+    cursor.execute("""
+        SELECT LOWER(name) as lower_name, COUNT(*) as cnt 
+        FROM players 
+        GROUP BY LOWER(name) 
+        HAVING cnt > 1
+    """)
+    duplicates = cursor.fetchall()
+    
+    for row in duplicates:
+        lower_name = row[0]
+        # Get all players with this name, ordered by player_id (oldest first)
+        cursor.execute("""
+            SELECT player_id FROM players 
+            WHERE LOWER(name) = ? 
+            ORDER BY player_id ASC
+        """, (lower_name,))
+        
+        player_ids = [r[0] for r in cursor.fetchall()]
+        
+        # Keep the first one, delete the rest
+        if len(player_ids) > 1:
+            for player_id in player_ids[1:]:
+                conn.execute("DELETE FROM players WHERE player_id = ?", (player_id,))
+
+
 def _migrate_schema(conn: sqlite3.Connection) -> None:
     """Add any missing columns to existing tables for backwards compatibility."""
     cursor = conn.cursor()
@@ -154,6 +184,9 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     
     # Define expected columns and their types for migration
     expected_columns = {
+        "active_quests_json": "TEXT DEFAULT '{}'",
+        "completed_quests_json": "TEXT DEFAULT '{}'",
+        "archived_quests_json": "TEXT DEFAULT '{}'",
         "last_defeated_at": "INTEGER",
         "last_attacked_target": "TEXT",
         "last_attacked_at": "INTEGER",
@@ -163,6 +196,16 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     for column_name, column_type in expected_columns.items():
         if column_name not in columns:
             conn.execute(f"ALTER TABLE players ADD COLUMN {column_name} {column_type}")
+    
+    # Clean up duplicate players (keep oldest by player_id)
+    _remove_duplicate_players(conn)
+    
+    # Create unique index on lowercase name to prevent future duplicates
+    # Using IF NOT EXISTS to avoid errors if index already exists
+    conn.execute("""
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_players_name_lower 
+        ON players (LOWER(name))
+    """)
     
     conn.commit()
 
