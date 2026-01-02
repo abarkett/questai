@@ -218,22 +218,7 @@ def get_players_at_location(location_id: str) -> List[Player]:
 
         players = []
         for row in rows:
-            data = dict(row)
-            data["inventory"] = json.loads(data["inventory_json"])
-            
-            # Handle quest fields for backwards compatibility
-            data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
-            data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
-            data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
-            
-            # Deprecated: keep empty for backwards compatibility
-            data["quests"] = {}
-            
-            # Handle new optional fields for backwards compatibility
-            data.setdefault("last_defeated_at", None)
-            data.setdefault("last_attacked_target", None)
-            data.setdefault("last_attacked_at", None)
-            players.append(Player(**data))
+            players.append(_build_player_from_row(row))
 
         return players
     finally:
