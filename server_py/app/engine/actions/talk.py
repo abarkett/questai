@@ -10,18 +10,21 @@ from copy import deepcopy
 def talk(player: Player, target: str) -> ActionResponse:
     npc = find_entity(player.location, target)
 
-    if not npc or npc.type != "npc":
+    if not npc or npc["type"] != "npc":
         return ActionResponse(
             ok=False,
             error="There is no one like that to talk to."
         )
 
-    messages = [f"{npc.name} says:"]
+    messages = [f"{npc['name']} says:"]
 
-    if npc.role == "quest_giver":
+    if npc.get("role") == "quest_giver":
         available = []
-        for qid in npc.quests or []:
-            if qid not in player.quests:
+        for qid in npc.get("quests", []):
+            # Only offer quests that aren't already active, completed, or archived
+            if (qid not in player.active_quests and 
+                qid not in player.completed_quests and 
+                qid not in player.archived_quests):
                 available.append(qid)
 
         if not available:
@@ -32,13 +35,13 @@ def talk(player: Player, target: str) -> ActionResponse:
             messages.append(f"“{quest.description}”")
             messages.append(f"You may `accept {qid}`.")
 
-    if npc.role == "shop":
-        if not npc.inventory:
+    if npc.get("role") == "shop":
+        if not npc.get("inventory"):
             messages.append("“Sorry, I have nothing for sale right now.”")
         else:
             items = ", ".join(
                 f"{item} ({data['price']} coins)"
-                for item, data in npc.inventory.items()
+                for item, data in npc["inventory"].items()
             )
             messages.append(f"“Take a look at my wares: {items}.”")
             messages.append("You can `buy <item>`.")

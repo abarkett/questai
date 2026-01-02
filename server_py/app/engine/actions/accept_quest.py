@@ -1,4 +1,5 @@
 from copy import deepcopy
+import time
 from ...types import Player, ActionResponse
 from ...world_quests import QUEST_TEMPLATES
 from ...db import upsert_player
@@ -7,16 +8,22 @@ from ...world import get_location
 
 
 def accept_quest(player: Player, quest_id: str) -> ActionResponse:
-    if quest_id in player.quests:
-        return ActionResponse(ok=False, error="You already have that quest.")
+    # Check if quest is already in any quest list
+    if quest_id in player.active_quests:
+        return ActionResponse(ok=False, error="You already have that quest active.")
+    if quest_id in player.completed_quests:
+        return ActionResponse(ok=False, error="You already completed that quest.")
+    if quest_id in player.archived_quests:
+        return ActionResponse(ok=False, error="That quest is archived.")
 
     template = QUEST_TEMPLATES.get(quest_id)
     if not template:
         return ActionResponse(ok=False, error="Unknown quest.")
 
     quest = deepcopy(template)
-    quest.status = "active"
-    player.quests[quest_id] = quest
+    quest.status = "accepted"
+    quest.accepted_at = int(time.time() * 1000)
+    player.active_quests[quest_id] = quest
 
     upsert_player(player)
     loc = get_location(player.location)

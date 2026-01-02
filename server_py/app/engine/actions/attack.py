@@ -24,6 +24,40 @@ RESPAWN_PROTECTION_SECONDS = 300  # 5 minutes protection after defeat
 ATTACK_COOLDOWN_SECONDS = 30  # 30 seconds before attacking same target again
 
 
+def update_quest_progress(player: Player, target_name: str) -> list[str]:
+    """
+    Update quest progress for kill objectives.
+    Returns list of quest completion messages.
+    """
+    messages = []
+    completed_quest_ids = []
+    
+    for quest_id, quest in player.active_quests.items():
+        if quest.status != "accepted":
+            continue
+            
+        for objective in quest.objectives:
+            if objective.type == "kill" and objective.target.lower() == target_name.lower():
+                if objective.progress < objective.required:
+                    objective.progress += 1
+                    messages.append(f"Quest progress: {quest.name} ({objective.progress}/{objective.required})")
+                    
+                    # Check if all objectives are complete
+                    if all(obj.progress >= obj.required for obj in quest.objectives):
+                        quest.status = "completed"
+                        quest.completed_at = int(time.time() * 1000)
+                        completed_quest_ids.append(quest_id)
+                        messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
+                    break
+    
+    # Move completed quests after iteration
+    for quest_id in completed_quest_ids:
+        player.completed_quests[quest_id] = player.active_quests[quest_id]
+        del player.active_quests[quest_id]
+    
+    return messages
+
+
 def is_player_attackable(target: Player, attacker: Player, current_time_ms: int) -> tuple[bool, str | None]:
     """
     Check if a player can be attacked.
@@ -63,6 +97,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
         if monster_hp <= 0:
             remove_entity(player.location, entity["id"])
             messages.append(f"The {entity['name']} is defeated.")
+            
+            # Update quest progress
+            quest_messages = update_quest_progress(player, entity["name"])
+            messages.extend(quest_messages)
         else:
             # Update monster HP in world state
             for e in get_world_entities_at(player.location):
