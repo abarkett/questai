@@ -10,6 +10,7 @@ from ..entities import (
     serialize_entity,
     remove_entity,
     get_adjacent_scenes,
+    get_world_entities_at,
 )
 
 

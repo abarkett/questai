@@ -42,7 +42,7 @@ def use(player: Player, item_name: str) -> ActionResponse:
                     "description": loc.description,
                     "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
                 },
-                "entities": [serialize_entity(e) for e in entities],
+                "entities": entities,
                 "adjacent_scenes": get_adjacent_scenes(loc.id),
             },
         )

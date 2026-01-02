@@ -6,7 +6,6 @@ from ..types_entities import Entity
 from ..world_entities import WORLD_ENTITIES
 from ..world import get_location
 from ..db import get_players_at_location
-from ..db import get_player_by_name
 
 def find_player_by_name_at(location_id: str, name: str):
     players = get_players_at_location(location_id)
