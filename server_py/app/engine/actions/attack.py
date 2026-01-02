@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import time
 from ...types import Player, ActionResponse
 from ...db import upsert_player
 from ...world import get_location
@@ -18,9 +19,37 @@ from ..entities import (
 PLAYER_DAMAGE = 3
 RESPAWN_LOCATION = "town_square"
 
+# Protection and cooldown constants (in seconds)
+RESPAWN_PROTECTION_SECONDS = 300  # 5 minutes protection after defeat
+ATTACK_COOLDOWN_SECONDS = 30  # 30 seconds before attacking same target again
+
+
+def is_player_attackable(target: Player, attacker: Player, current_time_ms: int) -> tuple[bool, str | None]:
+    """
+    Check if a player can be attacked.
+    Returns (is_attackable, error_message)
+    """
+    # Check if target just respawned (defeated recently)
+    if target.last_defeated_at:
+        time_since_defeat = (current_time_ms - target.last_defeated_at) / 1000
+        if time_since_defeat < RESPAWN_PROTECTION_SECONDS:
+            remaining = int(RESPAWN_PROTECTION_SECONDS - time_since_defeat)
+            return False, f"That player has just respawned. Protected for {remaining} more seconds."
+    
+    # Check if attacker is on cooldown for attacking this specific target
+    if (attacker.last_attacked_target == target.name and 
+        attacker.last_attacked_at):
+        time_since_attack = (current_time_ms - attacker.last_attacked_at) / 1000
+        if time_since_attack < ATTACK_COOLDOWN_SECONDS:
+            remaining = int(ATTACK_COOLDOWN_SECONDS - time_since_attack)
+            return False, f"You must wait {remaining} more seconds before attacking {target.name} again."
+    
+    return True, None
+
 
 def attack(player: Player, target_name: str) -> ActionResponse:
     messages: list[str] = []
+    current_time_ms = int(time.time() * 1000)
 
     # -------------------------------------------------
     # Try PvE first (monsters)
@@ -77,6 +106,11 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     if target_player.player_id == player.player_id:
         return ActionResponse(ok=False, error="You can't attack yourself.")
 
+    # Check if target is attackable
+    attackable, error_msg = is_player_attackable(target_player, player, current_time_ms)
+    if not attackable:
+        return ActionResponse(ok=False, error=error_msg)
+
     messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
 
     target_player.hp -= PLAYER_DAMAGE
@@ -85,7 +119,12 @@ def attack(player: Player, target_name: str) -> ActionResponse:
         messages.append(f"{target_player.name} is defeated!")
         target_player.hp = target_player.max_hp
         target_player.location = RESPAWN_LOCATION
+        target_player.last_defeated_at = current_time_ms
         messages.append(f"{target_player.name} is sent back to the Town Square.")
+
+    # Update attacker's last attack info
+    player.last_attacked_target = target_player.name
+    player.last_attacked_at = current_time_ms
 
     upsert_player(target_player)
     upsert_player(player)

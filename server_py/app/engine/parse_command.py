@@ -91,6 +91,67 @@ def parse_command(text: str) -> Dict[str, Any]:
             "action": "accept_quest",
             "args": {"quest_id": rest[0]}
         }
+    
+    # ---- OFFER TRADE ----
+    if verb == "offer" and len(rest) >= 1:
+        # Format: offer <player_name> <offer_items> for <request_items>
+        # Example: offer Alice 2x sword for 10x gold
+        # Simple parsing: find "for" keyword
+        text_parts = " ".join(rest)
+        if " for " in text_parts:
+            before_for, after_for = text_parts.split(" for ", 1)
+            parts = before_for.split()
+            if not parts:
+                raise ParseError("Specify player to trade with.")
+            
+            to_player = parts[0]
+            offer_text = " ".join(parts[1:]) if len(parts) > 1 else ""
+            request_text = after_for.strip()
+            
+            # Parse items: "2x sword 3x shield" -> {"sword": 2, "shield": 3}
+            def parse_items(text: str) -> dict[str, int]:
+                items = {}
+                if not text:
+                    return items
+                tokens = text.split()
+                i = 0
+                while i < len(tokens):
+                    token = tokens[i]
+                    if "x" in token:
+                        # Format: "2x"
+                        qty_str = token.split("x")[0]
+                        if i + 1 < len(tokens):
+                            item_name = tokens[i + 1]
+                            items[item_name] = int(qty_str)
+                            i += 2
+                        else:
+                            i += 1
+                    else:
+                        # Assume quantity 1
+                        items[token] = 1
+                        i += 1
+                return items
+            
+            offer_items = parse_items(offer_text)
+            request_items = parse_items(request_text)
+            
+            return {
+                "action": "offer_trade",
+                "args": {
+                    "to_player": to_player,
+                    "offer_items": offer_items,
+                    "request_items": request_items,
+                }
+            }
+        else:
+            raise ParseError("Use format: offer <player> <items> for <items>")
+    
+    # ---- ACCEPT TRADE ----
+    if verb == "accept_trade" and rest:
+        return {
+            "action": "accept_trade",
+            "args": {"trade_id": rest[0]}
+        }
 
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")

@@ -31,6 +31,9 @@ class Player(BaseModel):
     max_hp: int
     inventory: dict[str, int] = {}
     quests: dict[str, Quest] = {}
+    last_defeated_at: Optional[int] = None
+    last_attacked_target: Optional[str] = None
+    last_attacked_at: Optional[int] = None
 
 class AttackArgs(BaseModel):
     target: str
@@ -101,6 +104,26 @@ class AcceptQuestReq(BaseModel):
     args: AcceptQuestArgs
 
 
+class OfferTradeArgs(BaseModel):
+    to_player: str = Field(min_length=1, max_length=32)
+    offer_items: dict[str, int]
+    request_items: dict[str, int]
+
+
+class OfferTradeReq(BaseModel):
+    action: Literal["offer_trade"]
+    args: OfferTradeArgs
+
+
+class AcceptTradeArgs(BaseModel):
+    trade_id: str
+
+
+class AcceptTradeReq(BaseModel):
+    action: Literal["accept_trade"]
+    args: AcceptTradeArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -111,7 +134,9 @@ ActionRequest = Union[
     UseReq,
     TalkReq,
     BuyReq,
-    AcceptQuestReq
+    AcceptQuestReq,
+    OfferTradeReq,
+    AcceptTradeReq
 ]
 
 

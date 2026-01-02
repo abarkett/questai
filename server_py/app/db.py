@@ -31,7 +31,10 @@ def init_db() -> None:
               xp INTEGER NOT NULL,
               hp INTEGER NOT NULL,
               max_hp INTEGER NOT NULL,
-              inventory_json TEXT NOT NULL
+              inventory_json TEXT NOT NULL,
+              last_defeated_at INTEGER,
+              last_attacked_target TEXT,
+              last_attacked_at INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -41,6 +44,15 @@ def init_db() -> None:
               action TEXT NOT NULL,
               args_json TEXT NOT NULL,
               result_json TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS pending_trades (
+              trade_id TEXT PRIMARY KEY,
+              from_player_id TEXT NOT NULL,
+              to_player_id TEXT NOT NULL,
+              offered_items_json TEXT NOT NULL,
+              requested_items_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
             );
             """
         )
@@ -55,9 +67,13 @@ def get_player(player_id: str) -> Optional[Player]:
         row = conn.execute("SELECT * FROM players WHERE player_id = ?", (player_id,)).fetchone()
         if not row:
             return None
-        return Player(
-            **{**dict(row), "inventory": json.loads(row["inventory_json"])}
-        )
+        data = dict(row)
+        data["inventory"] = json.loads(data["inventory_json"])
+        # Handle new optional fields for backwards compatibility
+        data.setdefault("last_defeated_at", None)
+        data.setdefault("last_attacked_target", None)
+        data.setdefault("last_attacked_at", None)
+        return Player(**data)
     finally:
         conn.close()
 
@@ -73,6 +89,10 @@ def get_players_at_location(location_id: str) -> List[Player]:
         for row in rows:
             data = dict(row)
             data["inventory"] = json.loads(data["inventory_json"])
+            # Handle new optional fields for backwards compatibility
+            data.setdefault("last_defeated_at", None)
+            data.setdefault("last_attacked_target", None)
+            data.setdefault("last_attacked_at", None)
             players.append(Player(**data))
 
         return players
@@ -92,9 +112,12 @@ def upsert_player(p: Player) -> None:
               xp,
               hp,
               max_hp,
-              inventory_json
+              inventory_json,
+              last_defeated_at,
+              last_attacked_target,
+              last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -102,7 +125,10 @@ def upsert_player(p: Player) -> None:
               xp=excluded.xp,
               hp=excluded.hp,
               max_hp=excluded.max_hp,
-              inventory_json=excluded.inventory_json
+              inventory_json=excluded.inventory_json,
+              last_defeated_at=excluded.last_defeated_at,
+              last_attacked_target=excluded.last_attacked_target,
+              last_attacked_at=excluded.last_attacked_at
             """,
             (
                 p.player_id,
@@ -113,6 +139,9 @@ def upsert_player(p: Player) -> None:
                 p.hp,
                 p.max_hp,
                 json.dumps(p.inventory),
+                p.last_defeated_at,
+                p.last_attacked_target,
+                p.last_attacked_at,
             ),
         )
         conn.commit()
@@ -130,6 +159,80 @@ def log_action(*, player_id: str, action: str, args: Any, result: Any) -> None:
             (int(time.time() * 1000), player_id, action, json.dumps(args or {}), json.dumps(result or {})),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+def create_pending_trade(
+    trade_id: str,
+    from_player_id: str,
+    to_player_id: str,
+    offered_items: dict[str, int],
+    requested_items: dict[str, int],
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO pending_trades (
+              trade_id, from_player_id, to_player_id, 
+              offered_items_json, requested_items_json, created_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                trade_id,
+                from_player_id,
+                to_player_id,
+                json.dumps(offered_items),
+                json.dumps(requested_items),
+                int(time.time() * 1000),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_pending_trade(trade_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM pending_trades WHERE trade_id = ?", (trade_id,)
+        ).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["offered_items"] = json.loads(data["offered_items_json"])
+        data["requested_items"] = json.loads(data["requested_items_json"])
+        return data
+    finally:
+        conn.close()
+
+
+def delete_pending_trade(trade_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM pending_trades WHERE trade_id = ?", (trade_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_pending_trades_for_player(player_id: str) -> List[Dict[str, Any]]:
+    """Get all pending trades where player is the recipient"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM pending_trades WHERE to_player_id = ?", (player_id,)
+        ).fetchall()
+        trades = []
+        for row in rows:
+            data = dict(row)
+            data["offered_items"] = json.loads(data["offered_items_json"])
+            data["requested_items"] = json.loads(data["requested_items_json"])
+            trades.append(data)
+        return trades
     finally:
         conn.close()
 
