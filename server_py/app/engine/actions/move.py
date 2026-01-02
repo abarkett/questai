@@ -46,7 +46,7 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
                 "description": to_loc.description,
                 "exits": [{"to": e.to, "label": e.label} for e in to_loc.exits],
             },
-            "entities": [serialize_entity(e) for e in entities],
+            "entities": entities,
             "adjacent_scenes": get_adjacent_scenes(to_loc.id),
         },
     )
