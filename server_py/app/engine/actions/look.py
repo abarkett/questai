@@ -3,15 +3,13 @@ from __future__ import annotations
 from ...types import Player, ActionResponse
 from ...world import get_location
 from ...db import get_world_state
-from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
+from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes, filter_current_player
 
 
 def look(player: Player) -> ActionResponse:
     loc = get_location(player.location)
     entities = get_entities_at(player.location)
-    
-    # Filter out the current player from entities
-    entities = [e for e in entities if not (e.get("type") == "player" and e.get("id") == player.player_id)]
+    entities = filter_current_player(entities, player.player_id)
 
     messages = [
         f"You are at {loc.name}.",

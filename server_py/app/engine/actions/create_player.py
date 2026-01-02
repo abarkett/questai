@@ -5,7 +5,7 @@ import uuid
 from ...types import Player, ActionResponse
 from ...db import upsert_player, get_player_by_name
 from ...world import get_location
-from ..entities import get_entities_at, get_adjacent_scenes
+from ..entities import get_entities_at, get_adjacent_scenes, filter_current_player
 
 
 def create_player(name: str) -> ActionResponse:
@@ -17,9 +17,7 @@ def create_player(name: str) -> ActionResponse:
         player = existing_player
         loc = get_location(player.location)
         entities = get_entities_at(player.location)
-        
-        # Filter out the current player from entities
-        entities = [e for e in entities if not (e.get("type") == "player" and e.get("id") == player.player_id)]
+        entities = filter_current_player(entities, player.player_id)
         
         return ActionResponse(
             ok=True,
@@ -51,9 +49,7 @@ def create_player(name: str) -> ActionResponse:
 
     loc = get_location(player.location)
     entities = get_entities_at(player.location)
-    
-    # Filter out the current player from entities
-    entities = [e for e in entities if not (e.get("type") == "player" and e.get("id") == player.player_id)]
+    entities = filter_current_player(entities, player.player_id)
     
     return ActionResponse(
         ok=True,

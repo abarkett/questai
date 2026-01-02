@@ -68,6 +68,20 @@ def get_entities_at(location_id: str) -> List[Dict[str, Any]]:
     return entities
 
 
+def filter_current_player(entities: List[Dict[str, Any]], player_id: str) -> List[Dict[str, Any]]:
+    """
+    Filter out the current player from the entity list.
+    
+    Args:
+        entities: List of entity dictionaries
+        player_id: ID of the player to filter out
+        
+    Returns:
+        List of entities excluding the current player
+    """
+    return [e for e in entities if not (e.get("type") == "player" and e.get("id") == player_id)]
+
+
 # -------------------------------------------------
 # Serialization
 # -------------------------------------------------
