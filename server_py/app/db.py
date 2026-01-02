@@ -130,8 +130,41 @@ def init_db() -> None:
             """
         )
         conn.commit()
+        
+        # Migrate existing tables to add missing columns
+        _migrate_schema(conn)
     finally:
         conn.close()
+
+
+def _migrate_schema(conn: sqlite3.Connection) -> None:
+    """Add any missing columns to existing tables for backwards compatibility."""
+    cursor = conn.cursor()
+    
+    # Check if players table exists
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='players'"
+    )
+    if not cursor.fetchone():
+        return  # Players table doesn't exist yet, nothing to migrate
+    
+    # Get current columns in players table
+    cursor.execute("PRAGMA table_info(players)")
+    columns = {row[1] for row in cursor.fetchall()}
+    
+    # Define expected columns and their types for migration
+    expected_columns = {
+        "last_defeated_at": "INTEGER",
+        "last_attacked_target": "TEXT",
+        "last_attacked_at": "INTEGER",
+    }
+    
+    # Add missing columns
+    for column_name, column_type in expected_columns.items():
+        if column_name not in columns:
+            conn.execute(f"ALTER TABLE players ADD COLUMN {column_name} {column_type}")
+    
+    conn.commit()
 
 
 def get_player(player_id: str) -> Optional[Player]:
