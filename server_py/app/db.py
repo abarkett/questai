@@ -192,6 +192,32 @@ def get_player(player_id: str) -> Optional[Player]:
     finally:
         conn.close()
 
+def get_player_by_name(name: str) -> Optional[Player]:
+    """Get a player by their name (case-insensitive)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM players WHERE LOWER(name) = LOWER(?)", (name,)).fetchone()
+        if not row:
+            return None
+        data = dict(row)
+        data["inventory"] = json.loads(data["inventory_json"])
+        
+        # Handle quest fields for backwards compatibility
+        data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
+        data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
+        data["archived_quests"] = json.loads(data.get("archived_quests_json", "{}"))
+        
+        # Deprecated: keep empty for backwards compatibility
+        data["quests"] = {}
+        
+        # Handle new optional fields for backwards compatibility
+        data.setdefault("last_defeated_at", None)
+        data.setdefault("last_attacked_target", None)
+        data.setdefault("last_attacked_at", None)
+        return Player(**data)
+    finally:
+        conn.close()
+
 def get_players_at_location(location_id: str) -> List[Player]:
     conn = get_conn()
     try:
