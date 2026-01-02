@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from ...types import Player, ActionResponse
 from ...world import get_location
+from ...db import get_world_state
 from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
 
 
@@ -11,8 +12,16 @@ def look(player: Player) -> ActionResponse:
 
     messages = [
         f"You are at {loc.name}.",
-        loc.description,
     ]
+    
+    # Phase 8: Add world state flavor to location descriptions
+    description = loc.description
+    if loc.id == "forest":
+        is_infested = get_world_state("forest_infested") == "true"
+        if is_infested:
+            description += " The forest feels particularly dangerous today."
+    
+    messages.append(description)
 
     if entities:
         messages.append(

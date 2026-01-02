@@ -24,6 +24,7 @@ from .actions.party_invite import party_invite
 from .actions.accept_party_invite import accept_party_invite
 from .actions.leave_party import leave_party
 from .actions.party_status import party_status
+from .actions.reputation import reputation
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -96,11 +97,13 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = leave_party(player)
     elif req.action == "party_status":
         result = party_status(player)
+    elif req.action == "reputation":
+        result = reputation(player)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status"]:
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation"]:
         increment_world_turn()
 
     log_action(

@@ -163,6 +163,11 @@ class PartyStatusReq(BaseModel):
     args: Optional[dict] = None
 
 
+class ReputationReq(BaseModel):
+    action: Literal["reputation"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -180,7 +185,8 @@ ActionRequest = Union[
     PartyInviteReq,
     AcceptPartyInviteReq,
     LeavePartyReq,
-    PartyStatusReq
+    PartyStatusReq,
+    ReputationReq
 ]
 
 

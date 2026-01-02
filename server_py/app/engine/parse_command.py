@@ -187,6 +187,10 @@ def parse_command(text: str) -> Dict[str, Any]:
             "action": "accept_party_invite",
             "args": {"invite_id": rest[0]}
         }
+    
+    # ---- REPUTATION ----
+    if verb in ("reputation", "rep", "factions"):
+        return {"action": "reputation"}
 
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")
