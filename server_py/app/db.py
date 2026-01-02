@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import time
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, List
 
 from .types import Player
 
@@ -61,6 +61,23 @@ def get_player(player_id: str) -> Optional[Player]:
     finally:
         conn.close()
 
+def get_players_at_location(location_id: str) -> List[Player]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM players WHERE location = ?",
+            (location_id,),
+        ).fetchall()
+
+        players = []
+        for row in rows:
+            data = dict(row)
+            data["inventory"] = json.loads(data["inventory_json"])
+            players.append(Player(**data))
+
+        return players
+    finally:
+        conn.close()
 
 def upsert_player(p: Player) -> None:
     conn = get_conn()
