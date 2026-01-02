@@ -150,6 +150,9 @@ def _remove_duplicate_players(conn: sqlite3.Connection) -> None:
     """)
     duplicates = cursor.fetchall()
     
+    # Collect all player IDs to delete
+    ids_to_delete = []
+    
     for row in duplicates:
         lower_name = row[0]
         # Get all players with this name, ordered by player_id (oldest first)
@@ -161,10 +164,15 @@ def _remove_duplicate_players(conn: sqlite3.Connection) -> None:
         
         player_ids = [r[0] for r in cursor.fetchall()]
         
-        # Keep the first one, delete the rest
+        # Keep the first one, mark the rest for deletion
         if len(player_ids) > 1:
-            for player_id in player_ids[1:]:
-                conn.execute("DELETE FROM players WHERE player_id = ?", (player_id,))
+            ids_to_delete.extend(player_ids[1:])
+    
+    # Delete all duplicates in a single statement for efficiency
+    if ids_to_delete:
+        placeholders = ','.join('?' * len(ids_to_delete))
+        conn.execute(f"DELETE FROM players WHERE player_id IN ({placeholders})", ids_to_delete)
+
 
 
 def _migrate_schema(conn: sqlite3.Connection) -> None:
