@@ -59,25 +59,139 @@ function StatusPane({state, onCommand}: {state: any | null; onCommand: (cmd: str
       <div className="space-y-1">
         {state.entities
           .filter((e: any) => e.type === "npc" || e.type === "player")
-          .map((entity: any) => (
-            <button
-              key={entity.id}
-              className="block text-left hover:underline"
-              onClick={() => onCommand(`talk ${entity.id}`)}
-            >
-              {entity.name} {entity.type === "player" ? "(player)" : ""}
-            </button>
-          ))}
+          .map((entity: any) => {
+            const isInParty = state.party?.members?.some((m: any) => m.player_id === entity.id);
+            return (
+              <button
+                key={entity.id}
+                className="block text-left hover:underline"
+                onClick={() => onCommand(`talk ${entity.id}`)}
+              >
+                {entity.name} {entity.type === "player" ? "(player)" : ""}
+                {isInParty && " ⚔️"}
+              </button>
+            );
+          })}
       </div>
     </div>
-      <div>
-        <div className="text-green-400 font-bold">Quests</div>
-        {Object.values(state.player.quests ?? {}).map((q: any) => (
-          <div key={q.quest_id}>
-            {q.name} ({q.status})
+      {/* Active Quests */}
+      {state.player.active_quests && Object.keys(state.player.active_quests).length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Active Quests</div>
+          {Object.values(state.player.active_quests).map((q: any) => (
+            <div key={q.quest_id} className="text-xs mb-1">
+              <div className="font-semibold">{q.name}</div>
+              {q.objectives.map((obj: any, i: number) => (
+                <div key={i} className="text-green-700">
+                  {obj.target}: {obj.progress}/{obj.required}
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Completed Quests */}
+      {state.player.completed_quests && Object.keys(state.player.completed_quests).length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Completed Quests</div>
+          {Object.values(state.player.completed_quests).map((q: any) => (
+            <div key={q.quest_id} className="text-xs mb-1 text-yellow-400">
+              {q.name} (Ready to turn in)
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Party Invites */}
+      {state.party_invites?.length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Party Invites</div>
+          {state.party_invites.map((invite: any) => (
+            <div key={invite.invite_id} className="text-xs mb-1 p-1 border border-green-600">
+              <div>From {invite.from_player_name}</div>
+              <button
+                className="text-green-400 hover:underline text-xs mt-1"
+                onClick={() => onCommand(`accept_party_invite ${invite.invite_id}`)}
+              >
+                Accept
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Current Party */}
+      {state.party && (
+        <div>
+          <div className="text-green-400 font-bold">Party</div>
+          <div className="text-xs mb-1">
+            <div className="font-semibold">{state.party.name}</div>
+            {state.party.members.map((member: any) => (
+              <div key={member.player_id}>
+                {member.name} {member.is_leader && '(Leader)'}
+              </div>
+            ))}
+            <button
+              className="text-red-400 hover:underline text-xs mt-1"
+              onClick={() => onCommand('party leave')}
+            >
+              Leave Party
+            </button>
           </div>
-        ))}
-      </div>
+        </div>
+      )}
+
+      {/* Pending Trade Offers */}
+      {(state.pending_trade_offers?.length > 0 || state.pending_trade_offers_sent?.length > 0) && (
+        <div>
+          <div className="text-green-400 font-bold">Trades</div>
+
+          {/* Incoming offers */}
+          {state.pending_trade_offers?.map((trade: any) => (
+            <div
+              key={trade.trade_id}
+              className={`text-xs mb-1 p-1 border ${trade.can_accept ? 'border-green-600' : 'border-green-900 opacity-50'}`}
+            >
+              <div className="font-semibold">From {trade.from_player_name}:</div>
+              <div>Offers: {Object.entries(trade.offered_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
+              <div>Wants: {Object.entries(trade.requested_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
+              {trade.can_accept ? (
+                <button
+                  className="text-green-400 hover:underline text-xs mt-1"
+                  onClick={() => onCommand(`accept_trade ${trade.trade_id}`)}
+                >
+                  Accept
+                </button>
+              ) : (
+                <div className="text-green-800 text-xs mt-1">Cannot accept</div>
+              )}
+            </div>
+          ))}
+
+          {/* Outgoing offers */}
+          {state.pending_trade_offers_sent?.map((trade: any) => (
+            <div
+              key={trade.trade_id}
+              className={`text-xs mb-1 p-1 border ${trade.can_be_accepted ? 'border-green-600' : 'border-green-900 opacity-50'}`}
+            >
+              <div className="font-semibold">To {trade.to_player_name}:</div>
+              <div>You offer: {Object.entries(trade.offered_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
+              <div>You want: {Object.entries(trade.requested_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
+              <button
+                className="text-red-400 hover:underline text-xs mt-1"
+                onClick={() => onCommand(`cancel_trade ${trade.trade_id}`)}
+              >
+                Cancel
+              </button>
+              {!trade.can_be_accepted && (
+                <div className="text-green-800 text-xs">They cannot accept</div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
       <div>
         <div className="text-green-400 font-bold">Exits</div>
         <div className="flex flex-wrap gap-2 mt-1">
