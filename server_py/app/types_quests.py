@@ -19,6 +19,7 @@ class Quest(BaseModel):
     description: str
     objectives: list[QuestObjective]
     rewards: Dict[str, int]          # item -> quantity
+    repeatable: bool = False         # Can be taken again after completion
     status: QuestStatus = "offered"
     giver_npc_id: Optional[str] = None
     accepted_at: Optional[int] = None  # timestamp in ms

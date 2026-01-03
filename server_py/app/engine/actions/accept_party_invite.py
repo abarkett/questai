@@ -12,6 +12,7 @@ from ...db import (
     get_party,
     get_player_party,
 )
+from ..state_view import build_action_state
 
 
 def accept_party_invite(player: Player, invite_id: str) -> ActionResponse:
@@ -63,8 +64,5 @@ def accept_party_invite(player: Player, invite_id: str) -> ActionResponse:
             f"You joined the party!",
             f"Party members: {', '.join(member_names)}"
         ],
-        state={
-            "player": player.model_dump(),
-            "party": updated_party
-        }
+        state=build_action_state(player)
     )

@@ -4,6 +4,7 @@ from ...types import Player, ActionResponse
 from ..entities import get_entities_at, serialize_entity
 from ...world import get_location
 from ...db import upsert_player
+from ..state_view import build_action_state
 
 
 def buy(player: Player, item_name: str) -> ActionResponse:
@@ -32,20 +33,8 @@ def buy(player: Player, item_name: str) -> ActionResponse:
 
     upsert_player(player)
 
-    loc = get_location(player.location)
-    entities = get_entities_at(player.location)
-
     return ActionResponse(
         ok=True,
         messages=[f"You buy a {item_name} for {price} coins."],
-        state={
-            "player": player.model_dump(),
-            "location": {
-                "id": loc.id,
-                "name": loc.name,
-                "description": loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-            },
-            "entities": entities,
-        },
+        state=build_action_state(player, scene_dirty=False),
     )

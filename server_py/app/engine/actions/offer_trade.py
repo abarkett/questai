@@ -4,6 +4,7 @@ import uuid
 from ...types import Player, ActionResponse
 from ...db import create_pending_trade, get_player
 from ..entities import find_player_by_name_at
+from ..state_view import build_action_state
 
 
 def offer_trade(
@@ -51,14 +52,18 @@ def offer_trade(
     # Build message
     offer_desc = ", ".join(f"{q}x {item}" for item, q in offer_items.items()) if offer_items else "nothing"
     request_desc = ", ".join(f"{q}x {item}" for item, q in request_items.items()) if request_items else "nothing"
-    
+
     messages.append(f"Trade offer created (ID: {trade_id})")
     messages.append(f"You offer: {offer_desc}")
     messages.append(f"You request: {request_desc}")
     messages.append(f"{target_player.name} can accept with: accept_trade {trade_id}")
 
+    # Build complete state including pending trades
+    state = build_action_state(player)
+    state["trade_id"] = trade_id
+
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={"player": player.model_dump(), "trade_id": trade_id},
+        state=state,
     )

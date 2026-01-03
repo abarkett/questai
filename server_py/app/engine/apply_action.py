@@ -20,6 +20,8 @@ from .actions.accept_quest import accept_quest
 from .actions.turn_in_quest import turn_in_quest
 from .actions.offer_trade import offer_trade
 from .actions.accept_trade import accept_trade
+from .actions.list_trades import list_trades
+from .actions.cancel_trade import cancel_trade
 from .actions.party_invite import party_invite
 from .actions.accept_party_invite import accept_party_invite
 from .actions.leave_party import leave_party
@@ -89,6 +91,10 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         )
     elif req.action == "accept_trade":
         result = accept_trade(player, req.args.trade_id)
+    elif req.action == "list_trades":
+        result = list_trades(player)
+    elif req.action == "cancel_trade":
+        result = cancel_trade(player, req.args.trade_id)
     elif req.action == "party_invite":
         result = party_invite(player, req.args.target_player)
     elif req.action == "accept_party_invite":
@@ -103,16 +109,19 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation"]:
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades"]:
         new_turn = increment_world_turn()
-        
+        print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
+
         # Evaluate world evolution rules periodically (every 5 turns)
         if new_turn % 5 == 0:
+            print(f"[TURN] Turn {new_turn} is divisible by 5, evaluating world rules")
             from ..world_rules import evaluate_world_rules
             try:
                 triggered_rules = evaluate_world_rules()
             except Exception as e:
                 from ..db import log_world_event
+                print(f"[TURN] World rules error: {e}")
                 log_world_event(
                     event_type="world_rule_error",
                     location_id=None,

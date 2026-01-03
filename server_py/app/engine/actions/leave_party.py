@@ -11,6 +11,7 @@ from ...db import (
     delete_party,
     get_party,
 )
+from ..state_view import build_action_state
 
 
 def leave_party(player: Player) -> ActionResponse:
@@ -32,16 +33,16 @@ def leave_party(player: Player) -> ActionResponse:
                 "You left the party.",
                 "As the leader, the party has been disbanded."
             ],
-            state={"player": player.model_dump()}
+            state=build_action_state(player)
         )
-    
+
     # Check if party is now empty (shouldn't happen, but safety check)
     updated_party = get_party(party["party_id"])
     if updated_party and len(updated_party["members"]) == 0:
         delete_party(party["party_id"])
-    
+
     return ActionResponse(
         ok=True,
         messages=["You left the party."],
-        state={"player": player.model_dump()}
+        state=build_action_state(player)
     )

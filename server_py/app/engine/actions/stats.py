@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ...types import Player, ActionResponse
-
+from ..state_view import build_action_state
 
 
 def stats(player: Player) -> ActionResponse:
@@ -13,5 +13,5 @@ def stats(player: Player) -> ActionResponse:
             f"Level: {player.level}",
             f"XP: {player.xp}",
         ],
-        state={"player": player.model_dump()},
+        state=build_action_state(player, scene_dirty=False),
     )

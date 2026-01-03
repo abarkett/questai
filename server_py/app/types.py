@@ -135,6 +135,20 @@ class AcceptTradeReq(BaseModel):
     args: AcceptTradeArgs
 
 
+class ListTradesReq(BaseModel):
+    action: Literal["list_trades"]
+    args: Optional[dict] = None
+
+
+class CancelTradeArgs(BaseModel):
+    trade_id: str
+
+
+class CancelTradeReq(BaseModel):
+    action: Literal["cancel_trade"]
+    args: CancelTradeArgs
+
+
 class PartyInviteArgs(BaseModel):
     target_player: str = Field(min_length=1, max_length=32)
 
@@ -182,6 +196,8 @@ ActionRequest = Union[
     TurnInQuestReq,
     OfferTradeReq,
     AcceptTradeReq,
+    ListTradesReq,
+    CancelTradeReq,
     PartyInviteReq,
     AcceptPartyInviteReq,
     LeavePartyReq,

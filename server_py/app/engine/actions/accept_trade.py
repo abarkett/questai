@@ -7,6 +7,7 @@ from ...db import (
     get_player,
     upsert_player,
 )
+from ..state_view import build_action_state
 
 
 def accept_trade(player: Player, trade_id: str) -> ActionResponse:
@@ -90,5 +91,5 @@ def accept_trade(player: Player, trade_id: str) -> ActionResponse:
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={"player": player.model_dump()},
+        state=build_action_state(player),
     )

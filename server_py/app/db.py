@@ -422,6 +422,24 @@ def get_pending_trades_for_player(player_id: str) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def get_pending_trades_by_player(player_id: str) -> List[Dict[str, Any]]:
+    """Get all pending trades where player is the sender/offerer"""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM pending_trades WHERE from_player_id = ?", (player_id,)
+        ).fetchall()
+        trades = []
+        for row in rows:
+            data = dict(row)
+            data["offered_items"] = json.loads(data["offered_items_json"])
+            data["requested_items"] = json.loads(data["requested_items_json"])
+            trades.append(data)
+        return trades
+    finally:
+        conn.close()
+
+
 # ===== Phase 8: World Clock =====
 
 def get_world_turn() -> int:

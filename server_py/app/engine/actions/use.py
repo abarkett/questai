@@ -3,6 +3,7 @@ from ...items import ITEMS
 from ...db import upsert_player
 from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes
 from ...world import get_location
+from ..state_view import build_action_state
 
 
 def normalize_item_key(name: str) -> str:
@@ -28,23 +29,10 @@ def use(player: Player, item_name: str) -> ActionResponse:
 
         upsert_player(player)
 
-        loc = get_location(player.location)
-        entities = get_entities_at(player.location)
-
         return ActionResponse(
             ok=True,
             messages=[f"You use {item.name}. (+{item.heal} HP)"],
-            state={
-                "player": player.model_dump(),
-                "location": {
-                    "id": loc.id,
-                    "name": loc.name,
-                    "description": loc.description,
-                    "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-                },
-                "entities": entities,
-                "adjacent_scenes": get_adjacent_scenes(loc.id),
-            },
+            state=build_action_state(player, scene_dirty=False),
         )
 
     return ActionResponse(ok=False, error="You can't use that item.")

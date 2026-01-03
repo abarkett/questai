@@ -4,6 +4,7 @@ from ...types import Player, ActionResponse
 from ...world import get_location
 from ...db import upsert_player
 from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes, filter_current_player
+from ..state_view import build_action_state
 
 
 def move(player: Player, to_label_or_id: str) -> ActionResponse:
@@ -29,10 +30,6 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
 
     to_loc = get_location(player.location)
 
-    # NEW: fetch entities at destination
-    entities = get_entities_at(player.location)
-    entities = filter_current_player(entities, player.player_id)
-    
     # Phase 8: Track monster survival for world evolution
     from ...world_rules import track_monster_survival
     track_monster_survival(player.location)
@@ -43,16 +40,5 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
             f"You travel to {to_loc.name}.",
             to_loc.description,
         ],
-        state={
-            "player": player.model_dump(),
-            "location": {
-                "id": to_loc.id,
-                "name": to_loc.name,
-                "description": to_loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in to_loc.exits],
-            },
-            "entities": entities,
-            "adjacent_scenes": get_adjacent_scenes(to_loc.id),
-            "scene_dirty": True,
-        },
+        state=build_action_state(player, scene_dirty=True),
     )

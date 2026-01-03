@@ -5,6 +5,7 @@ from ...types import Player, ActionResponse
 from ...db import upsert_player
 from ..entities import get_entities_at, get_adjacent_scenes
 from ...world import get_location
+from ..state_view import build_action_state
 
 
 def turn_in_quest(player: Player, quest_id: str) -> ActionResponse:
@@ -44,22 +45,9 @@ def turn_in_quest(player: Player, quest_id: str) -> ActionResponse:
     del player.completed_quests[quest_id]
 
     upsert_player(player)
-    
-    loc = get_location(player.location)
-    entities = get_entities_at(player.location)
 
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={
-            "player": player.model_dump(),
-            "location": {
-                "id": loc.id,
-                "name": loc.name,
-                "description": loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-            },
-            "entities": entities,
-            "adjacent_scenes": get_adjacent_scenes(loc.id),
-        },
+        state=build_action_state(player, scene_dirty=False),
     )

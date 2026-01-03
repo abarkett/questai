@@ -13,7 +13,9 @@ from ..entities import (
     remove_entity,
     get_adjacent_scenes,
     get_world_entities_at,
+    filter_current_player,
 )
+from ..state_view import build_action_state
 
 
 # Simple shared combat constants
@@ -28,34 +30,69 @@ ATTACK_COOLDOWN_SECONDS = 30  # 30 seconds before attacking same target again
 def update_quest_progress(player: Player, target_name: str) -> list[str]:
     """
     Update quest progress for kill objectives.
+    Also updates progress for party members at the same location.
     Returns list of quest completion messages.
     """
+    from ...db import get_player_party, get_player, upsert_player
+
     messages = []
     completed_quest_ids = []
-    
-    for quest_id, quest in player.active_quests.items():
-        if quest.status != "accepted":
-            continue
-            
-        for objective in quest.objectives:
-            if objective.type == "kill" and objective.target.lower() == target_name.lower():
-                if objective.progress < objective.required:
-                    objective.progress += 1
-                    messages.append(f"Quest progress: {quest.name} ({objective.progress}/{objective.required})")
-                    
-                    # Check if all objectives are complete
-                    if all(obj.progress >= obj.required for obj in quest.objectives):
-                        quest.status = "completed"
-                        quest.completed_at = int(time.time() * 1000)
-                        completed_quest_ids.append(quest_id)
-                        messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
-                    break
-    
-    # Move completed quests after iteration
-    for quest_id in completed_quest_ids:
-        player.completed_quests[quest_id] = player.active_quests[quest_id]
-        del player.active_quests[quest_id]
-    
+
+    # Get all party members (regardless of location)
+    party_members_to_update = []
+    party = get_player_party(player.player_id)
+    print(f"[PARTY QUEST] Player {player.name} has party: {party is not None}")
+    if party:
+        print(f"[PARTY QUEST] Party members: {party['members']}")
+        for member_id in party["members"]:
+            if member_id == player.player_id:
+                continue  # Skip self, we'll update them directly
+            member = get_player(member_id)
+            if member:
+                print(f"[PARTY QUEST] Adding {member.name} to quest update list (location: {member.location})")
+                party_members_to_update.append(member)
+
+    # Update quest progress for player and party members
+    all_players = [player] + party_members_to_update
+
+    for p in all_players:
+        player_messages = []
+        player_completed = []
+
+        for quest_id, quest in p.active_quests.items():
+            if quest.status != "accepted":
+                continue
+
+            for objective in quest.objectives:
+                if objective.type == "kill" and objective.target.lower() == target_name.lower():
+                    if objective.progress < objective.required:
+                        objective.progress += 1
+                        player_messages.append(f"Quest progress: {quest.name} ({objective.progress}/{objective.required})")
+
+                        # Check if all objectives are complete
+                        if all(obj.progress >= obj.required for obj in quest.objectives):
+                            quest.status = "completed"
+                            quest.completed_at = int(time.time() * 1000)
+                            player_completed.append(quest_id)
+                            player_messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
+                        break
+
+        # Move completed quests after iteration
+        for quest_id in player_completed:
+            p.completed_quests[quest_id] = p.active_quests[quest_id]
+            del p.active_quests[quest_id]
+
+        # Save party member updates
+        if p.player_id != player.player_id:
+            upsert_player(p)
+            # Add party member messages to main messages with prefix
+            for msg in player_messages:
+                messages.append(f"[Party] {p.name}: {msg}")
+        else:
+            # Add player's own messages
+            messages.extend(player_messages)
+            completed_quest_ids.extend(player_completed)
+
     return messages
 
 
@@ -119,24 +156,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
 
         upsert_player(player)
 
-        loc = get_location(player.location)
-        entities = get_entities_at(player.location)
-
         return ActionResponse(
             ok=True,
             messages=messages,
-            state={
-                "player": player.model_dump(),
-                "location": {
-                    "id": loc.id,
-                    "name": loc.name,
-                    "description": loc.description,
-                    "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-                },
-                "entities": entities,
-                "adjacent_scenes": get_adjacent_scenes(loc.id),
-                "scene_dirty": True,
-            },
+            state=build_action_state(player, scene_dirty=True),
         )
 
     # -------------------------------------------------
@@ -153,22 +176,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     # Check if target is attackable
     attackable, error_msg = is_player_attackable(target_player, player, current_time_ms)
     if not attackable:
-        loc = get_location(player.location)
         return ActionResponse(
             ok=True,
             messages=[error_msg],
-            state={
-                "player": player.model_dump(),
-                "location": {
-                    "id": loc.id,
-                    "name": loc.name,
-                    "description": loc.description,
-                    "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-                },
-                "entities": get_entities_at(loc.id),
-                "adjacent_scenes": get_adjacent_scenes(loc.id),
-                "scene_dirty": False,   # 👈 EXPLICIT
-            },
+            state=build_action_state(player, scene_dirty=False),
         )
 
     messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
@@ -204,22 +215,8 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     upsert_player(target_player)
     upsert_player(player)
 
-    loc = get_location(player.location)
-    entities = get_entities_at(player.location)
-
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={
-            "player": player.model_dump(),
-            "location": {
-                "id": loc.id,
-                "name": loc.name,
-                "description": loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-            },
-            "entities": entities,
-            "adjacent_scenes": get_adjacent_scenes(loc.id),
-            "scene_dirty": False,
-        },
+        state=build_action_state(player, scene_dirty=False),
     )

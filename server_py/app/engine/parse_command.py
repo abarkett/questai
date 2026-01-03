@@ -94,8 +94,8 @@ def parse_command(text: str) -> Dict[str, Any]:
     
     # ---- OFFER TRADE ----
     if verb == "offer" and len(rest) >= 1:
-        # Format: offer <player_name> <offer_items> for <request_items>
-        # Example: offer Alice 2x sword for 10x gold
+        # Format: offer <player_name> item:qty [item:qty ...] for item:qty [item:qty ...]
+        # Example: offer Alice sword:2 for gold:10
         # Simple parsing: find "for" keyword
         text_parts = " ".join(rest)
         if " for " in text_parts:
@@ -103,46 +103,40 @@ def parse_command(text: str) -> Dict[str, Any]:
             parts = before_for.split()
             if not parts:
                 raise ParseError("Specify player to trade with.")
-            
+
             to_player = parts[0]
             offer_text = " ".join(parts[1:]) if len(parts) > 1 else ""
             request_text = after_for.strip()
-            
-            # Parse items: "2x sword 3x shield" -> {"sword": 2, "shield": 3}
+
+            # Parse items: "sword:2 shield:3" -> {"sword": 2, "shield": 3}
             def parse_items(text: str) -> dict[str, int]:
                 items = {}
                 if not text:
                     return items
                 tokens = text.split()
-                i = 0
-                while i < len(tokens):
-                    token = tokens[i]
-                    if "x" in token:
-                        # Format: "2x"
-                        qty_str = token.split("x")[0]
+                for token in tokens:
+                    if ":" in token:
+                        # Format: "item:qty"
+                        parts = token.split(":", 1)
+                        item_name = parts[0]
+                        qty_str = parts[1]
                         try:
                             qty = int(qty_str)
                         except ValueError:
-                            raise ParseError(f"Invalid quantity: {qty_str}")
-                        
+                            raise ParseError(f"Invalid quantity in '{token}': {qty_str}")
+
                         if qty <= 0:
-                            raise ParseError(f"Invalid quantity: {qty_str}")
-                        
-                        if i + 1 < len(tokens):
-                            item_name = tokens[i + 1]
-                            items[item_name] = qty
-                            i += 2
-                        else:
-                            i += 1
+                            raise ParseError(f"Quantity must be positive in '{token}'")
+
+                        items[item_name] = qty
                     else:
-                        # Assume quantity 1
+                        # No colon means quantity 1
                         items[token] = 1
-                        i += 1
                 return items
-            
+
             offer_items = parse_items(offer_text)
             request_items = parse_items(request_text)
-            
+
             return {
                 "action": "offer_trade",
                 "args": {
@@ -152,7 +146,7 @@ def parse_command(text: str) -> Dict[str, Any]:
                 }
             }
         else:
-            raise ParseError("Use format: offer <player> <items> for <items>")
+            raise ParseError("Use format: offer <player> item:qty [item:qty ...] for item:qty [item:qty ...]")
     
     # ---- ACCEPT TRADE ----
     if verb == "accept_trade" and rest:
@@ -160,7 +154,18 @@ def parse_command(text: str) -> Dict[str, Any]:
             "action": "accept_trade",
             "args": {"trade_id": rest[0]}
         }
-    
+
+    # ---- LIST TRADES ----
+    if verb in ("trades", "list_trades"):
+        return {"action": "list_trades"}
+
+    # ---- CANCEL TRADE ----
+    if verb == "cancel_trade" and rest:
+        return {
+            "action": "cancel_trade",
+            "args": {"trade_id": rest[0]}
+        }
+
     # ---- PARTY COMMANDS ----
     if verb == "party":
         if not rest:
