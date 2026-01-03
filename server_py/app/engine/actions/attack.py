@@ -135,6 +135,7 @@ def attack(player: Player, target_name: str) -> ActionResponse:
                 },
                 "entities": entities,
                 "adjacent_scenes": get_adjacent_scenes(loc.id),
+                "scene_dirty": True,
             },
         )
 
@@ -152,7 +153,23 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     # Check if target is attackable
     attackable, error_msg = is_player_attackable(target_player, player, current_time_ms)
     if not attackable:
-        return ActionResponse(ok=False, error=error_msg)
+        loc = get_location(player.location)
+        return ActionResponse(
+            ok=True,
+            messages=[error_msg],
+            state={
+                "player": player.model_dump(),
+                "location": {
+                    "id": loc.id,
+                    "name": loc.name,
+                    "description": loc.description,
+                    "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
+                },
+                "entities": get_entities_at(loc.id),
+                "adjacent_scenes": get_adjacent_scenes(loc.id),
+                "scene_dirty": False,   # 👈 EXPLICIT
+            },
+        )
 
     messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
 
@@ -203,5 +220,6 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             },
             "entities": entities,
             "adjacent_scenes": get_adjacent_scenes(loc.id),
+            "scene_dirty": False,
         },
     )

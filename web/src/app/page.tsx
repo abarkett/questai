@@ -267,7 +267,9 @@ export default function Page() {
       }
 
       // Scene handling
-      await handleSceneFromResponse(resp);
+      if (resp.state?.scene_dirty) {
+        await handleSceneFromResponse(resp);
+      } 
 
       // Prefetch adjacent scenes
       if (resp.state?.location) {

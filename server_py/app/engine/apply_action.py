@@ -109,7 +109,16 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         # Evaluate world evolution rules periodically (every 5 turns)
         if new_turn % 5 == 0:
             from ..world_rules import evaluate_world_rules
-            triggered_rules = evaluate_world_rules()
+            try:
+                triggered_rules = evaluate_world_rules()
+            except Exception as e:
+                from ..db import log_world_event
+                log_world_event(
+                    event_type="world_rule_error",
+                    location_id=None,
+                    data={"error": str(e)}
+                )
+                triggered_rules = []
             if triggered_rules and result.messages:
                 result.messages.append(f"[World changed: {', '.join(triggered_rules)}]")
 

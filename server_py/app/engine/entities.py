@@ -4,8 +4,8 @@ from typing import List, Dict, Any
 
 from ..types_entities import Entity
 from ..world_entities import WORLD_ENTITIES
-from ..world import get_location
 from ..db import get_players_at_location
+
 
 def find_player_by_name_at(location_id: str, name: str):
     players = get_players_at_location(location_id)
@@ -136,31 +136,3 @@ def remove_entity(location_id: str, entity_id: str) -> None:
         e for e in WORLD_ENTITIES.get(location_id, [])
         if e.entity_id != entity_id
     ]
-
-
-# -------------------------------------------------
-# Adjacent scenes (for image prefetching)
-# -------------------------------------------------
-
-def get_adjacent_scenes(location_id: str) -> List[Dict[str, Any]]:
-    """
-    Returns a list of adjacent scene descriptors suitable
-    for scene image prefetching.
-    """
-    loc = get_location(location_id)
-    scenes: List[Dict[str, Any]] = []
-
-    for exit in loc.exits:
-        next_loc = get_location(exit.to)
-
-        scenes.append({
-            "location": {
-                "id": next_loc.id,
-                "name": next_loc.name,
-                "description": next_loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in next_loc.exits],
-            },
-            "entities": get_entities_at(next_loc.id),
-        })
-
-    return scenes

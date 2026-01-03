@@ -72,7 +72,7 @@ def _check_forest_cleared() -> bool:
     """Check if forest should be cleared."""
     # Check if enough rats have been killed
     entities = get_world_entities_at("forest")
-    rat_count = sum(1 for e in entities if e.entity_type == "monster" and "rat" in e.entity_id.lower())
+    rat_count = sum(1 for e in entities if e.type == "monster" and "rat" in e.entity_id.lower())
     
     is_infested = get_world_state("forest_infested") == "true"
     return is_infested and rat_count == 0

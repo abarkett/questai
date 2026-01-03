@@ -53,5 +53,6 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
             },
             "entities": entities,
             "adjacent_scenes": get_adjacent_scenes(to_loc.id),
+            "scene_dirty": True,
         },
     )

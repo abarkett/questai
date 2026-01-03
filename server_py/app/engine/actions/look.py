@@ -3,7 +3,8 @@ from __future__ import annotations
 from ...types import Player, ActionResponse
 from ...world import get_location
 from ...db import get_world_state
-from ..entities import get_entities_at, serialize_entity, get_adjacent_scenes, filter_current_player
+from ..entities import get_entities_at, serialize_entity, filter_current_player
+from ..state_view import build_action_state
 
 
 def look(player: Player) -> ActionResponse:
@@ -35,15 +36,5 @@ def look(player: Player) -> ActionResponse:
     return ActionResponse(
         ok=True,
         messages=messages,
-        state={
-            "player": player.model_dump(),
-            "location": {
-                "id": loc.id,
-                "name": loc.name,
-                "description": loc.description,
-                "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
-            },
-            "entities": entities,
-            "adjacent_scenes": get_adjacent_scenes(loc.id),
-        },
+        state=build_action_state(player, scene_dirty=False),
     )
