@@ -33,7 +33,7 @@ function computeSceneKeyFromResponse(resp: any) {
   });
 }
 
-function StatusPane({state, onCommand}: {state: any | null; onCommand: (cmd: string) => void;}) {
+function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
   if (!state?.player || !state?.location) {
     return (
       <div className="text-green-700">
@@ -55,25 +55,25 @@ function StatusPane({state, onCommand}: {state: any | null; onCommand: (cmd: str
         <div>{location.name}</div>
       </div>
       <div>
-    <div className="text-green-400 font-bold">People Here</div>
-      <div className="space-y-1">
-        {state.entities
-          .filter((e: any) => e.type === "npc" || e.type === "player")
-          .map((entity: any) => {
-            const isInParty = state.party?.members?.some((m: any) => m.player_id === entity.id);
-            return (
-              <button
-                key={entity.id}
-                className="block text-left hover:underline"
-                onClick={() => onCommand(`talk ${entity.id}`)}
-              >
-                {entity.name} {entity.type === "player" ? "(player)" : ""}
-                {isInParty && " ⚔️"}
-              </button>
-            );
-          })}
+        <div className="text-green-400 font-bold">People Here</div>
+        <div className="space-y-1">
+          {state.entities
+            .filter((e: any) => e.type === "npc" || e.type === "player")
+            .map((entity: any) => {
+              const isInParty = state.party?.members?.some((m: any) => m.player_id === entity.id);
+              return (
+                <button
+                  key={entity.id}
+                  className="block text-left hover:underline"
+                  onClick={() => onCommand(`talk ${entity.id}`)}
+                >
+                  {entity.name} {entity.type === "player" ? "(player)" : ""}
+                  {isInParty && " ⚔️"}
+                </button>
+              );
+            })}
+        </div>
       </div>
-    </div>
       {/* Active Quests */}
       {state.player.active_quests && Object.keys(state.player.active_quests).length > 0 && (
         <div>
@@ -244,6 +244,7 @@ export default function Page() {
   const [log, setLog] = useState<Line[]>([]);
   const [sceneImage, setSceneImage] = useState<string | null>(null);
   const [isLoadingScene, setIsLoadingScene] = useState(false);
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [lastState, setLastState] = useState<any | null>(null);
   const [currentSceneKey, setCurrentSceneKey] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -324,7 +325,7 @@ export default function Page() {
   // Auto-scroll log
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [log]);
+  }, [log, isWaitingForResponse]);
 
   async function prefetchAdjacentScenes(state: any) {
     for (const scene of state.adjacent_scenes ?? []) {
@@ -348,9 +349,10 @@ export default function Page() {
   }
 
   async function runCommand(command: string) {
-    if (isLoadingScene || !command.trim()) return;
+    if (isLoadingScene || isWaitingForResponse || !command.trim()) return;
 
     setInput("");
+    setIsWaitingForResponse(true);
 
     // Echo command
     setLog((l) => [
@@ -383,7 +385,7 @@ export default function Page() {
       // Scene handling
       if (resp.state?.scene_dirty) {
         await handleSceneFromResponse(resp);
-      } 
+      }
 
       // Prefetch adjacent scenes
       if (resp.state?.location) {
@@ -405,6 +407,8 @@ export default function Page() {
         ...l,
         { id: crypto.randomUUID(), text: "[error] network error" },
       ]);
+    } finally {
+      setIsWaitingForResponse(false);
     }
   }
 
@@ -419,7 +423,7 @@ export default function Page() {
 
       {/* Top area: image + status pane */}
       <div className="h-[420px] mb-2 flex border border-green-700">
-        
+
         {/* Image side */}
         <div className="flex-[3] relative border-r border-green-700 overflow-hidden">
           {isLoadingScene && (
@@ -453,6 +457,9 @@ export default function Page() {
         {log.map((line) => (
           <div key={line.id}>{line.text}</div>
         ))}
+        {isWaitingForResponse && (
+          <div className="animate-pulse text-green-500">...</div>
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -464,7 +471,7 @@ export default function Page() {
           className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          disabled={isLoadingScene}
+          disabled={isLoadingScene || isWaitingForResponse}
         />
       </form>
     </div>
