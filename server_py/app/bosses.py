@@ -58,6 +58,12 @@ BOSS_MECHANICS: Dict[str, dict] = {
              "message": "The Ice Troll bellows, ice knitting over its wounds as it lashes out harder!"},
         ],
     },
+    "Forge Guardian": {
+        "phases": [
+            {"at": 0.4, "enrage_mult": 1.6,
+             "message": "The Forge Guardian glows white-hot and hammers down with redoubled fury!"},
+        ],
+    },
 }
 
 

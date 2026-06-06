@@ -58,11 +58,14 @@ def main() -> None:
     upsert_player(p)
     move(p, "descend")
     assert p.location == "underdeep", p.location
-    move(p, "deeper")
-    assert p.location == "magma_core", p.location
+    # The deep path to the core now runs through several new rooms.
+    for label, dest in [("deeper", "abyssal_stair"), ("down", "obsidian_gallery"),
+                        ("deeper", "sulfur_vents"), ("deeper", "ashen_waste"),
+                        ("forge", "the_great_forge"), ("core", "magma_core")]:
+        assert move(p, label).ok and p.location == dest, (label, p.location)
     move(p, "ascend")
-    assert p.location == "underdeep", p.location
-    print("PASS  new dungeon tiers exist and are traversable")
+    assert p.location == "the_great_forge", p.location
+    print("PASS  new dungeon tiers exist and the deep path is traversable")
 
     # New monsters seeded into the fresh world.
     assert count_monsters_at("underdeep") == 2

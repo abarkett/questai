@@ -77,12 +77,12 @@ def main() -> None:
     assert loaded.equipment.get("weapon") == "iron_sword", loaded.equipment
     print("PASS  equipment persists through the DB")
 
-    # Armor reduces retaliation to the floor in real combat
-    pa = mk(player_id="z", location="deep_forest", equipment={"armor": "steel_armor"}, inventory={})
+    # Armor reduces retaliation to the floor in real combat. (Use the lone-bandit
+    # mill so a second enemy can't join and skew the damage.)
+    pa = mk(player_id="z", location="old_mill", equipment={"armor": "steel_armor"}, inventory={})
     upsert_player(pa)
-    before = pa.hp
-    attack(pa, "Goblin")  # goblin attack 3 - defense 4 -> floored at 1
-    assert pa.hp == before - 1, (before, pa.hp)
+    r = attack(pa, "Bandit")  # bandit attack 4 - defense 4 -> floored at 1
+    assert any("hits you for 1 damage" in m for m in r.messages), r.messages
     print("PASS  armor reduces retaliation to the minimum")
 
     # Gear drops as loot on kill (level 20 -> even a low damage roll one-shots a goblin)

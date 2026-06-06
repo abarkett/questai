@@ -224,6 +224,36 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             inflicts={"effect": "burn", "magnitude": 6, "turns": 4},
         ),
     ],
+    "abyssal_stair": [
+        Entity(entity_id="void_bat_1", name="Void Bat", type="monster",
+               hp=42, attack=10, xp_reward=34, loot={"coin": 10, "mythril_ore": 1}),
+        Entity(entity_id="deep_crawler_1", name="Deep Crawler", type="monster",
+               hp=58, attack=12, xp_reward=42, loot={"coin": 14, "mythril_ore": 1},
+               inflicts={"effect": "poison", "magnitude": 3, "turns": 3}),
+    ],
+    "obsidian_gallery": [
+        Entity(entity_id="obsidian_golem_1", name="Obsidian Golem", type="monster",
+               hp=78, attack=14, xp_reward=55, loot={"coin": 20, "mythril_ore": 2}),
+    ],
+    "sulfur_vents": [
+        Entity(entity_id="vent_crab_1", name="Vent Crab", type="monster",
+               hp=62, attack=12, xp_reward=46, loot={"coin": 14, "ember_core": 1}),
+        Entity(entity_id="sulfur_drake_1", name="Sulfur Drake", type="monster",
+               hp=72, attack=15, xp_reward=60, loot={"coin": 22, "ember_core": 1},
+               inflicts={"effect": "burn", "magnitude": 5, "turns": 3}),
+    ],
+    "ashen_waste": [
+        Entity(entity_id="ash_revenant_1", name="Ash Revenant", type="monster",
+               hp=82, attack=16, xp_reward=70, loot={"coin": 24, "ember_core": 2},
+               inflicts={"effect": "weaken", "magnitude": 3, "turns": 3}),
+        Entity(entity_id="ash_revenant_2", name="Ash Revenant", type="monster",
+               hp=82, attack=16, xp_reward=70, loot={"coin": 24, "ember_core": 1},
+               inflicts={"effect": "weaken", "magnitude": 3, "turns": 3}),
+    ],
+    "the_great_forge": [
+        Entity(entity_id="forge_guardian_1", name="Forge Guardian", type="monster",
+               hp=96, attack=18, xp_reward=140, loot={"coin": 70, "ember_core": 3, "mythril_ore": 3}),
+    ],
     "foothills": [
         Entity(
             entity_id="ranger",

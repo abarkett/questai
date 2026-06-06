@@ -183,6 +183,8 @@ LOCATION_RESOURCES: Dict[str, str] = {
     "deep_forest": "pelt",
     "cavern": "iron_ore",
     "underdeep": "mythril_ore",
+    "obsidian_gallery": "mythril_ore",
+    "sulfur_vents": "ember_core",
     "magma_core": "ember_core",
     "foothills": "iron_ore",
     "mountain_pass": "frost_crystal",
