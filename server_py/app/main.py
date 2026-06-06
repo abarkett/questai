@@ -13,7 +13,12 @@ from .engine.parse_command import parse_command, ParseError
 from .db import init_db, create_faction, get_cached_scene_image, cache_scene_image
 from .engine.apply_action import apply_action
 from .factions import FACTIONS
-from .services.image_gen import generate_scene_image, get_image_model, image_gen_enabled
+from .services.image_gen import (
+    generate_scene_image,
+    get_image_model,
+    image_gen_enabled,
+    enrich_scene_prompt,
+)
 
 app = FastAPI(title="RPG World Server", version="0.1.0")
 
@@ -95,7 +100,9 @@ def ai_image(prompt: str = Body(..., embed=True)):
             content={"error": "image generation not configured (set GEMINI_API_KEY)"},
         )
 
-    image = generate_scene_image(prompt)
+    # Miss: enrich the prompt with Miriel's world context, then render. We cache
+    # under the *base* prompt key so the scene renders once and stays consistent.
+    image = generate_scene_image(enrich_scene_prompt(prompt))
     if not image:
         return JSONResponse(status_code=502, content={"error": "image generation failed"})
 

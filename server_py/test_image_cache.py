@@ -23,9 +23,12 @@ db.DB_PATH = _tmp.name
 from fastapi.testclient import TestClient  # noqa: E402
 from app.main import app  # noqa: E402
 
-# Ensure the no-key branch is what we test first.
+# Ensure the no-key branches are what we test first.
 os.environ.pop("GEMINI_API_KEY", None)
 os.environ.pop("GOOGLE_API_KEY", None)
+os.environ.pop("MIRIEL_API_KEY", None)
+
+from app.services.image_gen import enrich_scene_prompt  # noqa: E402
 
 PROMPT = "Fantasy RPG scene illustration of a quiet town square at dusk."
 KEY = hashlib.sha256(PROMPT.encode("utf-8")).hexdigest()
@@ -52,6 +55,10 @@ def main() -> None:
         r = client.post("/api/ai/image", json={"prompt": PROMPT + " with a dragon overhead"})
         assert r.status_code == 503, (r.status_code, r.text)
         print("PASS  distinct prompt -> distinct key -> 503")
+
+    # 4) Miriel enrichment degrades to the base prompt unchanged when disabled.
+    assert enrich_scene_prompt(PROMPT) == PROMPT
+    print("PASS  prompt enrichment no-ops gracefully when Miriel is off")
 
     print("\nALL IMAGE CACHE TESTS PASSED")
 

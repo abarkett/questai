@@ -97,3 +97,37 @@ def _extract_image_data_uri(response) -> Optional[str]:
             b64 = base64.b64encode(data).decode("ascii") if isinstance(data, bytes) else str(data)
             return f"data:{mime};base64,{b64}"
     return None
+
+
+def enrich_scene_prompt(base_prompt: str) -> str:
+    """
+    Use Miriel to add world-aware visual atmosphere to a scene prompt.
+
+    Querying Miriel automatically folds in the contextually relevant stored
+    knowledge (recent events, world conditions, story beats), so scenes reflect
+    what's actually happening in the world — not just the static location text.
+    Falls back to the base prompt unchanged if Miriel is disabled or errors;
+    callers cache under the *base* prompt so the enriched render stays stable.
+    """
+    try:
+        from .miriel_client import get_miriel_client
+
+        client = get_miriel_client()
+        if not client.enabled:
+            return base_prompt
+
+        query = (
+            "In 2-3 sentences, describe the visual atmosphere and any notable "
+            "current details of this fantasy RPG scene for an illustration. "
+            "Fold in relevant recent world events or conditions. Describe only "
+            "what is visibly present — no text, no UI, no labels.\n\n"
+            f"Scene:\n{base_prompt}"
+        )
+        resp = client.query(query=query, project="questai", force_exhaustive=False)
+        answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
+        answer = (answer or "").strip()
+        if answer:
+            return f"{base_prompt}\n\nAtmosphere & current details: {answer}"
+    except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
+        _logger.warning("[image_gen] Miriel prompt enrichment failed: %s", exc)
+    return base_prompt
