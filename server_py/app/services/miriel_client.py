@@ -73,6 +73,15 @@ class MirielClient:
     def _build_url(self, route: str) -> str:
         return f'{self.base_url}/api/{self.api_version}/{route}'
 
+    @staticmethod
+    def _project_param(project) -> list:
+        """The API expects `project` as a list of namespaces (was a string)."""
+        if project is None:
+            return [PROJECT_NAMESPACE]
+        if isinstance(project, str):
+            return [project]
+        return list(project)
+
     def _apply_auth(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         headers = dict(headers or {})
         headers['x-access-token'] = self.api_key
@@ -198,7 +207,7 @@ class MirielClient:
             'streaming': False,
             'voice_mode': False,
             'force_exhaustive': force_exhaustive,
-            'project': project or PROJECT_NAMESPACE,
+            'project': self._project_param(project),
             **{k: v for k, v in params.items() if v is not None},
         }
         # Only include response_format when set; strict validators reject null.
@@ -266,7 +275,7 @@ class MirielClient:
             'discoverable': discoverable,
             'grant_ids': grant_ids,
             'priority': priority,
-            'project': project or PROJECT_NAMESPACE,
+            'project': self._project_param(project),
         }
 
         _logger.info(f'[MIRIEL] Learning {len(parsed_inputs)} items...')
@@ -297,7 +306,7 @@ class MirielClient:
         if user_id is not None:
             payload['user_id'] = user_id
         if project is not None:
-            payload['project'] = project
+            payload['project'] = self._project_param(project)
         if metadata_query is not None:
             payload['metadata_query'] = metadata_query
         return self.make_post_request('get_all_documents', payload=payload)
