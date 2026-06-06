@@ -26,6 +26,20 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             quests=["rat_problem"],
         ),
     ],
+    "market": [
+        Entity(
+            entity_id="blacksmith",
+            name="Blacksmith",
+            type="npc",
+            role="shop",
+            inventory={
+                "steel_armor": {"price": 40},
+                "chainmail": {"price": 70},
+                "knight_blade": {"price": 60},
+                "greater_healing_potion": {"price": 25},
+            },
+        ),
+    ],
     "forest": [
         Entity(
             entity_id="rat_1",
@@ -84,6 +98,46 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             attack=8,
             xp_reward=50,
             loot={"coin": 25, "healing_herb": 3, "steel_armor": 1},
+        ),
+    ],
+    "underdeep": [
+        Entity(
+            entity_id="shadow_wisp_1",
+            name="Shadow Wisp",
+            type="monster",
+            hp=30,
+            attack=7,
+            xp_reward=30,
+            loot={"coin": 10, "mythril_ore": 1},
+        ),
+        Entity(
+            entity_id="bone_knight_1",
+            name="Bone Knight",
+            type="monster",
+            hp=55,
+            attack=10,
+            xp_reward=65,
+            loot={"coin": 20, "mythril_ore": 2, "knight_blade": 1},
+        ),
+    ],
+    "magma_core": [
+        Entity(
+            entity_id="magma_hound_1",
+            name="Magma Hound",
+            type="monster",
+            hp=50,
+            attack=12,
+            xp_reward=70,
+            loot={"coin": 18, "ember_core": 1},
+        ),
+        Entity(
+            entity_id="molten_wyrm_1",
+            name="Molten Wyrm",
+            type="monster",
+            hp=100,
+            attack=18,
+            xp_reward=180,
+            loot={"coin": 120, "ember_core": 2, "dragonscale_armor": 1, "wyrmfang_blade": 1},
         ),
     ],
 }

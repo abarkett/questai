@@ -76,10 +76,53 @@ ITEMS: Dict[str, Item] = {
         heal=8,
         value=10,
     ),
+    "greater_healing_potion": Item(
+        item_id="greater_healing_potion",
+        name="Greater Healing Potion",
+        type="consumable",
+        heal=20,
+        value=25,
+    ),
+    # ----- Weapons (deep-dungeon tiers) -----
+    "knight_blade": Item(
+        item_id="knight_blade",
+        name="Knight's Blade",
+        type="weapon",
+        slot="weapon",
+        damage=8,
+        value=60,
+    ),
+    "wyrmfang_blade": Item(
+        item_id="wyrmfang_blade",
+        name="Wyrmfang Blade",
+        type="weapon",
+        slot="weapon",
+        damage=14,
+        value=200,
+    ),
+    # ----- Armor (deep-dungeon tiers) -----
+    "chainmail": Item(
+        item_id="chainmail",
+        name="Chainmail",
+        type="armor",
+        slot="armor",
+        defense=6,
+        value=70,
+    ),
+    "dragonscale_armor": Item(
+        item_id="dragonscale_armor",
+        name="Dragonscale Armor",
+        type="armor",
+        slot="armor",
+        defense=9,
+        value=250,
+    ),
     # ----- Crafting materials -----
     "herb_bundle": Item(item_id="herb_bundle", name="Herb Bundle", type="material", value=2),
     "pelt": Item(item_id="pelt", name="Wolf Pelt", type="material", value=4),
     "iron_ore": Item(item_id="iron_ore", name="Iron Ore", type="material", value=5),
+    "mythril_ore": Item(item_id="mythril_ore", name="Mythril Ore", type="material", value=12),
+    "ember_core": Item(item_id="ember_core", name="Ember Core", type="material", value=20),
 }
 
 
@@ -89,6 +132,12 @@ RECIPES: Dict[str, Dict[str, Any]] = {
     "leather_armor": {"inputs": {"pelt": 3}, "qty": 1},
     "iron_sword": {"inputs": {"iron_ore": 3}, "qty": 1},
     "steel_armor": {"inputs": {"iron_ore": 5, "pelt": 2}, "qty": 1},
+    # Deep-dungeon recipes
+    "greater_healing_potion": {"inputs": {"herb_bundle": 5}, "qty": 1},
+    "knight_blade": {"inputs": {"mythril_ore": 4}, "qty": 1},
+    "chainmail": {"inputs": {"mythril_ore": 3, "iron_ore": 3}, "qty": 1},
+    "wyrmfang_blade": {"inputs": {"ember_core": 3, "mythril_ore": 5}, "qty": 1},
+    "dragonscale_armor": {"inputs": {"ember_core": 4, "mythril_ore": 4}, "qty": 1},
 }
 
 # What each location yields when gathered.
@@ -96,6 +145,8 @@ LOCATION_RESOURCES: Dict[str, str] = {
     "forest": "herb_bundle",
     "deep_forest": "pelt",
     "cavern": "iron_ore",
+    "underdeep": "mythril_ore",
+    "magma_core": "ember_core",
 }
 
 

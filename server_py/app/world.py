@@ -63,7 +63,19 @@ WORLD: Dict[str, Location] = {
         id="cavern",
         name="Echoing Cavern",
         description="A damp cave mouth breathes cold air. Bones litter the floor and something massive stirs in the dark.",
-        exits=[Exit(to="deep_forest", label="out")],
+        exits=[Exit(to="deep_forest", label="out"), Exit(to="underdeep", label="descend")],
+    ),
+    "underdeep": Location(
+        id="underdeep",
+        name="Sunless Depths",
+        description="A lightless warren of tunnels. Pale fungus glows on mythril-veined walls, and the dead do not rest here.",
+        exits=[Exit(to="cavern", label="up"), Exit(to="magma_core", label="deeper")],
+    ),
+    "magma_core": Location(
+        id="magma_core",
+        name="Magma Core",
+        description="The air shimmers with heat above rivers of molten rock. Something ancient and burning coils in the glow.",
+        exits=[Exit(to="underdeep", label="ascend")],
     ),
 }
 
