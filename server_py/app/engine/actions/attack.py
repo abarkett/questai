@@ -128,31 +128,34 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     # -------------------------------------------------
     entity = find_entity(player.location, target_name)
     if entity and entity["type"] == "monster":
-        # Monster combat (unchanged)
-        monster_hp = entity["hp"] - PLAYER_DAMAGE
-        messages.append(f"You attack the {entity['name']} for {PLAYER_DAMAGE} damage.")
+        # Atomic, persistent monster combat (safe under concurrent attackers).
+        from ...db import damage_monster
+        result = damage_monster(entity["id"], PLAYER_DAMAGE)
 
-        if monster_hp <= 0:
-            remove_entity(player.location, entity["id"])
-            messages.append(f"The {entity['name']} is defeated.")
-            
+        if result is None:
+            # Another player already finished it off between our look and our hit.
+            return ActionResponse(
+                ok=True,
+                messages=[f"The {entity['name']} is already gone."],
+                state=build_action_state(player, scene_dirty=True),
+            )
+
+        messages.append(f"You attack the {result['name']} for {PLAYER_DAMAGE} damage.")
+
+        if result["killed"]:
+            messages.append(f"The {result['name']} is defeated.")
+
             # Update quest progress
-            quest_messages = update_quest_progress(player, entity["name"])
+            quest_messages = update_quest_progress(player, result["name"])
             messages.extend(quest_messages)
-            
+
             # Phase 8: Track monster deaths for world evolution
             from ...world_rules import track_monster_survival
             track_monster_survival(player.location)
         else:
-            # Update monster HP in world state
-            for e in get_world_entities_at(player.location):
-                if e.entity_id == entity["id"]:
-                    e.hp = monster_hp
-                    break
-
             retaliation = 2
             player.hp -= retaliation
-            messages.append(f"The {entity['name']} hits you for {retaliation} damage.")
+            messages.append(f"The {result['name']} hits you for {retaliation} damage.")
 
         upsert_player(player)
 

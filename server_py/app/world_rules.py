@@ -150,34 +150,22 @@ def _check_rat_respawn() -> bool:
 
 
 def _apply_rat_respawn() -> None:
-    """Respawn rats in the forest."""
-    from .world_entities import WORLD_ENTITIES
-    from .types_entities import Entity
+    """Respawn rats in the forest (persisted to the DB)."""
+    from .db import spawn_monster, get_world_turn
 
-    # Add new rats back to the forest
-    if "forest" not in WORLD_ENTITIES:
-        WORLD_ENTITIES["forest"] = []
-
-    WORLD_ENTITIES["forest"].extend([
-        Entity(
-            entity_id="rat_1",
+    turn = get_world_turn()
+    for i in (1, 2):
+        spawn_monster(
+            instance_id=f"rat_{i}",
+            location_id="forest",
             name="Rat",
-            type="monster",
             hp=5,
+            max_hp=5,
             attack=2,
             xp_reward=2,
             loot={"coin": 1, "healing_herb": 1},
-        ),
-        Entity(
-            entity_id="rat_2",
-            name="Rat",
-            type="monster",
-            hp=5,
-            attack=2,
-            xp_reward=2,
-            loot={"coin": 1, "healing_herb": 1},
-        ),
-    ])
+            spawned_turn=turn,
+        )
 
     # Reset the cleared turn tracker
     set_world_state("forest_cleared_turn", "")

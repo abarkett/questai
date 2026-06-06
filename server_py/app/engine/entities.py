@@ -4,7 +4,14 @@ from typing import List, Dict, Any
 
 from ..types_entities import Entity
 from ..world_entities import WORLD_ENTITIES
-from ..db import get_players_at_location
+from ..db import (
+    get_players_at_location,
+    get_monsters_at,
+    spawn_monster,
+    remove_monster,
+    get_world_state,
+    set_world_state,
+)
 from ..world import get_location
 
 
@@ -46,8 +53,54 @@ def get_player_entities_at(location_id: str) -> List[Dict[str, Any]]:
 # World entities (monsters, NPCs, etc.)
 # -------------------------------------------------
 
+def _static_npcs_at(location_id: str) -> List[Entity]:
+    """NPCs are static definitions kept in code (they don't change at runtime)."""
+    return [e for e in WORLD_ENTITIES.get(location_id, []) if e.type == "npc"]
+
+
+def _monster_row_to_entity(row: Dict[str, Any]) -> Entity:
+    return Entity(
+        entity_id=row["instance_id"],
+        name=row["name"],
+        type="monster",
+        hp=row["hp"],
+        attack=row.get("attack"),
+        xp_reward=row.get("xp_reward"),
+        loot=row.get("loot") or {},
+    )
+
+
 def get_world_entities_at(location_id: str) -> List[Entity]:
-    return WORLD_ENTITIES.get(location_id, [])
+    """Static NPCs (from code) + live monster instances (from the DB)."""
+    entities: List[Entity] = list(_static_npcs_at(location_id))
+    for row in get_monsters_at(location_id):
+        entities.append(_monster_row_to_entity(row))
+    return entities
+
+
+def seed_world_monsters() -> None:
+    """
+    Populate the persistent monster table from the static catalog, once.
+
+    Guarded by a world_state flag so monsters persist across restarts (a slain
+    monster stays slain until the respawn rules bring it back).
+    """
+    if get_world_state("monsters_seeded") == "true":
+        return
+    for location_id, entity_list in WORLD_ENTITIES.items():
+        for e in entity_list:
+            if e.type == "monster":
+                spawn_monster(
+                    instance_id=e.entity_id,
+                    location_id=location_id,
+                    name=e.name,
+                    hp=e.hp or 1,
+                    max_hp=e.hp or 1,
+                    attack=e.attack or 1,
+                    xp_reward=e.xp_reward or 0,
+                    loot=e.loot or {},
+                )
+    set_world_state("monsters_seeded", "true")
 
 
 def get_entities_at(location_id: str) -> List[Dict[str, Any]]:
@@ -130,13 +183,10 @@ def find_entity(location_id: str, name: str) -> Dict[str, Any] | None:
 
 def remove_entity(location_id: str, entity_id: str) -> None:
     """
-    Remove a world entity (monsters/NPCs only).
-    Players are not removed this way.
+    Remove a monster instance from the world (NPCs are static and never removed,
+    players are not removed this way).
     """
-    WORLD_ENTITIES[location_id] = [
-        e for e in WORLD_ENTITIES.get(location_id, [])
-        if e.entity_id != entity_id
-    ]
+    remove_monster(entity_id)
 
 
 def get_adjacent_scenes(location_id: str) -> List[Dict[str, Any]]:

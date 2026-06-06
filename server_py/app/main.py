@@ -29,6 +29,9 @@ app.add_middleware(
 @app.on_event("startup")
 def _startup() -> None:
     init_db()
+    # Seed the persistent monster table from the static catalog (once).
+    from .engine.entities import seed_world_monsters
+    seed_world_monsters()
     # Initialize factions
     for faction_id, faction in FACTIONS.items():
         create_faction(

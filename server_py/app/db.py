@@ -170,7 +170,23 @@ def init_db() -> None:
               created_at INTEGER NOT NULL
             );
 
+            -- Live monster instances. Persisting these (instead of mutating an
+            -- in-memory global) survives restarts and makes combat atomic and
+            -- consistent across concurrent players. Monsters are deleted on death.
+            CREATE TABLE IF NOT EXISTS monsters (
+              instance_id TEXT PRIMARY KEY,
+              location_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              hp INTEGER NOT NULL,
+              max_hp INTEGER NOT NULL,
+              attack INTEGER NOT NULL DEFAULT 1,
+              xp_reward INTEGER NOT NULL DEFAULT 0,
+              loot_json TEXT NOT NULL DEFAULT '{}',
+              spawned_turn INTEGER NOT NULL DEFAULT 0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
+            CREATE INDEX IF NOT EXISTS idx_monsters_location ON monsters(location_id);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
 
             -- Initialize world clock if not exists
@@ -1080,6 +1096,123 @@ def cache_scene_image(cache_key: str, prompt: str, image_data: str, model: Optio
             """,
             (cache_key, prompt, image_data, model, int(time.time() * 1000)),
         )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ===== Monsters (persistent, shared world entities) =====
+
+def spawn_monster(
+    instance_id: str,
+    location_id: str,
+    name: str,
+    hp: int,
+    max_hp: int,
+    attack: int = 1,
+    xp_reward: int = 0,
+    loot: Optional[Dict[str, int]] = None,
+    spawned_turn: Optional[int] = None,
+) -> None:
+    """Create (or replace) a monster instance in the world."""
+    conn = get_conn()
+    try:
+        if spawned_turn is None:
+            spawned_turn = get_world_turn()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO monsters
+              (instance_id, location_id, name, hp, max_hp, attack, xp_reward, loot_json, spawned_turn)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (instance_id, location_id, name, hp, max_hp, attack, xp_reward,
+             json.dumps(loot or {}), spawned_turn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_monsters_at(location_id: str) -> List[Dict[str, Any]]:
+    """All live monsters at a location (loot decoded)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM monsters WHERE location_id = ? ORDER BY instance_id", (location_id,)
+        ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            data["loot"] = json.loads(data.get("loot_json") or "{}")
+            result.append(data)
+        return result
+    finally:
+        conn.close()
+
+
+def count_monsters_at(location_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM monsters WHERE location_id = ?", (location_id,)
+        ).fetchone()
+        return row["c"] if row else 0
+    finally:
+        conn.close()
+
+
+def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
+    """
+    Atomically apply damage to a monster. Returns:
+      - None if the monster no longer exists (e.g. another player just killed it)
+      - {'killed': True, 'name', 'hp': 0, 'location_id', 'xp_reward', 'loot'} on kill
+      - {'killed': False, 'name', 'hp', 'location_id'} otherwise
+
+    Uses BEGIN IMMEDIATE so concurrent attackers can't double-kill or lose
+    damage to a read-modify-write race.
+    """
+    conn = get_conn()
+    try:
+        conn.isolation_level = None  # manual transaction control
+        cur = conn.cursor()
+        cur.execute("BEGIN IMMEDIATE")
+        row = cur.execute(
+            "SELECT hp, name, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
+            (instance_id,),
+        ).fetchone()
+        if row is None:
+            cur.execute("COMMIT")
+            return None
+
+        new_hp = row["hp"] - damage
+        if new_hp <= 0:
+            cur.execute("DELETE FROM monsters WHERE instance_id = ?", (instance_id,))
+            cur.execute("COMMIT")
+            return {
+                "killed": True,
+                "name": row["name"],
+                "hp": 0,
+                "location_id": row["location_id"],
+                "xp_reward": row["xp_reward"],
+                "loot": json.loads(row["loot_json"] or "{}"),
+            }
+
+        cur.execute("UPDATE monsters SET hp = ? WHERE instance_id = ?", (new_hp, instance_id))
+        cur.execute("COMMIT")
+        return {
+            "killed": False,
+            "name": row["name"],
+            "hp": new_hp,
+            "location_id": row["location_id"],
+        }
+    finally:
+        conn.close()
+
+
+def remove_monster(instance_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM monsters WHERE instance_id = ?", (instance_id,))
         conn.commit()
     finally:
         conn.close()
