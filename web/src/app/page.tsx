@@ -74,6 +74,139 @@ function computeSceneKeyFromResponse(resp: any) {
   });
 }
 
+// Direction labels -> grid deltas, used to lay the map out roughly spatially.
+const DIR: Record<string, [number, number]> = {
+  north: [0, -1], up: [0, -1], ascend: [0, -1], out: [0, -1], back: [0, -1], square: [0, -1],
+  south: [0, 1], down: [0, 1], descend: [0, 1], deeper: [0, 1], in: [0, 1],
+  cave: [0, 1], tunnel: [0, 1], hollow: [0, 1], mill: [0, 1],
+  east: [1, 0], west: [-1, 0],
+};
+
+function computeMapLayout(mapData: any) {
+  const byId: Record<string, any> = {};
+  for (const n of mapData.locations) byId[n.id] = n;
+
+  const pos: Record<string, [number, number]> = {};
+  const occupied = new Set<string>();
+  const key = (x: number, y: number) => `${x},${y}`;
+
+  function place(id: string, x: number, y: number) {
+    let cx = x, cy = y, r = 1;
+    while (occupied.has(key(cx, cy))) {
+      let found = false;
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          if (!occupied.has(key(x + dx, y + dy))) { cx = x + dx; cy = y + dy; found = true; }
+        }
+      }
+      if (!found) r++;
+      if (r > 60) break;
+    }
+    occupied.add(key(cx, cy));
+    pos[id] = [cx, cy];
+  }
+
+  const start =
+    mapData.current && byId[mapData.current] ? mapData.current : mapData.locations[0]?.id;
+  const queue: string[] = [];
+  if (start) { place(start, 0, 0); queue.push(start); }
+
+  while (queue.length) {
+    const cur = queue.shift() as string;
+    const node = byId[cur];
+    if (!node || !pos[cur]) continue;
+    const [px, py] = pos[cur];
+    for (const ex of node.exits || []) {
+      if (!byId[ex.to] || pos[ex.to]) continue;
+      const d = DIR[ex.label] || [1, 0];
+      place(ex.to, px + d[0], py + d[1]);
+      queue.push(ex.to);
+    }
+  }
+  // Any nodes not reached via forward edges: drop them in a spare row.
+  let spare = 0;
+  for (const n of mapData.locations) if (!pos[n.id]) place(n.id, spare++, 99);
+
+  const edges: [number, number][][] = [];
+  const seen = new Set<string>();
+  for (const n of mapData.locations) {
+    for (const ex of n.exits || []) {
+      if (!pos[n.id] || !pos[ex.to]) continue;
+      const a = n.id < ex.to ? n.id : ex.to;
+      const b = n.id < ex.to ? ex.to : n.id;
+      const ek = `${a}|${b}`;
+      if (seen.has(ek)) continue;
+      seen.add(ek);
+      edges.push([pos[a], pos[b]]);
+    }
+  }
+
+  const xs = Object.values(pos).map((p) => p[0]);
+  const ys = Object.values(pos).map((p) => p[1]);
+  return {
+    pos,
+    edges,
+    minX: Math.min(...xs), maxX: Math.max(...xs),
+    minY: Math.min(...ys), maxY: Math.max(...ys),
+  };
+}
+
+function MapGraph({ mapData, thumbs }: { mapData: any; thumbs: Record<string, string> }) {
+  const L = computeMapLayout(mapData);
+  const cell = 130, pad = 24, nodeW = 100, nodeH = 64;
+  const cols = L.maxX - L.minX + 1, rows = L.maxY - L.minY + 1;
+  const W = cols * cell + pad * 2, H = rows * cell + pad * 2;
+  const cx = (gx: number) => pad + (gx - L.minX) * cell + cell / 2;
+  const cy = (gy: number) => pad + (gy - L.minY) * cell + cell / 2;
+
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "72vh" }}>
+      {L.edges.map(([a, b], i) => (
+        <line
+          key={i}
+          x1={cx(a[0])} y1={cy(a[1])} x2={cx(b[0])} y2={cy(b[1])}
+          stroke="#15803d" strokeWidth={2}
+        />
+      ))}
+      {mapData.locations.map((n: any) => {
+        const p = L.pos[n.id];
+        if (!p) return null;
+        const X = cx(p[0]) - nodeW / 2;
+        const Y = cy(p[1]) - nodeH / 2;
+        const thumb = n.visited ? thumbs[n.id] : undefined;
+        const here = n.id === mapData.current;
+        return (
+          <g key={n.id}>
+            {thumb && (
+              <image
+                href={thumb} x={X} y={Y} width={nodeW} height={nodeH}
+                preserveAspectRatio="xMidYMid slice"
+              />
+            )}
+            <rect
+              x={X} y={Y} width={nodeW} height={nodeH}
+              fill={thumb ? "transparent" : n.visited ? "#052e16" : "#0a0a0a"}
+              stroke={here ? "#86efac" : n.visited ? "#15803d" : "#14532d"}
+              strokeWidth={here ? 3 : 1.5}
+            />
+            {!thumb && !n.visited && (
+              <text x={cx(p[0])} y={cy(p[1]) + 5} fill="#3f6212" fontSize="22" textAnchor="middle">?</text>
+            )}
+            <text
+              x={cx(p[0])} y={Y + nodeH + 14}
+              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#3f6212"}
+              fontSize="12" textAnchor="middle"
+            >
+              {n.visited ? n.name : "Unexplored"}
+            </text>
+          </g>
+        );
+      })}
+    </svg>
+  );
+}
+
 function Modal({
   title,
   onClose,
@@ -618,41 +751,10 @@ export default function Page() {
 
       {showMap && mapData && (
         <Modal title="World Map" onClose={() => setShowMap(false)}>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-            {mapData.locations.map((n: any) => {
-              const isHere = n.id === mapData.current;
-              const thumb = n.visited ? thumbsRef.current[n.id] : undefined;
-              return (
-                <div
-                  key={n.id}
-                  className={`border p-2 ${
-                    isHere
-                      ? "border-green-300"
-                      : n.visited
-                      ? "border-green-700"
-                      : "border-green-900 opacity-50"
-                  }`}
-                >
-                  <div
-                    className="aspect-video bg-green-950 mb-1 bg-center bg-cover flex items-center justify-center text-green-700 text-xs"
-                    style={thumb ? { backgroundImage: `url(${thumb})` } : {}}
-                  >
-                    {!thumb && (n.visited ? "" : "?")}
-                  </div>
-                  <div className="text-xs text-green-300">
-                    {n.visited ? n.name : "Unexplored"}
-                  </div>
-                  {isHere && (
-                    <div className="text-[10px] text-green-400">you are here</div>
-                  )}
-                  {n.visited && n.exits?.length > 0 && (
-                    <div className="text-[10px] text-green-700 mt-1">
-                      exits: {n.exits.map((e: any) => e.label).join(", ")}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+          <MapGraph mapData={mapData} thumbs={thumbsRef.current} />
+          <div className="text-[11px] text-green-700 mt-3">
+            Lines are paths between areas; the bright node is where you are.
+            Click an exit (in the side panel) or type a direction to travel.
           </div>
         </Modal>
       )}
