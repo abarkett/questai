@@ -16,6 +16,7 @@ from ..entities import (
     filter_current_player,
 )
 from ..state_view import build_action_state
+from ...progression import attack_damage, apply_xp
 
 
 # Simple shared combat constants
@@ -122,6 +123,7 @@ def is_player_attackable(target: Player, attacker: Player, current_time_ms: int)
 def attack(player: Player, target_name: str) -> ActionResponse:
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
+    dmg = attack_damage(player.level)
 
     # -------------------------------------------------
     # Try PvE first (monsters)
@@ -130,7 +132,7 @@ def attack(player: Player, target_name: str) -> ActionResponse:
     if entity and entity["type"] == "monster":
         # Atomic, persistent monster combat (safe under concurrent attackers).
         from ...db import damage_monster
-        result = damage_monster(entity["id"], PLAYER_DAMAGE)
+        result = damage_monster(entity["id"], dmg)
 
         if result is None:
             # Another player already finished it off between our look and our hit.
@@ -140,10 +142,18 @@ def attack(player: Player, target_name: str) -> ActionResponse:
                 state=build_action_state(player, scene_dirty=True),
             )
 
-        messages.append(f"You attack the {result['name']} for {PLAYER_DAMAGE} damage.")
+        messages.append(f"You attack the {result['name']} for {dmg} damage.")
 
         if result["killed"]:
             messages.append(f"The {result['name']} is defeated.")
+
+            # Loot drops go straight into the inventory.
+            for item, qty in (result.get("loot") or {}).items():
+                player.inventory[item] = player.inventory.get(item, 0) + qty
+                messages.append(f"You found: {qty}x {item}")
+
+            # XP and any level-ups from the kill.
+            messages.extend(apply_xp(player, result.get("xp_reward") or 0))
 
             # Update quest progress
             quest_messages = update_quest_progress(player, result["name"])
@@ -185,9 +195,9 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             state=build_action_state(player, scene_dirty=False),
         )
 
-    messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
+    messages.append(f"You attack {target_player.name} for {dmg} damage.")
 
-    target_player.hp -= PLAYER_DAMAGE
+    target_player.hp -= dmg
 
     if target_player.hp <= 0:
         messages.append(f"{target_player.name} is defeated!")
