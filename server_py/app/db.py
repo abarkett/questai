@@ -1298,7 +1298,7 @@ def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
         cur = conn.cursor()
         cur.execute("BEGIN IMMEDIATE")
         row = cur.execute(
-            "SELECT hp, name, attack, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
+            "SELECT hp, max_hp, name, attack, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
             (instance_id,),
         ).fetchone()
         if row is None:
@@ -1325,9 +1325,20 @@ def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
             "killed": False,
             "name": row["name"],
             "hp": new_hp,
+            "max_hp": row["max_hp"],
             "attack": row["attack"],
             "location_id": row["location_id"],
         }
+    finally:
+        conn.close()
+
+
+def set_monster_attack(instance_id: str, attack: int) -> None:
+    """Update a live monster's attack value (e.g. when a boss enrages)."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE monsters SET attack = ? WHERE instance_id = ?", (attack, instance_id))
+        conn.commit()
     finally:
         conn.close()
 

@@ -177,6 +177,8 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
         messages.append(f"{label}You attack the {result['name']} for {dmg} damage.{crit_suffix}")
 
         if result["killed"]:
+            from ...bosses import clear_boss_state
+            clear_boss_state(entity["id"], result["name"])
             messages.append(f"The {result['name']} is defeated.")
 
             # Loot drops go straight into the inventory.
@@ -211,6 +213,10 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
                 )
                 if msg:
                     messages.append(msg)
+
+            # Boss mechanics: enrage / summon adds once below the HP threshold.
+            from ...bosses import trigger_boss_on_hit
+            messages.extend(trigger_boss_on_hit(entity["id"], result))
 
             if player.hp <= 0:
                 player.hp = player.max_hp
