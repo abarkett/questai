@@ -241,270 +241,256 @@ function Modal({
 const GEAR_RE = /(sword|blade|dagger|armor|mail|scale|axe|shield|bow|staff)/i;
 
 function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
+  const [tab, setTab] = useState<string>("summary");
+
   if (!state?.player || !state?.location) {
-    return (
-      <div className="text-green-700">
-        No character loaded
-      </div>
-    );
+    return <div className="text-green-700">No character loaded</div>;
   }
 
   const { player, location } = state;
+  const entities = state.entities ?? [];
+  const monsters = entities.filter((e: any) => e.type === "monster");
+  const people = entities.filter((e: any) => e.type === "npc" || e.type === "player");
+  const abilities = state.abilities ?? [];
+  const hpPct = Math.max(0, Math.min(100, (100 * player.hp) / player.max_hp));
+
+  const Section = ({ title, children }: { title: string; children: ReactNode }) => (
+    <div>
+      <div className="text-green-400 font-bold">{title}</div>
+      {children}
+    </div>
+  );
+
+  const hpBar = (
+    <div>
+      <div className="flex items-center gap-2">
+        <div className="flex-1 h-3 bg-green-950 border border-green-800">
+          <div className="h-full bg-green-600" style={{ width: `${hpPct}%` }} />
+        </div>
+        <span className="text-xs whitespace-nowrap">{player.hp}/{player.max_hp}</span>
+      </div>
+      <div className="text-xs mt-1">Level {player.level} · XP {player.xp}</div>
+    </div>
+  );
+
+  const TABS: [string, string][] = [
+    ["summary", "Summary"], ["gear", "Gear"], ["skills", "Skills"], ["party", "Party"],
+  ];
 
   return (
-    <div className="space-y-3 text-sm">
-      <div className="text-lg font-bold text-green-300">
-        {state.player.name}
+    <div className="h-full flex flex-col text-sm">
+      <div className="text-base font-bold text-green-300 mb-1 shrink-0">{player.name}</div>
+      <div className="flex gap-1 mb-2 shrink-0">
+        {TABS.map(([id, label]) => (
+          <button key={id} onClick={() => setTab(id)}
+            className={`px-2 py-0.5 text-xs border ${tab === id ? "border-green-400 text-green-200" : "border-green-800 text-green-600 hover:text-green-400"}`}>
+            {label}
+          </button>
+        ))}
       </div>
-      {/* Location */}
-      <div>
-        <div className="text-green-400 font-bold">Location</div>
-        <div>{location.name}</div>
-      </div>
-      <div>
-        <div className="text-green-400 font-bold">People Here</div>
-        <div className="space-y-1">
-          {state.entities
-            .filter((e: any) => e.type === "npc" || e.type === "player")
-            .map((entity: any) => {
-              const isInParty = state.party?.members?.some((m: any) => m.player_id === entity.id);
-              return (
-                <button
-                  key={entity.id}
-                  className="block text-left hover:underline"
-                  onClick={() => onCommand(`talk ${entity.id}`)}
-                >
-                  {entity.name} {entity.type === "player" ? "(player)" : ""}
-                  {isInParty && " ⚔️"}
-                </button>
-              );
-            })}
-        </div>
-      </div>
-      {/* Active Quests */}
-      {state.player.active_quests && Object.keys(state.player.active_quests).length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Active Quests</div>
-          {Object.values(state.player.active_quests).map((q: any) => (
-            <div key={q.quest_id} className="text-xs mb-1">
-              <div className="font-semibold">{q.name}</div>
-              {q.objectives.map((obj: any, i: number) => (
-                <div key={i} className="text-green-700">
-                  {obj.target}: {obj.progress}/{obj.required}
+
+      <div className="flex-1 overflow-y-auto pr-1 space-y-3">
+        {tab === "summary" && (
+          <>
+            {hpBar}
+
+            {player.status_effects && Object.keys(player.status_effects).length > 0 && (
+              <Section title="Status">
+                {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
+                  <div key={eid} className="text-xs">
+                    {String(eid).replace(/_/g, " ")} ({st?.turns ?? 0} turns)
+                  </div>
+                ))}
+              </Section>
+            )}
+
+            <Section title="Location"><div>{location.name}</div></Section>
+
+            {monsters.length > 0 && (
+              <Section title="Enemies Here">
+                {monsters.map((m: any) => (
+                  <div key={m.id} className="mb-1">
+                    <div>{m.name}{m.hp != null ? ` (${m.hp} hp)` : ""}</div>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                        onClick={() => onCommand(`attack ${m.name}`)}>attack</button>
+                      {abilities.filter((a: any) => a.kind === "attack" && a.ready).map((a: any) => (
+                        <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                          title={a.description} onClick={() => onCommand(`${a.id} ${m.name}`)}>{a.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </Section>
+            )}
+
+            {abilities.some((a: any) => a.kind !== "attack") && (
+              <Section title="Self">
+                <div className="flex flex-wrap gap-1">
+                  {abilities.filter((a: any) => a.kind !== "attack").map((a: any) => (
+                    <button key={a.id} disabled={!a.ready}
+                      title={a.ready ? a.description : `On cooldown (${a.remaining}s)`}
+                      className="px-1 border border-green-800 text-xs hover:bg-green-900 disabled:opacity-40"
+                      onClick={() => onCommand(a.id)}>
+                      {a.name}{a.ready ? "" : ` (${a.remaining}s)`}
+                    </button>
+                  ))}
                 </div>
-              ))}
-            </div>
-          ))}
-        </div>
-      )}
+              </Section>
+            )}
 
-      {/* Completed Quests */}
-      {state.player.completed_quests && Object.keys(state.player.completed_quests).length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Completed Quests</div>
-          {Object.values(state.player.completed_quests).map((q: any) => (
-            <div key={q.quest_id} className="text-xs mb-1 text-yellow-400">
-              {q.name} (Ready to turn in)
-            </div>
-          ))}
-        </div>
-      )}
+            {people.length > 0 && (
+              <Section title="People Here">
+                <div className="space-y-1">
+                  {people.map((entity: any) => {
+                    const isInParty = state.party?.members?.some((mm: any) => mm.player_id === entity.id);
+                    return (
+                      <button key={entity.id} className="block text-left hover:underline"
+                        onClick={() => onCommand(`talk ${entity.id}`)}>
+                        {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              </Section>
+            )}
 
-      {/* Party Invites */}
-      {state.party_invites?.length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Party Invites</div>
-          {state.party_invites.map((invite: any) => (
-            <div key={invite.invite_id} className="text-xs mb-1 p-1 border border-green-600">
-              <div>From {invite.from_player_name}</div>
-              <button
-                className="text-green-400 hover:underline text-xs mt-1"
-                onClick={() => onCommand(`accept_party_invite ${invite.invite_id}`)}
-              >
-                Accept
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+            {player.active_quests && Object.keys(player.active_quests).length > 0 && (
+              <Section title="Active Quests">
+                {Object.values(player.active_quests).map((q: any) => (
+                  <div key={q.quest_id} className="text-xs mb-1">
+                    <div className="font-semibold">{q.name}</div>
+                    {q.objectives.map((obj: any, i: number) => (
+                      <div key={i} className={obj.progress >= obj.required ? "text-green-400" : "text-green-700"}>
+                        {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </Section>
+            )}
 
-      {/* Current Party */}
-      {state.party && (
-        <div>
-          <div className="text-green-400 font-bold">Party</div>
-          <div className="text-xs mb-1">
-            <div className="font-semibold">{state.party.name}</div>
-            {state.party.members.map((member: any) => (
-              <div key={member.player_id} className={member.online ? "" : "text-green-800"}>
-                {member.online ? "● " : "○ "}
-                {member.name}{member.is_leader ? " (Leader)" : ""}
-                {!member.online && member.last_seen_text ? ` — ${member.last_seen_text}` : ""}
+            <Section title="Exits">
+              <div className="flex flex-wrap gap-2 mt-1">
+                {location.exits.map((e: any) => (
+                  <button key={e.to} className="px-2 py-1 border border-green-700 hover:bg-green-900 text-green-300 text-xs"
+                    onClick={() => onCommand(`go ${e.label}`)}>{e.label}</button>
+                ))}
               </div>
-            ))}
-            <button
-              className="text-red-400 hover:underline text-xs mt-1"
-              onClick={() => onCommand('party leave')}
-            >
-              Leave Party
-            </button>
-          </div>
-        </div>
-      )}
+            </Section>
+          </>
+        )}
 
-      {/* Pending Trade Offers */}
-      {(state.pending_trade_offers?.length > 0 || state.pending_trade_offers_sent?.length > 0) && (
-        <div>
-          <div className="text-green-400 font-bold">Trades</div>
+        {tab === "gear" && (
+          <>
+            {hpBar}
+            <Section title="Equipped">
+              {player.equipment && Object.keys(player.equipment).length > 0 ? (
+                Object.entries(player.equipment).map(([slot, itemId]) => (
+                  <div key={slot} className="flex justify-between items-center text-xs">
+                    <span>{slot}: {String(itemId).replace(/_/g, " ")}</span>
+                    <button className="text-green-700 hover:underline" onClick={() => onCommand(`unequip ${slot}`)}>unequip</button>
+                  </div>
+                ))
+              ) : (<div className="text-green-700 text-xs">Nothing equipped</div>)}
+            </Section>
+            <Section title="Inventory">
+              {player.inventory && Object.keys(player.inventory).length > 0 ? (
+                <ul className="space-y-0.5">
+                  {Object.entries(player.inventory).map(([item, qty]) => {
+                    const gear = GEAR_RE.test(item);
+                    return (
+                      <li key={item} className="flex justify-between items-center gap-2">
+                        <span>{item.replace(/_/g, " ")} × {qty as number}</span>
+                        <span className="flex gap-2 shrink-0">
+                          <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${gear ? "equip" : "use"} ${item}`)}>{gear ? "equip" : "use"}</button>
+                          <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`sell ${item}`)}>sell</button>
+                        </span>
+                      </li>
+                    );
+                  })}
+                </ul>
+              ) : (<div className="text-green-700">Empty</div>)}
+            </Section>
+          </>
+        )}
 
-          {/* Incoming offers */}
-          {state.pending_trade_offers?.map((trade: any) => (
-            <div
-              key={trade.trade_id}
-              className={`text-xs mb-1 p-1 border ${trade.can_accept ? 'border-green-600' : 'border-green-900 opacity-50'}`}
-            >
-              <div className="font-semibold">From {trade.from_player_name}:</div>
-              <div>Offers: {Object.entries(trade.offered_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
-              <div>Wants: {Object.entries(trade.requested_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
-              {trade.can_accept ? (
-                <button
-                  className="text-green-400 hover:underline text-xs mt-1"
-                  onClick={() => onCommand(`accept_trade ${trade.trade_id}`)}
-                >
-                  Accept
-                </button>
-              ) : (
-                <div className="text-green-800 text-xs mt-1">Cannot accept</div>
-              )}
-            </div>
-          ))}
+        {tab === "skills" && (
+          <Section title="Abilities">
+            {abilities.length === 0 ? (
+              <div className="text-green-700 text-xs">No abilities yet — level up to learn them.</div>
+            ) : (
+              <div className="space-y-2">
+                {abilities.map((a: any) => {
+                  const canUse = a.ready && (a.kind !== "attack" || monsters.length > 0);
+                  const hint = !a.ready ? `On cooldown (${a.remaining}s)` : (a.kind === "attack" && monsters.length === 0 ? "No enemy here" : "Use");
+                  return (
+                    <div key={a.id} className="border border-green-900 p-1">
+                      <div className="flex justify-between items-center">
+                        <span className="text-green-300">{a.name}{a.kind === "attack" ? " ⚔" : " ✚"}</span>
+                        <button disabled={!canUse} title={hint}
+                          className="text-xs px-1 border border-green-700 hover:bg-green-900 disabled:opacity-40"
+                          onClick={() => onCommand(a.kind === "attack" && monsters.length > 0 ? `${a.id} ${monsters[0].name}` : a.id)}>
+                          {a.ready ? "use" : `${a.remaining}s`}
+                        </button>
+                      </div>
+                      <div className="text-[11px] text-green-700">{a.description}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </Section>
+        )}
 
-          {/* Outgoing offers */}
-          {state.pending_trade_offers_sent?.map((trade: any) => (
-            <div
-              key={trade.trade_id}
-              className={`text-xs mb-1 p-1 border ${trade.can_be_accepted ? 'border-green-600' : 'border-green-900 opacity-50'}`}
-            >
-              <div className="font-semibold">To {trade.to_player_name}:</div>
-              <div>You offer: {Object.entries(trade.offered_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
-              <div>You want: {Object.entries(trade.requested_items).map(([item, qty]) => `${item}:${qty}`).join(', ')}</div>
-              <button
-                className="text-red-400 hover:underline text-xs mt-1"
-                onClick={() => onCommand(`cancel_trade ${trade.trade_id}`)}
-              >
-                Cancel
-              </button>
-              {!trade.can_be_accepted && (
-                <div className="text-green-800 text-xs">They cannot accept</div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+        {tab === "party" && (
+          <>
+            {state.party ? (
+              <Section title={state.party.name || "Party"}>
+                {state.party.members.map((member: any) => (
+                  <div key={member.player_id} className={member.online ? "" : "text-green-800"}>
+                    {member.online ? "● " : "○ "}{member.name}{member.is_leader ? " (Leader)" : ""}
+                    {!member.online && member.last_seen_text ? ` — ${member.last_seen_text}` : ""}
+                  </div>
+                ))}
+                <button className="text-red-400 hover:underline text-xs mt-1" onClick={() => onCommand("party leave")}>Leave Party</button>
+              </Section>
+            ) : (<div className="text-green-700 text-xs">Not in a party.</div>)}
 
-      <div>
-        <div className="text-green-400 font-bold">Exits</div>
-        <div className="flex flex-wrap gap-2 mt-1">
-          {location.exits.map((e: any) => (
-            <button
-              key={e.to}
-              className="px-2 py-1 border border-green-700 hover:bg-green-900 text-green-300 text-xs"
-              onClick={() => onCommand(`go ${e.label}`)}
-            >
-              {e.label}
-            </button>
-          ))}
-        </div>
-      </div>
+            {state.party_invites?.length > 0 && (
+              <Section title="Party Invites">
+                {state.party_invites.map((invite: any) => (
+                  <div key={invite.invite_id} className="text-xs mb-1 p-1 border border-green-600">
+                    <div>From {invite.from_player_name}</div>
+                    <button className="text-green-400 hover:underline text-xs mt-1" onClick={() => onCommand(`accept_party_invite ${invite.invite_id}`)}>Accept</button>
+                  </div>
+                ))}
+              </Section>
+            )}
 
-      {/* Stats */}
-      <div>
-        <div className="text-green-400 font-bold">Stats</div>
-        <div className="flex items-center gap-2">
-          <div className="flex-1 h-3 bg-green-950 border border-green-800">
-            <div
-              className="h-full bg-green-600"
-              style={{
-                width: `${Math.max(0, Math.min(100, (100 * player.hp) / player.max_hp))}%`,
-              }}
-            />
-          </div>
-          <span className="text-xs whitespace-nowrap">
-            {player.hp}/{player.max_hp}
-          </span>
-        </div>
-        <div className="text-xs mt-1">
-          Level {player.level} · XP {player.xp}
-        </div>
-      </div>
-
-      {/* Equipped */}
-      {player.equipment && Object.keys(player.equipment).length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Equipped</div>
-          {Object.entries(player.equipment).map(([slot, itemId]) => (
-            <div key={slot} className="text-xs">
-              {slot}: {String(itemId).replace(/_/g, " ")}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Status effects */}
-      {player.status_effects && Object.keys(player.status_effects).length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Status</div>
-          {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
-            <div key={eid} className="text-xs">
-              {String(eid).replace(/_/g, " ")} ({st?.turns ?? 0} turns)
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Abilities */}
-      {Array.isArray(player.abilities) && player.abilities.length > 0 && (
-        <div>
-          <div className="text-green-400 font-bold">Abilities</div>
-          {player.abilities.map(( a: string) => (
-            <div key={a} className="text-xs">
-              {String(a).replace(/_/g, " ")}
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* Inventory */}
-      <div>
-        <div className="text-green-400 font-bold">Inventory</div>
-        {player.inventory && Object.keys(player.inventory).length > 0 ? (
-          <ul className="space-y-0.5">
-            {Object.entries(player.inventory).map(([item, qty]) => {
-              const gear = GEAR_RE.test(item);
-              return (
-                <li key={item} className="flex justify-between items-center gap-2">
-                  <span>
-                    {item.replace(/_/g, " ")} × {qty as number}
-                  </span>
-                  <span className="flex gap-2 shrink-0">
-                    <button
-                      className="text-green-400 hover:underline text-xs"
-                      onClick={() => onCommand(`${gear ? "equip" : "use"} ${item}`)}
-                    >
-                      {gear ? "equip" : "use"}
-                    </button>
-                    <button
-                      className="text-green-700 hover:underline text-xs"
-                      onClick={() => onCommand(`sell ${item}`)}
-                    >
-                      sell
-                    </button>
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        ) : (
-          <div className="text-green-700">Empty</div>
+            {(state.pending_trade_offers?.length > 0 || state.pending_trade_offers_sent?.length > 0) && (
+              <Section title="Trades">
+                {state.pending_trade_offers?.map((trade: any) => (
+                  <div key={trade.trade_id} className={`text-xs mb-1 p-1 border ${trade.can_accept ? "border-green-600" : "border-green-900 opacity-50"}`}>
+                    <div className="font-semibold">From {trade.from_player_name}:</div>
+                    <div>Offers: {Object.entries(trade.offered_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
+                    <div>Wants: {Object.entries(trade.requested_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
+                    {trade.can_accept ? (
+                      <button className="text-green-400 hover:underline text-xs mt-1" onClick={() => onCommand(`accept_trade ${trade.trade_id}`)}>Accept</button>
+                    ) : (<div className="text-green-800 text-xs mt-1">Cannot accept</div>)}
+                  </div>
+                ))}
+                {state.pending_trade_offers_sent?.map((trade: any) => (
+                  <div key={trade.trade_id} className={`text-xs mb-1 p-1 border ${trade.can_be_accepted ? "border-green-600" : "border-green-900 opacity-50"}`}>
+                    <div className="font-semibold">To {trade.to_player_name}:</div>
+                    <div>You offer: {Object.entries(trade.offered_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
+                    <div>You want: {Object.entries(trade.requested_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
+                    <button className="text-red-400 hover:underline text-xs" onClick={() => onCommand(`cancel_trade ${trade.trade_id}`)}>Cancel</button>
+                  </div>
+                ))}
+              </Section>
+            )}
+          </>
         )}
       </div>
     </div>
@@ -731,13 +717,11 @@ export default function Page() {
         <div className="flex flex-wrap gap-1">
           {[
             ["Look", "look"],
+            ["Gather", "gather"],
+            ["Heal", "heal"],
             ["🗺 Map", "map"],
             ["Journal", "journal"],
             ["Bestiary", "bestiary"],
-            ["Stats", "stats"],
-            ["Inventory", "inventory"],
-            ["Gather", "gather"],
-            ["Heal", "heal"],
           ].map(([label, cmd]) => (
             <button
               key={cmd}
@@ -874,7 +858,7 @@ export default function Page() {
         </div>
 
         {/* Status pane */}
-        <div className="flex-[1] p-3 overflow-y-auto">
+        <div className="flex-[1] p-3 overflow-hidden">
           <StatusPane state={lastState} onCommand={runCommand} />
         </div>
       </div>
