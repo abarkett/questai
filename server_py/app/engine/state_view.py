@@ -141,15 +141,21 @@ def get_party_info(player: Player) -> Optional[Dict[str, Any]]:
     if not party:
         return None
 
-    # Get member names and details
+    # Get member names and details, annotated with presence.
+    from ..db import get_last_seen_map
+    from ..presence import is_online, ago
+    seen = get_last_seen_map(party["members"])
     members = []
     for member_id in party["members"]:
         member = get_player(member_id)
         if member:
+            ls = seen.get(member_id, 0)
             members.append({
                 "player_id": member_id,
                 "name": member.name,
                 "is_leader": member_id == party["leader_id"],
+                "online": is_online(ls),
+                "last_seen_text": ago(ls),
             })
 
     return {

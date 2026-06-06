@@ -43,7 +43,8 @@ def init_db() -> None:
               archived_quests_json TEXT DEFAULT '{}',
               last_defeated_at INTEGER,
               last_attacked_target TEXT,
-              last_attacked_at INTEGER
+              last_attacked_at INTEGER,
+              last_seen INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -276,6 +277,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "last_defeated_at": "INTEGER",
         "last_attacked_target": "TEXT",
         "last_attacked_at": "INTEGER",
+        "last_seen": "INTEGER DEFAULT 0",
     }
     
     # Add missing columns
@@ -944,14 +946,55 @@ def get_party_invite(invite_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+PARTY_INVITE_TTL_MS = 24 * 3600 * 1000  # invites expire after a day
+
+
 def get_player_party_invites(player_id: str) -> List[Dict[str, Any]]:
-    """Get all party invites for a player."""
+    """Get a player's pending invites, deleting any that have expired."""
     conn = get_conn()
     try:
         rows = conn.execute(
             "SELECT * FROM party_invites WHERE to_player_id = ?", (player_id,)
         ).fetchall()
-        return [dict(row) for row in rows]
+        now = int(time.time() * 1000)
+        fresh, expired = [], []
+        for row in rows:
+            d = dict(row)
+            if now - (d.get("created_at") or 0) > PARTY_INVITE_TTL_MS:
+                expired.append(d["invite_id"])
+            else:
+                fresh.append(d)
+        for inv_id in expired:
+            conn.execute("DELETE FROM party_invites WHERE invite_id = ?", (inv_id,))
+        if expired:
+            conn.commit()
+        return fresh
+    finally:
+        conn.close()
+
+
+def touch_last_seen(player_id: str, ts: int) -> None:
+    """Record that a player was active just now (for presence)."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE players SET last_seen = ? WHERE player_id = ?", (ts, player_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_last_seen_map(player_ids: List[str]) -> Dict[str, int]:
+    """Map of player_id -> last_seen ms for the given players."""
+    if not player_ids:
+        return {}
+    conn = get_conn()
+    try:
+        placeholders = ",".join("?" for _ in player_ids)
+        rows = conn.execute(
+            f"SELECT player_id, last_seen FROM players WHERE player_id IN ({placeholders})",
+            tuple(player_ids),
+        ).fetchall()
+        return {r["player_id"]: (r["last_seen"] or 0) for r in rows}
     finally:
         conn.close()
 

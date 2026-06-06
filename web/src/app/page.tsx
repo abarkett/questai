@@ -335,8 +335,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
           <div className="text-xs mb-1">
             <div className="font-semibold">{state.party.name}</div>
             {state.party.members.map((member: any) => (
-              <div key={member.player_id}>
-                {member.name} {member.is_leader && '(Leader)'}
+              <div key={member.player_id} className={member.online ? "" : "text-green-800"}>
+                {member.online ? "● " : "○ "}
+                {member.name}{member.is_leader ? " (Leader)" : ""}
+                {!member.online && member.last_seen_text ? ` — ${member.last_seen_text}` : ""}
               </div>
             ))}
             <button

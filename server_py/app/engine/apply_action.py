@@ -72,6 +72,11 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     if not player:
         return ActionResponse(ok=False, error="Unknown player_id.")
 
+    # Presence: record that this player is active right now.
+    from ..db import touch_last_seen
+    from ..presence import now_ms
+    touch_last_seen(player.player_id, now_ms())
+
     if req.action == "look":
         result = look(player)
     elif req.action == "move":
