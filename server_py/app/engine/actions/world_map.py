@@ -40,19 +40,12 @@ def world_map(player: Player) -> ActionResponse:
 
     map_payload = {"current": player.location, "locations": list(nodes.values())}
 
-    # Text fallback for terminal/log readers.
-    messages = ["Map — discovered areas:"]
-    for loc_id in player.visited_locations:
-        loc = WORLD.get(loc_id)
-        if not loc:
-            continue
-        here = " (you are here)" if loc_id == player.location else ""
-        messages.append(f"  {loc.name}{here}")
-        for e in loc.exits:
-            dest = WORLD.get(e.to)
-            dest_name = dest.name if dest else e.to
-            seen = "" if e.to in visited else " — unexplored"
-            messages.append(f"      {e.label} -> {dest_name}{seen}")
+    discovered = len(player.visited_locations)
+    frontier = sum(1 for n in nodes.values() if not n["visited"])
+    msg = f"Map opened — {discovered} areas discovered"
+    if frontier:
+        msg += f", {frontier} unexplored nearby"
+    messages = [msg + "."]
 
     state = build_action_state(player, scene_dirty=False)
     state["map"] = map_payload

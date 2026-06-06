@@ -195,11 +195,16 @@ function MapGraph({ mapData, thumbs }: { mapData: any; thumbs: Record<string, st
             )}
             <text
               x={cx(p[0])} y={Y + nodeH + 14}
-              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#3f6212"}
+              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#6b7280"}
               fontSize="12" textAnchor="middle"
             >
-              {n.visited ? n.name : "Unexplored"}
+              {n.name}
             </text>
+            {!n.visited && (
+              <text x={cx(p[0])} y={Y + nodeH + 27} fill="#4b5563" fontSize="9" textAnchor="middle">
+                (unexplored)
+              </text>
+            )}
           </g>
         );
       })}
@@ -832,46 +837,48 @@ export default function Page() {
         </Modal>
       )}
 
-      {/* Top area: image + status pane */}
-      <div className="h-[420px] mb-2 flex border border-green-700">
+      {/* Main area: left column (image over log) + full-height status pane */}
+      <div className="flex-1 min-h-0 mb-2 flex gap-2">
 
-        {/* Image side */}
-        <div className="flex-[3] relative border-r border-green-700 overflow-hidden">
-          {isLoadingScene && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
-              <div className="animate-pulse text-green-400">
-                Generating scene…
+        {/* Left column: scene image on top, log below */}
+        <div className="flex-[3] flex flex-col min-h-0 gap-2">
+          <div className="h-[420px] shrink-0 relative border border-green-700 overflow-hidden">
+            {isLoadingScene && (
+              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
+                <div className="animate-pulse text-green-400">
+                  Generating scene…
+                </div>
               </div>
-            </div>
-          )}
+            )}
 
-          {sceneImage ? (
-            <div
-              className="absolute inset-0 bg-center bg-cover"
-              style={{ backgroundImage: `url(${sceneImage})` }}
-            />
-          ) : (
-            <div className="flex items-center justify-center h-full text-green-700">
-              No scene
-            </div>
-          )}
+            {sceneImage ? (
+              <div
+                className="absolute inset-0 bg-center bg-cover"
+                style={{ backgroundImage: `url(${sceneImage})` }}
+              />
+            ) : (
+              <div className="flex items-center justify-center h-full text-green-700">
+                No scene
+              </div>
+            )}
+          </div>
+
+          {/* Log area – fills remaining height, scrolls */}
+          <div className="flex-1 min-h-0 overflow-y-auto border border-green-700 p-2">
+            {log.map((line) => (
+              <div key={line.id}>{line.text}</div>
+            ))}
+            {isWaitingForResponse && (
+              <div className="animate-pulse text-green-500">...</div>
+            )}
+            <div ref={bottomRef} />
+          </div>
         </div>
 
-        {/* Status pane */}
-        <div className="flex-[1] p-3 overflow-hidden">
+        {/* Status pane – full height of the main area */}
+        <div className="flex-[1] min-h-0 p-3 border border-green-700 overflow-hidden">
           <StatusPane state={lastState} onCommand={runCommand} />
         </div>
-      </div>
-
-      {/* Log area – fixed height, scrolls */}
-      <div className="flex-1 overflow-y-auto border border-green-700 p-2 mb-2">
-        {log.map((line) => (
-          <div key={line.id}>{line.text}</div>
-        ))}
-        {isWaitingForResponse && (
-          <div className="animate-pulse text-green-500">...</div>
-        )}
-        <div ref={bottomRef} />
       </div>
 
       {/* Input */}
