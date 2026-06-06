@@ -27,12 +27,19 @@ def look(player: Player) -> ActionResponse:
     ]
     
     # Context-aware description (quiet once cleared), plus world-state flavor.
-    description = effective_description(loc)
-    if loc.id == "forest":
-        is_infested = get_world_state("forest_infested") == "true"
-        if is_infested:
-            description += " The forest feels particularly dangerous today."
+    base = effective_description(loc)
+    if loc.id == "forest" and get_world_state("forest_infested") == "true":
+        base += " The forest feels particularly dangerous today."
 
+    # Dynamic prose: AI-authored when Miriel is configured, else a deterministic
+    # description that shifts with the world clock and what's present.
+    from ...db import get_world_turn
+    from ...descriptions import deterministic_description, maybe_ai_description
+    turn = get_world_turn()
+    description = (
+        maybe_ai_description(player, loc, entities, base)
+        or deterministic_description(base, loc.id, entities, turn)
+    )
     messages.append(description)
 
     if entities:
