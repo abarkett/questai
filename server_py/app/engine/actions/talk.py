@@ -192,8 +192,16 @@ def talk(player: Player, target: str) -> ActionResponse:
         from .story import arc_talk_lines
         messages.extend(arc_talk_lines(player))
 
-    # Generic NPC dialogue (not quest_giver, shop, or arc_giver)
-    if npc.get("role") not in ["quest_giver", "shop", "arc_giver"]:
+    # Temple healer: offer restoration.
+    if npc.get("role") == "healer":
+        from .heal import HEAL_COST
+        messages.append(
+            f'"Rest a moment, traveler. For an offering of {HEAL_COST} coins I will mend '
+            f'your wounds and lift any affliction. Just say `heal`."'
+        )
+
+    # Generic NPC dialogue (not quest_giver, shop, arc_giver, or healer)
+    if npc.get("role") not in ["quest_giver", "shop", "arc_giver", "healer"]:
         # Try to generate AI dialogue for generic greeting
         from ...miriel_dialogue import generate_npc_dialogue
         ai_dialogue = generate_npc_dialogue(

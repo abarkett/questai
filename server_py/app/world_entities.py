@@ -33,6 +33,14 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             role="arc_giver",
         ),
     ],
+    "temple": [
+        Entity(
+            entity_id="priest",
+            name="Temple Priest",
+            type="npc",
+            role="healer",
+        ),
+    ],
     "market": [
         Entity(
             entity_id="blacksmith",

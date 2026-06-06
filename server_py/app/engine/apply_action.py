@@ -32,6 +32,7 @@ from .actions.sell import sell
 from .actions.craft import craft
 from .actions.gather import gather
 from .actions.use_ability import use_ability
+from .actions.heal import heal
 from .actions.story import story_status, begin_arc, choose
 
 
@@ -123,6 +124,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = gather(player)
     elif req.action == "use_ability":
         result = use_ability(player, req.args.ability, req.args.target)
+    elif req.action == "heal":
+        result = heal(player)
     elif req.action == "story":
         result = story_status(player)
     elif req.action == "begin_arc":

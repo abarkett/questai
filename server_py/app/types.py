@@ -237,6 +237,11 @@ class UseAbilityReq(BaseModel):
     args: UseAbilityArgs
 
 
+class HealReq(BaseModel):
+    action: Literal["heal"]
+    args: Optional[dict] = None
+
+
 class StoryReq(BaseModel):
     action: Literal["story"]
     args: Optional[dict] = None
@@ -288,6 +293,7 @@ ActionRequest = Union[
     CraftReq,
     GatherReq,
     UseAbilityReq,
+    HealReq,
     StoryReq,
     BeginArcReq,
     ChooseReq,

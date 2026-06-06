@@ -26,8 +26,15 @@ WORLD: Dict[str, Location] = {
         exits=[
             Exit(to="tavern", label="tavern"),
             Exit(to="market", label="market"),
+            Exit(to="temple", label="temple"),
             Exit(to="north_road", label="north"),
         ],
+    ),
+    "temple": Location(
+        id="temple",
+        name="Temple of the Dawn",
+        description="A quiet sanctuary of white stone and candlelight. A priest tends the wounded beneath a sunburst altar.",
+        exits=[Exit(to="town_square", label="out")],
     ),
     "tavern": Location(
         id="tavern",

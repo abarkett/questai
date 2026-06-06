@@ -50,11 +50,15 @@ def main() -> None:
     assert p2.level == 3, p2.level
     print("PASS  apply_xp handles multi-level jumps")
 
-    # Combat grants xp + loot on kill
+    # Combat grants xp + loot on kill. Damage has variance, so attack until the
+    # rat falls — and stop on the first kill so we don't roll onto the 2nd rat.
     pf = Player(player_id="f", name="F", location="forest", level=1, xp=0, hp=10, max_hp=10)
     upsert_player(pf)
-    attack(pf, "Rat")          # first hit (rat 5 -> 2)
-    r = attack(pf, "Rat")      # second hit kills (2 -> -1)
+    r = None
+    for _ in range(10):
+        r = attack(pf, "Rat")
+        if any("defeated" in m for m in r.messages):
+            break
     assert pf.xp == 2, pf.xp
     assert pf.inventory.get("coin", 0) >= 1 and pf.inventory.get("healing_herb", 0) >= 1, pf.inventory
     assert any("defeated" in m for m in r.messages) and any("XP" in m for m in r.messages), r.messages
