@@ -31,6 +31,7 @@ from .actions.equip import equip, unequip
 from .actions.sell import sell
 from .actions.craft import craft
 from .actions.gather import gather
+from .actions.use_ability import use_ability
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -119,6 +120,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = craft(player, req.args.item)
     elif req.action == "gather":
         result = gather(player)
+    elif req.action == "use_ability":
+        result = use_ability(player, req.args.ability, req.args.target)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 

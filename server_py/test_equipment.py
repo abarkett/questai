@@ -85,10 +85,10 @@ def main() -> None:
     assert pa.hp == before - 1, (before, pa.hp)
     print("PASS  armor reduces retaliation to the minimum")
 
-    # Gear drops as loot on kill
-    pk = mk(player_id="k", location="deep_forest", level=10, hp=99, max_hp=99, inventory={})
+    # Gear drops as loot on kill (level 20 -> even a low damage roll one-shots a goblin)
+    pk = mk(player_id="k", location="deep_forest", level=20, hp=200, max_hp=200, inventory={})
     upsert_player(pk)
-    r = attack(pk, "Goblin")  # level 10 -> 12 dmg, one-shots the 12-hp goblin
+    r = attack(pk, "Goblin")
     assert pk.inventory.get("rusty_dagger", 0) >= 1, (pk.inventory, r.messages)
     print(f"PASS  gear drops as loot on kill: {dict(pk.inventory)}")
 

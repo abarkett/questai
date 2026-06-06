@@ -87,5 +87,20 @@ def apply_xp(player: Player, amount: int) -> List[str]:
         player.max_hp = max_hp_for_level(new_level)
         player.hp = player.max_hp  # full heal on level up
         messages.append(f"You reached level {new_level}! Max HP is now {player.max_hp}.")
+        messages.extend(_learn_new_abilities(player))
 
+    return messages
+
+
+def _learn_new_abilities(player: Player) -> List[str]:
+    """Grant any abilities newly unlocked by the player's level. Returns messages."""
+    from .abilities import abilities_for_level, get_ability
+
+    messages: List[str] = []
+    for aid in abilities_for_level(player.level):
+        if aid not in player.abilities:
+            player.abilities.append(aid)
+            ability = get_ability(aid)
+            if ability:
+                messages.append(f"You learned a new ability: {ability.name}!")
     return messages

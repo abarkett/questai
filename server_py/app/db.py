@@ -33,6 +33,8 @@ def init_db() -> None:
               max_hp INTEGER NOT NULL,
               inventory_json TEXT NOT NULL,
               equipment_json TEXT DEFAULT '{}',
+              abilities_json TEXT DEFAULT '[]',
+              ability_cooldowns_json TEXT DEFAULT '{}',
               active_quests_json TEXT DEFAULT '{}',
               completed_quests_json TEXT DEFAULT '{}',
               archived_quests_json TEXT DEFAULT '{}',
@@ -258,6 +260,8 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     # Define expected columns and their types for migration
     expected_columns = {
         "equipment_json": "TEXT DEFAULT '{}'",
+        "abilities_json": "TEXT DEFAULT '[]'",
+        "ability_cooldowns_json": "TEXT DEFAULT '{}'",
         "active_quests_json": "TEXT DEFAULT '{}'",
         "completed_quests_json": "TEXT DEFAULT '{}'",
         "archived_quests_json": "TEXT DEFAULT '{}'",
@@ -289,6 +293,8 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data = dict(row)
     data["inventory"] = json.loads(data["inventory_json"])
     data["equipment"] = json.loads(data.get("equipment_json") or "{}")
+    data["abilities"] = json.loads(data.get("abilities_json") or "[]")
+    data["ability_cooldowns"] = json.loads(data.get("ability_cooldowns_json") or "{}")
 
     # Handle quest fields for backwards compatibility
     data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
@@ -357,6 +363,8 @@ def upsert_player(p: Player) -> None:
               max_hp,
               inventory_json,
               equipment_json,
+              abilities_json,
+              ability_cooldowns_json,
               active_quests_json,
               completed_quests_json,
               archived_quests_json,
@@ -364,7 +372,7 @@ def upsert_player(p: Player) -> None:
               last_attacked_target,
               last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -374,6 +382,8 @@ def upsert_player(p: Player) -> None:
               max_hp=excluded.max_hp,
               inventory_json=excluded.inventory_json,
               equipment_json=excluded.equipment_json,
+              abilities_json=excluded.abilities_json,
+              ability_cooldowns_json=excluded.ability_cooldowns_json,
               active_quests_json=excluded.active_quests_json,
               completed_quests_json=excluded.completed_quests_json,
               archived_quests_json=excluded.archived_quests_json,
@@ -391,6 +401,8 @@ def upsert_player(p: Player) -> None:
                 p.max_hp,
                 json.dumps(p.inventory),
                 json.dumps(p.equipment),
+                json.dumps(p.abilities),
+                json.dumps(p.ability_cooldowns),
                 json.dumps({k: v.model_dump() for k, v in p.active_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.completed_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.archived_quests.items()}),

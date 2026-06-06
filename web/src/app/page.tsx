@@ -227,6 +227,18 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
         </div>
       )}
 
+      {/* Abilities */}
+      {Array.isArray(player.abilities) && player.abilities.length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Abilities</div>
+          {player.abilities.map(( a: string) => (
+            <div key={a} className="text-xs">
+              {String(a).replace(/_/g, " ")}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Inventory */}
       <div>
         <div className="text-green-400 font-bold">Inventory</div>

@@ -30,7 +30,7 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {"action": "look"}
     
     # ---- STATS ----
-    if verb in ("stats", "hp", "me", "status"):
+    if verb in ("stats", "hp", "me", "status", "abilities", "skills"):
         return {"action": "stats"}
 
     # ---- MOVE ----
@@ -77,6 +77,29 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {
             "action": "attack",
             "args": {"target": " ".join(rest)}
+        }
+
+    # ---- ABILITIES ----
+    if verb in ("ability", "cast"):
+        if not rest:
+            raise ParseError("Use which ability?")
+        return {
+            "action": "use_ability",
+            "args": {"ability": rest[0], "target": " ".join(rest[1:]) or None},
+        }
+
+    _ability_aliases = {
+        "power_strike": "power_strike",
+        "powerstrike": "power_strike",
+        "strike": "power_strike",
+        "second_wind": "second_wind",
+        "secondwind": "second_wind",
+        "rend": "rend",
+    }
+    if verb in _ability_aliases:
+        return {
+            "action": "use_ability",
+            "args": {"ability": _ability_aliases[verb], "target": " ".join(rest) or None},
         }
 
     # ---- TALK ----

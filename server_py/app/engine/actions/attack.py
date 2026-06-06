@@ -17,6 +17,8 @@ from ..entities import (
 )
 from ..state_view import build_action_state
 from ...progression import total_attack_damage, defense_bonus, apply_xp
+from ...combat import roll_damage
+from ...abilities import get_ability
 
 
 # Simple shared combat constants
@@ -120,10 +122,24 @@ def is_player_attackable(target: Player, attacker: Player, current_time_ms: int)
     return True, None
 
 
-def attack(player: Player, target_name: str) -> ActionResponse:
+def attack(player: Player, target_name: str, ability: str | None = None) -> ActionResponse:
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
-    dmg = total_attack_damage(player)
+
+    # An offensive ability scales the hit and triggers its cooldown on use.
+    ability_obj = get_ability(ability) if ability else None
+    mult = ability_obj.multiplier if (ability_obj and ability_obj.multiplier) else 1.0
+    label = f"{ability_obj.name}! " if ability_obj else ""
+
+    base = int(total_attack_damage(player) * mult)
+    dmg, is_crit = roll_damage(base)
+    crit_suffix = " (CRITICAL HIT!)" if is_crit else ""
+
+    def _start_cooldown() -> None:
+        if ability_obj:
+            player.ability_cooldowns[ability_obj.ability_id] = (
+                current_time_ms + ability_obj.cooldown_s * 1000
+            )
 
     # -------------------------------------------------
     # Try PvE first (monsters)
@@ -142,7 +158,8 @@ def attack(player: Player, target_name: str) -> ActionResponse:
                 state=build_action_state(player, scene_dirty=True),
             )
 
-        messages.append(f"You attack the {result['name']} for {dmg} damage.")
+        _start_cooldown()
+        messages.append(f"{label}You attack the {result['name']} for {dmg} damage.{crit_suffix}")
 
         if result["killed"]:
             messages.append(f"The {result['name']} is defeated.")
@@ -204,8 +221,9 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             state=build_action_state(player, scene_dirty=False),
         )
 
+    _start_cooldown()
     pvp_dmg = max(1, dmg - defense_bonus(target_player))
-    messages.append(f"You attack {target_player.name} for {pvp_dmg} damage.")
+    messages.append(f"{label}You attack {target_player.name} for {pvp_dmg} damage.{crit_suffix}")
 
     target_player.hp -= pvp_dmg
 
