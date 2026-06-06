@@ -19,6 +19,20 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAMESPACE = "questai"
 
+# Test-only seam: when set, query() returns a canned answer instead of making a
+# network call. This is for the offline test suite — it is never set at runtime,
+# so the real game always talks to Miriel (and fails hard if Miriel is down).
+_TEST_RESPONDER = None
+
+
+def install_test_responder(fn) -> None:
+    """fn(query: str) -> str. Pass None to uninstall. Installing one marks the
+    client enabled so is_miriel_enabled() reflects the stubbed-but-working AI."""
+    global _TEST_RESPONDER
+    _TEST_RESPONDER = fn
+    if fn is not None:
+        get_miriel_client().enabled = True
+
 
 class UnauthorizedError(Exception):
     pass
@@ -201,6 +215,9 @@ class MirielClient:
         Returns:
           dict with query response
         """
+        if _TEST_RESPONDER is not None:
+            return {"results": {"answer": _TEST_RESPONDER(query)}}
+
         route = 'query'
         payload = {
             'query': query,

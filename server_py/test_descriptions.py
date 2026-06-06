@@ -1,7 +1,7 @@
 """
-Tests for dynamic location descriptions: time-of-day flavor that shifts with
-the world clock, presence-aware prose, and indoor/outdoor handling.
-(Miriel is disabled offline, so the deterministic layer is exercised.)
+Tests for Miriel-authored location descriptions. There is NO fallback: with
+Miriel down, describing a location must raise. The offline suite installs a
+Miriel test responder (a seam, not a gameplay fallback) to exercise the path.
 
 Run from server_py/:  python3 test_descriptions.py
 """
@@ -19,9 +19,8 @@ db.init_db()
 from app.engine.entities import seed_world_monsters  # noqa: E402
 seed_world_monsters()
 
-from app.descriptions import (  # noqa: E402
-    ambient_flavor, presence_flavor, deterministic_description, maybe_ai_description,
-)
+from app.services.miriel_client import install_test_responder, get_miriel_client  # noqa: E402
+from app.descriptions import time_of_day, present_creatures, describe, MirielUnavailable  # noqa: E402
 from app.world import get_location  # noqa: E402
 from app.types import Player  # noqa: E402
 from app.db import upsert_player  # noqa: E402
@@ -29,42 +28,50 @@ from app.engine.actions.look import look  # noqa: E402
 
 
 def main() -> None:
-    # Time-of-day flavor rotates outdoors and is absent indoors.
-    f0 = ambient_flavor("forest", 0)
-    f_later = ambient_flavor("forest", 12 * 3)  # a few buckets later
-    assert f0 and f_later and f0 != f_later, (f0, f_later)
-    assert ambient_flavor("tavern", 0) is None  # indoor: no day/night line
-    print(f"PASS  outdoor time-of-day flavor rotates: '{f0}' -> '{f_later}'")
+    # Context helpers (used to build the prompt) are deterministic.
+    assert time_of_day("forest", 0) != time_of_day("forest", 12 * 3)
+    assert time_of_day("tavern", 0) is None
+    assert present_creatures([{"type": "monster", "name": "Wolf"}, {"type": "npc", "name": "X"}]) == ["Wolf"]
+    print("PASS  prompt-context helpers (time of day, present creatures)")
 
-    # Presence flavor reflects who's here and whether they're hostile.
-    hostile = presence_flavor([{"type": "monster", "name": "Goblin"}])
-    assert hostile and "watches you" in hostile, hostile
-    passive = presence_flavor([{"type": "monster", "name": "Rat"}])
-    assert passive and "little mind" in passive, passive
-    assert presence_flavor([{"type": "npc", "name": "Old Merchant"}]) is None
-    print("PASS  presence flavor: hostile vs passive vs none")
-
-    # Deterministic description composes base + ambient + presence.
-    d = deterministic_description("A forest.", "forest", [{"type": "monster", "name": "Wolf"}], 0)
-    assert d.startswith("A forest.") and "Wolf" in d and "Dawn" in d, d
-    print("PASS  deterministic description composes base + flavor")
-
-    # Miriel disabled offline -> AI description returns None (fallback path).
     p = Player(player_id="p", name="P", location="forest", level=3, xp=0, hp=20, max_hp=20)
-    assert maybe_ai_description(p, get_location("forest"), [], "A forest.") is None
-    print("PASS  AI description is a no-op when Miriel is disabled")
-
-    # look() produces a description that changes as turns pass (different bucket).
     upsert_player(p)
-    db.set_world_turn(0) if hasattr(db, "set_world_turn") else None
-    desc_a = look(p).messages[1]
-    # advance the world clock into another time-of-day bucket
-    for _ in range(40):
-        db.increment_world_turn()
-    desc_b = look(p).messages[1]
-    assert desc_a != desc_b, (desc_a, desc_b)
-    print("PASS  look description shifts as the world clock advances")
+    loc = get_location("forest")
 
+    # With Miriel down (no key, no stub): describing MUST raise — no fallback.
+    install_test_responder(None)
+    get_miriel_client().enabled = False
+    raised = False
+    try:
+        describe(p, loc, [], "A forest.", 0)
+    except MirielUnavailable:
+        raised = True
+    assert raised, "describe must raise when Miriel is unavailable (no fallback)"
+    # And look() propagates the failure (the game crashes hard).
+    crashed = False
+    try:
+        look(p)
+    except MirielUnavailable:
+        crashed = True
+    assert crashed, "look() must fail hard when Miriel is down"
+    print("PASS  no fallback: describe/look fail hard when Miriel is down")
+
+    # With Miriel working (stubbed), the prose comes from Miriel and reaches look.
+    get_miriel_client().enabled = True
+    seen = {}
+    def responder(q):
+        seen["query"] = q
+        return "Mist curls between the pines as a wolf watches from the dark."
+    install_test_responder(responder)
+
+    text = describe(p, loc, [{"type": "monster", "name": "Wolf"}], "A forest.", 0)
+    assert "Mist curls" in text
+    assert "Wolf" in seen["query"] and "forest" in seen["query"].lower()
+    r = look(p)
+    assert any("Mist curls" in m for m in r.messages), r.messages
+    print("PASS  descriptions come from Miriel and surface in look()")
+
+    install_test_responder(None)
     print("\nALL DESCRIPTION TESTS PASSED")
 
 

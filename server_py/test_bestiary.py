@@ -17,6 +17,11 @@ db.init_db()
 from app.engine.entities import seed_world_monsters  # noqa: E402
 seed_world_monsters()
 
+# Miriel is required for descriptions; install a test responder (a seam, not a
+# gameplay fallback) so look() works offline.
+from app.services.miriel_client import install_test_responder  # noqa: E402
+install_test_responder(lambda q: "A vivid, AI-authored scene.")
+
 from app.types import Player  # noqa: E402
 from app.db import upsert_player, get_player  # noqa: E402
 from app.bestiary import all_monster_names  # noqa: E402

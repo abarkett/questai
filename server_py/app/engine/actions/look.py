@@ -31,16 +31,10 @@ def look(player: Player) -> ActionResponse:
     if loc.id == "forest" and get_world_state("forest_infested") == "true":
         base += " The forest feels particularly dangerous today."
 
-    # Dynamic prose: AI-authored when Miriel is configured, else a deterministic
-    # description that shifts with the world clock and what's present.
+    # Dynamic prose authored by Miriel (no fallback — Miriel is required).
     from ...db import get_world_turn
-    from ...descriptions import deterministic_description, maybe_ai_description
-    turn = get_world_turn()
-    description = (
-        maybe_ai_description(player, loc, entities, base)
-        or deterministic_description(base, loc.id, entities, turn)
-    )
-    messages.append(description)
+    from ...descriptions import describe
+    messages.append(describe(player, loc, entities, base, get_world_turn()))
 
     if entities:
         messages.append(
