@@ -103,7 +103,9 @@ class MirielClient:
                     pass
                 raise MirielRequestError(status, msg, body=body) from err
 
-            raise MirielRequestError(status, f'Miriel request error ({status})', body=body) from err
+            # Surface the API's error body — a bare "(400)" is undebuggable.
+            detail = f': {body[:500]}' if body else ''
+            raise MirielRequestError(status, f'Miriel request error ({status}){detail}', body=body) from err
 
     def _request_raw(self, method, route: str, **kwargs) -> requests.Response:
         """Perform an HTTP request and return the Response (no JSON parsing)."""
@@ -196,10 +198,12 @@ class MirielClient:
             'streaming': False,
             'voice_mode': False,
             'force_exhaustive': force_exhaustive,
-            'response_format': response_format,
             'project': project or PROJECT_NAMESPACE,
             **{k: v for k, v in params.items() if v is not None},
         }
+        # Only include response_format when set; strict validators reject null.
+        if response_format is not None:
+            payload['response_format'] = response_format
 
         return self.make_post_request(route, payload=payload)
 
