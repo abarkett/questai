@@ -21,10 +21,20 @@ class ArcChoice(BaseModel):
     result: str     # narration shown when this branch is chosen
 
 
+class ArcTask(BaseModel):
+    """A gameplay objective that must be completed before a chapter's choices unlock."""
+    type: str         # "kill" | "collect" | "visit"
+    target: str
+    required: int = 1
+    title: str
+    description: str
+
+
 class ArcChapter(BaseModel):
     chapter: int
     title: str
     narration: str
+    task: Optional[ArcTask] = None  # gameplay gate before choices unlock
     choices: List[ArcChoice] = []   # empty => epilogue (completes the arc)
 
 
@@ -79,8 +89,13 @@ STORY_ARCS: Dict[str, StoryArcDef] = {
                 chapter=2,
                 title="The Captor's Den",
                 narration=(
-                    "You corner the captor over the caged sprite. He raises trembling hands. "
-                    "The sprite's light flickers, waiting on your judgement."
+                    "'The captor keeps goblin guards in the deep wood,' the Wanderer says. "
+                    "'Cut through them to reach the den.'"
+                ),
+                task=ArcTask(
+                    type="kill", target="Goblin", required=1,
+                    title="Hunt the captor's guard",
+                    description="Slay the Goblin guarding the path in the Deep Forest.",
                 ),
                 choices=[
                     ArcChoice(key="mercy", label="Spare the captor",
@@ -116,7 +131,12 @@ STORY_ARCS: Dict[str, StoryArcDef] = {
                 title="Whispers of Fire",
                 narration=(
                     "The Wanderer studies a glowing ember. 'The deep is waking. "
-                    "Will you seek its heart, or warn the town above?'"
+                    "Go down to the Echoing Cavern and see for yourself — then decide what to do.'"
+                ),
+                task=ArcTask(
+                    type="visit", target="cavern", required=1,
+                    title="Scout the cavern",
+                    description="Travel to the Echoing Cavern to investigate the stirring deep.",
                 ),
                 choices=[
                     ArcChoice(key="investigate", label="Descend toward the heat",

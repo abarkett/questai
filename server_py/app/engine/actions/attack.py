@@ -79,7 +79,10 @@ def update_quest_progress(player: Player, target_name: str) -> list[str]:
                             quest.status = "completed"
                             quest.completed_at = int(time.time() * 1000)
                             player_completed.append(quest_id)
-                            player_messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
+                            if quest_id.startswith("arc__"):
+                                player_messages.append(f"Story task complete: {quest.name}. Continue with `choose`.")
+                            else:
+                                player_messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
                         break
 
         # Move completed quests after iteration
