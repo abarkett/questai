@@ -16,7 +16,7 @@ from ..entities import (
     filter_current_player,
 )
 from ..state_view import build_action_state
-from ...progression import attack_damage, apply_xp
+from ...progression import total_attack_damage, defense_bonus, apply_xp
 
 
 # Simple shared combat constants
@@ -123,7 +123,7 @@ def is_player_attackable(target: Player, attacker: Player, current_time_ms: int)
 def attack(player: Player, target_name: str) -> ActionResponse:
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
-    dmg = attack_damage(player.level)
+    dmg = total_attack_damage(player)
 
     # -------------------------------------------------
     # Try PvE first (monsters)
@@ -163,7 +163,8 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             from ...world_rules import track_monster_survival
             track_monster_survival(player.location)
         else:
-            retaliation = result.get("attack") or 2
+            raw = result.get("attack") or 2
+            retaliation = max(1, raw - defense_bonus(player))
             player.hp -= retaliation
             messages.append(f"The {result['name']} hits you for {retaliation} damage.")
 
@@ -203,9 +204,10 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             state=build_action_state(player, scene_dirty=False),
         )
 
-    messages.append(f"You attack {target_player.name} for {dmg} damage.")
+    pvp_dmg = max(1, dmg - defense_bonus(target_player))
+    messages.append(f"You attack {target_player.name} for {pvp_dmg} damage.")
 
-    target_player.hp -= dmg
+    target_player.hp -= pvp_dmg
 
     if target_player.hp <= 0:
         messages.append(f"{target_player.name} is defeated!")

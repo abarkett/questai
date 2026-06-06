@@ -215,6 +215,18 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
         <div>Level: {player.level}</div>
       </div>
 
+      {/* Equipped */}
+      {player.equipment && Object.keys(player.equipment).length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Equipped</div>
+          {Object.entries(player.equipment).map(([slot, itemId]) => (
+            <div key={slot} className="text-xs">
+              {slot}: {String(itemId).replace(/_/g, " ")}
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Inventory */}
       <div>
         <div className="text-green-400 font-bold">Inventory</div>

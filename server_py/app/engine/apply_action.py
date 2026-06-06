@@ -27,6 +27,7 @@ from .actions.accept_party_invite import accept_party_invite
 from .actions.leave_party import leave_party
 from .actions.party_status import party_status
 from .actions.reputation import reputation
+from .actions.equip import equip, unequip
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -105,6 +106,10 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = party_status(player)
     elif req.action == "reputation":
         result = reputation(player)
+    elif req.action == "equip":
+        result = equip(player, req.args.item)
+    elif req.action == "unequip":
+        result = unequip(player, req.args.slot)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 

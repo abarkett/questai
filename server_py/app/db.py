@@ -32,6 +32,7 @@ def init_db() -> None:
               hp INTEGER NOT NULL,
               max_hp INTEGER NOT NULL,
               inventory_json TEXT NOT NULL,
+              equipment_json TEXT DEFAULT '{}',
               active_quests_json TEXT DEFAULT '{}',
               completed_quests_json TEXT DEFAULT '{}',
               archived_quests_json TEXT DEFAULT '{}',
@@ -256,6 +257,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     
     # Define expected columns and their types for migration
     expected_columns = {
+        "equipment_json": "TEXT DEFAULT '{}'",
         "active_quests_json": "TEXT DEFAULT '{}'",
         "completed_quests_json": "TEXT DEFAULT '{}'",
         "archived_quests_json": "TEXT DEFAULT '{}'",
@@ -286,7 +288,8 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     """Helper function to build a Player object from a database row."""
     data = dict(row)
     data["inventory"] = json.loads(data["inventory_json"])
-    
+    data["equipment"] = json.loads(data.get("equipment_json") or "{}")
+
     # Handle quest fields for backwards compatibility
     data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
     data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
@@ -353,6 +356,7 @@ def upsert_player(p: Player) -> None:
               hp,
               max_hp,
               inventory_json,
+              equipment_json,
               active_quests_json,
               completed_quests_json,
               archived_quests_json,
@@ -360,7 +364,7 @@ def upsert_player(p: Player) -> None:
               last_attacked_target,
               last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -369,6 +373,7 @@ def upsert_player(p: Player) -> None:
               hp=excluded.hp,
               max_hp=excluded.max_hp,
               inventory_json=excluded.inventory_json,
+              equipment_json=excluded.equipment_json,
               active_quests_json=excluded.active_quests_json,
               completed_quests_json=excluded.completed_quests_json,
               archived_quests_json=excluded.archived_quests_json,
@@ -385,6 +390,7 @@ def upsert_player(p: Player) -> None:
                 p.hp,
                 p.max_hp,
                 json.dumps(p.inventory),
+                json.dumps(p.equipment),
                 json.dumps({k: v.model_dump() for k, v in p.active_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.completed_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.archived_quests.items()}),

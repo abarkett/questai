@@ -52,7 +52,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             hp=12,
             attack=3,
             xp_reward=8,
-            loot={"coin": 3, "healing_herb": 1},
+            loot={"coin": 3, "healing_herb": 1, "rusty_dagger": 1},
         ),
         Entity(
             entity_id="wolf_1",
@@ -61,7 +61,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             hp=16,
             attack=4,
             xp_reward=12,
-            loot={"coin": 4},
+            loot={"coin": 4, "leather_armor": 1},
         ),
     ],
     "cavern": [
@@ -72,7 +72,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             hp=20,
             attack=5,
             xp_reward=18,
-            loot={"coin": 6, "healing_herb": 2},
+            loot={"coin": 6, "healing_herb": 2, "iron_sword": 1},
         ),
         Entity(
             entity_id="cave_troll_1",
@@ -81,7 +81,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             hp=40,
             attack=8,
             xp_reward=50,
-            loot={"coin": 25, "healing_herb": 3},
+            loot={"coin": 25, "healing_herb": 3, "steel_armor": 1},
         ),
     ],
 }

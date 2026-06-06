@@ -50,6 +50,17 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("use", "eat", "drink"):
         return {"action": "use", "args": {"item": " ".join(rest)}}
 
+    # ---- EQUIP / UNEQUIP ----
+    if verb in ("equip", "wield", "wear"):
+        if not rest:
+            raise ParseError("Equip what?")
+        return {"action": "equip", "args": {"item": " ".join(rest)}}
+
+    if verb in ("unequip", "remove"):
+        if not rest:
+            raise ParseError("Unequip which slot? (weapon or armor)")
+        return {"action": "unequip", "args": {"slot": " ".join(rest)}}
+
     # ---- CREATE PLAYER ----
     if verb in ("create", "new"):
         if not rest:

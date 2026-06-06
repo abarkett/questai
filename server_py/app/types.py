@@ -30,6 +30,7 @@ class Player(BaseModel):
     hp: int
     max_hp: int
     inventory: dict[str, int] = {}
+    equipment: dict[str, str] = {}   # slot -> item_id (e.g. {"weapon": "iron_sword"})
     active_quests: dict[str, Quest] = {}
     completed_quests: dict[str, Quest] = {}
     archived_quests: dict[str, Quest] = {}
@@ -182,6 +183,24 @@ class ReputationReq(BaseModel):
     args: Optional[dict] = None
 
 
+class EquipArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class EquipReq(BaseModel):
+    action: Literal["equip"]
+    args: EquipArgs
+
+
+class UnequipArgs(BaseModel):
+    slot: str = Field(min_length=1, max_length=32)
+
+
+class UnequipReq(BaseModel):
+    action: Literal["unequip"]
+    args: UnequipArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -202,7 +221,9 @@ ActionRequest = Union[
     AcceptPartyInviteReq,
     LeavePartyReq,
     PartyStatusReq,
-    ReputationReq
+    ReputationReq,
+    EquipReq,
+    UnequipReq,
 ]
 
 

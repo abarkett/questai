@@ -39,8 +39,29 @@ def max_hp_for_level(level: int) -> int:
 
 
 def attack_damage(level: int) -> int:
-    """Damage a player deals per hit, scaled by level."""
+    """Base damage a player deals per hit, scaled by level (before gear)."""
     return BASE_DAMAGE + (level - 1)
+
+
+def weapon_bonus(player: Player) -> int:
+    """Bonus attack damage from the equipped weapon."""
+    from .items import get_item
+
+    item = get_item(player.equipment.get("weapon", "")) if player.equipment else None
+    return (item.damage or 0) if item else 0
+
+
+def defense_bonus(player: Player) -> int:
+    """Flat damage reduction from the equipped armor."""
+    from .items import get_item
+
+    item = get_item(player.equipment.get("armor", "")) if player.equipment else None
+    return (item.defense or 0) if item else 0
+
+
+def total_attack_damage(player: Player) -> int:
+    """Full per-hit damage: level scaling plus equipped weapon."""
+    return attack_damage(player.level) + weapon_bonus(player)
 
 
 def xp_to_next_level(player: Player) -> int:
