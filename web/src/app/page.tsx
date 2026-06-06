@@ -355,9 +355,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
-            {player.active_quests && Object.keys(player.active_quests).length > 0 && (
+            {((player.active_quests && Object.keys(player.active_quests).length > 0) ||
+              (player.completed_quests && Object.keys(player.completed_quests).length > 0)) && (
               <Section title="Active Quests">
-                {Object.values(player.active_quests).map((q: any) => {
+                {Object.values(player.active_quests ?? {}).map((q: any) => {
                   const staged = q.stages && q.stages.length > 0;
                   const objs = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
                   return (
@@ -376,6 +377,12 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     </div>
                   );
                 })}
+                {Object.values(player.completed_quests ?? {}).map((q: any) => (
+                  <div key={q.quest_id} className="text-xs mb-1">
+                    <div className="font-semibold text-yellow-400">{q.name}</div>
+                    <div className="text-yellow-600">✓ ready — return to the quest giver</div>
+                  </div>
+                ))}
               </Section>
             )}
 
@@ -407,12 +414,23 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               {player.inventory && Object.keys(player.inventory).length > 0 ? (
                 <ul className="space-y-0.5">
                   {Object.entries(player.inventory).map(([item, qty]) => {
-                    const gear = GEAR_RE.test(item);
+                    const info = (state.item_info ?? {})[item] ?? {};
+                    const isGear = info.type === "weapon" || info.type === "armor" || GEAR_RE.test(item);
+                    const hasDelta = typeof info.delta === "number";
                     return (
                       <li key={item} className="flex justify-between items-center gap-2">
-                        <span>{item.replace(/_/g, " ")} × {qty as number}</span>
+                        <span className="min-w-0">
+                          {item.replace(/_/g, " ")} × {qty as number}
+                          {info.stat && <span className="text-green-600"> ({info.stat}</span>}
+                          {hasDelta && (
+                            <span className={info.delta > 0 ? "text-green-400" : info.delta < 0 ? "text-red-400" : "text-green-700"}>
+                              {info.delta > 0 ? `, ${info.delta} better` : info.delta < 0 ? `, ${-info.delta} worse` : ", same"}
+                            </span>
+                          )}
+                          {info.stat && <span className="text-green-600">)</span>}
+                        </span>
                         <span className="flex gap-2 shrink-0">
-                          <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${gear ? "equip" : "use"} ${item}`)}>{gear ? "equip" : "use"}</button>
+                          <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${isGear ? "equip" : "use"} ${item}`)}>{isGear ? "equip" : "use"}</button>
                           <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`sell ${item}`)}>sell</button>
                         </span>
                       </li>

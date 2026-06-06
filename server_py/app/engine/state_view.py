@@ -231,6 +231,39 @@ def get_abilities_info(player: Player) -> List[Dict[str, Any]]:
     return out
 
 
+def get_item_info(player: Player) -> Dict[str, Any]:
+    """
+    Per-item details for the UI: a short stat string, and (for gear) the delta
+    versus what's currently equipped in that slot, so better/worse is obvious.
+    """
+    from ..items import get_item
+
+    eq = player.equipment or {}
+
+    def equipped_stat(slot: str, attr: str) -> int:
+        it = get_item(eq.get(slot, ""))
+        return int(getattr(it, attr, 0) or 0) if it else 0
+
+    info: Dict[str, Any] = {}
+    for iid in set(player.inventory or {}) | set(eq.values()):
+        it = get_item(iid)
+        if not it:
+            continue
+        d: Dict[str, Any] = {"name": it.name, "type": it.type, "slot": it.slot, "value": it.value}
+        if it.type == "weapon":
+            d["stat"] = f"+{it.damage} dmg"
+            d["delta"] = (it.damage or 0) - equipped_stat("weapon", "damage")
+        elif it.type == "armor":
+            d["stat"] = f"+{it.defense} def"
+            d["delta"] = (it.defense or 0) - equipped_stat("armor", "defense")
+        elif it.heal:
+            d["stat"] = f"+{it.heal} HP"
+        elif it.type == "material":
+            d["stat"] = "material"
+        info[iid] = d
+    return info
+
+
 def build_action_state(
     player: Player,
     *,
@@ -244,6 +277,7 @@ def build_action_state(
         "player": player.model_dump(),
         **build_location_view_for_player(player),
         "abilities": get_abilities_info(player),
+        "item_info": get_item_info(player),
         "pending_trade_offers": get_pending_trade_offers(player),
         "pending_trade_offers_sent": get_pending_trade_offers_sent(player),
         "party": get_party_info(player),
