@@ -189,6 +189,31 @@ def get_party_invites_info(player: Player) -> List[Dict[str, Any]]:
     return result
 
 
+def get_abilities_info(player: Player) -> List[Dict[str, Any]]:
+    """Detailed ability info for the UI: name, description, kind, cooldown."""
+    import time
+    from ..abilities import get_ability
+
+    now = int(time.time() * 1000)
+    out: List[Dict[str, Any]] = []
+    for aid in player.abilities:
+        ab = get_ability(aid)
+        if not ab:
+            continue
+        ready_at = player.ability_cooldowns.get(aid, 0)
+        remaining = int(max(0, (ready_at - now) // 1000)) if ready_at > now else 0
+        out.append({
+            "id": aid,
+            "name": ab.name,
+            "description": ab.description,
+            "kind": ab.kind,            # "attack" needs a target; "heal" is self
+            "cooldown_s": ab.cooldown_s,
+            "ready": remaining == 0,
+            "remaining": remaining,
+        })
+    return out
+
+
 def build_action_state(
     player: Player,
     *,
@@ -201,6 +226,7 @@ def build_action_state(
     state: Dict[str, Any] = {
         "player": player.model_dump(),
         **build_location_view_for_player(player),
+        "abilities": get_abilities_info(player),
         "pending_trade_offers": get_pending_trade_offers(player),
         "pending_trade_offers_sent": get_pending_trade_offers_sent(player),
         "party": get_party_info(player),

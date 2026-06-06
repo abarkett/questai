@@ -96,6 +96,21 @@ def main() -> None:
     assert c.inventory.get("healing_potion") == 1, c.inventory  # reward granted
     print(f"PASS  turn-in consumes collected items: {dict(c.inventory)}")
 
+    # Accepting a collect quest counts items you ALREADY hold (via the dispatcher).
+    from app.engine.apply_action import apply_action
+    pre = mk(player_id="pre", inventory={"herb_bundle": 1})
+    upsert_player(pre)
+    resp = apply_action(player_id="pre", req_json={"action": "accept_quest", "args": {"quest_id": "gather_herbs"}})
+    assert resp.ok, resp.error
+    q = resp.state["player"]["active_quests"]["gather_herbs"]
+    prog = q["objectives"][0]
+    assert prog["progress"] == 1 and prog["required"] == 3, prog
+    # And it's persisted (not thrown away).
+    from app.db import get_player
+    reloaded = get_player("pre")
+    assert reloaded.active_quests["gather_herbs"].objectives[0].progress == 1
+    print("PASS  collect quest counts pre-existing items on accept (persisted)")
+
     print("\nALL RICH QUEST TESTS PASSED")
 
 

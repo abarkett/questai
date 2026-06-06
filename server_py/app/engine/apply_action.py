@@ -150,16 +150,21 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Refresh collect/visit quest objectives from current state (kills are
-    # progressed at the moment of the kill). Surface any new completions.
+    # progressed at the moment of the kill). Persist progress (even partial,
+    # e.g. counting items you already had) and reflect it in the response.
     if result.ok and req.action not in ["look", "stats", "inventory", "party_status",
                                         "reputation", "list_trades", "story", "map",
                                         "bestiary", "journal"]:
         from .quest_progress import refresh_quests
+        from ..db import upsert_player as _upsert
         quest_msgs = refresh_quests(player)
+        _upsert(player)
         if quest_msgs:
-            from ..db import upsert_player as _upsert
-            _upsert(player)
             result.messages.extend(quest_msgs)
+        # Rebuild the state so the UI shows the refreshed quest progress now.
+        if result.state is not None:
+            from .state_view import build_action_state
+            result.state = build_action_state(player, scene_dirty=bool(result.state.get("scene_dirty")))
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
     if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map", "bestiary", "journal"]:
