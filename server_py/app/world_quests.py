@@ -1,8 +1,9 @@
 from __future__ import annotations
-from typing import Tuple
+from typing import Tuple, Optional
 from .types_quests import Quest, QuestObjective
 from .db import get_world_state
 from .engine.entities import get_world_entities_at
+from .types import Player
 
 
 QUEST_TEMPLATES = {
@@ -26,11 +27,19 @@ QUEST_TEMPLATES = {
 }
 
 
-def is_quest_available(quest_id: str) -> Tuple[bool, str]:
+def is_quest_available(quest_id: str, player: Optional[Player] = None) -> Tuple[bool, str]:
     """
     Check if a quest can be offered based on world state.
-    Returns (is_available, reason_if_not_available).
+    Now supports both template and AI-generated quests.
+
+    Args:
+        quest_id: Quest identifier
+        player: Optional player context for AI-generated quests
+
+    Returns:
+        (is_available, reason_if_not_available)
     """
+    # Check template-specific availability
     if quest_id == "rat_problem":
         # Check if there are rats in the forest
         entities = get_world_entities_at("forest")
@@ -46,5 +55,7 @@ def is_quest_available(quest_id: str) -> Tuple[bool, str]:
 
         return True, ""
 
-    # Default: quest is available
+    # AI-generated quests (not in templates) are always "available" to generate
+    # Prerequisites are checked via Miriel context during generation
+    # Templates take priority, so if we reach here, it's an AI quest
     return True, ""

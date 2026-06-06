@@ -125,6 +125,43 @@ def init_db() -> None:
               created_at INTEGER NOT NULL
             );
 
+            -- Miriel Integration: Story arcs for narrative continuity
+            CREATE TABLE IF NOT EXISTS story_arcs (
+              arc_id TEXT PRIMARY KEY,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              arc_type TEXT NOT NULL,           -- 'personal', 'faction', 'world'
+              current_chapter INTEGER DEFAULT 1,
+              total_chapters INTEGER,
+              status TEXT NOT NULL,              -- 'active', 'paused', 'completed'
+              faction_alignment TEXT,
+              created_at INTEGER NOT NULL,
+              created_turn INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              metadata_json TEXT DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS player_story_arcs (
+              player_id TEXT NOT NULL,
+              arc_id TEXT NOT NULL,
+              joined_at INTEGER NOT NULL,
+              joined_turn INTEGER NOT NULL,
+              choices_json TEXT DEFAULT '[]',   -- Track player decisions
+              PRIMARY KEY (player_id, arc_id)
+            );
+
+            -- Miriel Integration: Cache AI responses to reduce API calls
+            CREATE TABLE IF NOT EXISTS miriel_content_cache (
+              cache_key TEXT PRIMARY KEY,
+              content_type TEXT NOT NULL,       -- 'quest', 'dialogue', 'story_arc'
+              content_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL,
+              expires_at INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
+            CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
+
             -- Initialize world clock if not exists
             INSERT OR IGNORE INTO world_clock (id, current_turn) VALUES (1, 0);
             """
@@ -525,6 +562,13 @@ def log_world_event(event_type: str, location_id: Optional[str], data: Dict[str,
     finally:
         conn.close()
 
+    # Learn in Miriel (Phase 2: Learning System)
+    from .miriel_learning import learn_world_event
+    try:
+        learn_world_event(event_type, location_id, data)
+    except Exception:
+        pass  # Don't crash on learning errors
+
 
 def get_world_events(limit: int = 100) -> List[Dict[str, Any]]:
     """Get recent world events."""
@@ -620,6 +664,13 @@ def log_reputation_event(
         conn.commit()
     finally:
         conn.close()
+
+    # Learn in Miriel (Phase 2: Learning System)
+    from .miriel_learning import learn_reputation_change
+    try:
+        learn_reputation_change(player_id, faction_id, event_type, value, description)
+    except Exception:
+        pass  # Don't crash on learning errors
 
 
 def get_reputation_events(
@@ -832,6 +883,163 @@ def delete_party_invite(invite_id: str) -> None:
     try:
         conn.execute("DELETE FROM party_invites WHERE invite_id = ?", (invite_id,))
         conn.commit()
+    finally:
+        conn.close()
+
+
+# ===== Miriel Integration: Story Arcs and AI Content =====
+
+def get_player_story_arcs(player_id: str) -> List[Dict[str, Any]]:
+    """Get all active story arcs for a player."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT sa.* FROM story_arcs sa
+            JOIN player_story_arcs psa ON sa.arc_id = psa.arc_id
+            WHERE psa.player_id = ? AND sa.status = 'active'
+            """,
+            (player_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def create_story_arc(
+    arc_id: str,
+    title: str,
+    description: str,
+    arc_type: str,
+    total_chapters: int,
+    faction_alignment: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None,
+) -> None:
+    """Create a new story arc."""
+    conn = get_conn()
+    try:
+        turn = get_world_turn()
+        now = int(time.time() * 1000)
+        conn.execute(
+            """
+            INSERT INTO story_arcs (
+              arc_id, title, description, arc_type, total_chapters,
+              status, faction_alignment, created_at, created_turn, updated_at, metadata_json
+            )
+            VALUES (?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, ?)
+            """,
+            (
+                arc_id,
+                title,
+                description,
+                arc_type,
+                total_chapters,
+                faction_alignment,
+                now,
+                turn,
+                now,
+                json.dumps(metadata or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def join_story_arc(player_id: str, arc_id: str) -> None:
+    """Add a player to a story arc."""
+    conn = get_conn()
+    try:
+        turn = get_world_turn()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO player_story_arcs (player_id, arc_id, joined_at, joined_turn)
+            VALUES (?, ?, ?, ?)
+            """,
+            (player_id, arc_id, int(time.time() * 1000), turn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_story_arc_chapter(arc_id: str, new_chapter: int) -> None:
+    """Advance a story arc to a new chapter."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            UPDATE story_arcs
+            SET current_chapter = ?, updated_at = ?
+            WHERE arc_id = ?
+            """,
+            (new_chapter, int(time.time() * 1000), arc_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_recent_player_actions(player_id: str, limit: int = 20) -> List[Dict[str, Any]]:
+    """Get recent player actions from the action log."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT action, args_json, ts
+            FROM action_log
+            WHERE player_id = ?
+            ORDER BY ts DESC
+            LIMIT ?
+            """,
+            (player_id, limit),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def get_all_world_state() -> Dict[str, str]:
+    """Get all world state key-value pairs."""
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT key, value FROM world_state").fetchall()
+        return {row["key"]: row["value"] for row in rows}
+    finally:
+        conn.close()
+
+
+def cache_miriel_content(cache_key: str, content_type: str, content_json: str, ttl_seconds: int = 3600) -> None:
+    """Cache Miriel-generated content."""
+    conn = get_conn()
+    try:
+        now = int(time.time() * 1000)
+        expires_at = now + (ttl_seconds * 1000)
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO miriel_content_cache (cache_key, content_type, content_json, created_at, expires_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (cache_key, content_type, content_json, now, expires_at),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_cached_miriel_content(cache_key: str) -> Optional[str]:
+    """Retrieve cached Miriel content if not expired."""
+    conn = get_conn()
+    try:
+        now = int(time.time() * 1000)
+        row = conn.execute(
+            """
+            SELECT content_json FROM miriel_content_cache
+            WHERE cache_key = ? AND expires_at > ?
+            """,
+            (cache_key, now),
+        ).fetchone()
+        return row["content_json"] if row else None
     finally:
         conn.close()
 

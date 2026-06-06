@@ -137,4 +137,19 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         args=req.model_dump().get("args"),
         result=result.model_dump(),
     )
+
+    # Learn player action in Miriel (Phase 2: Learning System)
+    if result.ok:
+        from ..miriel_learning import learn_player_action
+        try:
+            learn_player_action(
+                player=player,
+                action=req.action,
+                args=req.model_dump().get("args", {}),
+                result=result.model_dump(),
+                turn=get_world_turn()
+            )
+        except Exception as e:
+            print(f"[MIRIEL] Learning failed: {e}")
+
     return result

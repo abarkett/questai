@@ -100,12 +100,40 @@ def talk(player: Player, target: str) -> ActionResponse:
             if available:
                 # Offer the first available quest
                 qid = available[0]
-                quest = QUEST_TEMPLATES[qid]
-                messages.append(f'"{quest.description}"')
-                messages.append(f"You may `accept {qid}`.")
+                quest = QUEST_TEMPLATES.get(qid)
+
+                if quest:
+                    # Try to generate AI dialogue for quest offer
+                    from ...miriel_dialogue import generate_quest_offer_dialogue
+                    ai_dialogue = generate_quest_offer_dialogue(
+                        player=player,
+                        quest_name=quest.name,
+                        quest_description=quest.description,
+                        npc_id=npc["id"]
+                    )
+
+                    if ai_dialogue:
+                        messages.append(f'"{ai_dialogue}"')
+                    else:
+                        # Fallback to template description
+                        messages.append(f'"{quest.description}"')
+
+                    messages.append(f"You may `accept {qid}`.")
             elif unavailable_reasons:
-                # Give context-aware dialogue
-                messages.append(f'"{unavailable_reasons[0]}"')
+                # Try to generate AI dialogue for quest unavailable
+                from ...miriel_dialogue import generate_npc_dialogue
+                ai_dialogue = generate_npc_dialogue(
+                    player=player,
+                    npc_id=npc["id"],
+                    npc_role="quest_giver",
+                    dialogue_type="quest_unavailable"
+                )
+
+                if ai_dialogue:
+                    messages.append(f'"{ai_dialogue}"')
+                else:
+                    # Fallback to context-aware dialogue from world state
+                    messages.append(f'"{unavailable_reasons[0]}"')
             else:
                 # Player has completed all quests
                 messages.append('"You have done all I asked. Thank you."')
@@ -121,8 +149,22 @@ def talk(player: Player, target: str) -> ActionResponse:
             messages.append(f'"Take a look at my wares: {items}."')
             messages.append("You can `buy <item>`.")
 
-    else:
-        messages.append('"Hello there."')
+    # Generic NPC dialogue (not quest_giver or shop)
+    if npc.get("role") not in ["quest_giver", "shop"]:
+        # Try to generate AI dialogue for generic greeting
+        from ...miriel_dialogue import generate_npc_dialogue
+        ai_dialogue = generate_npc_dialogue(
+            player=player,
+            npc_id=npc["id"],
+            npc_role=npc.get("role", "generic"),
+            dialogue_type="greeting"
+        )
+
+        if ai_dialogue:
+            messages.append(f'"{ai_dialogue}"')
+        else:
+            # Fallback to static dialogue
+            messages.append('"Hello there."')
 
     return ActionResponse(
         ok=True,

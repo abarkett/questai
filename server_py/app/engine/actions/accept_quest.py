@@ -2,6 +2,7 @@ from copy import deepcopy
 import time
 from ...types import Player, ActionResponse
 from ...world_quests import QUEST_TEMPLATES
+from ...miriel_quests import get_or_generate_quest
 from ...db import upsert_player
 from ..entities import get_entities_at, serialize_entity
 from ...world import get_location
@@ -11,9 +12,13 @@ from ..state_view import build_action_state
 def accept_quest(player: Player, quest_id: str) -> ActionResponse:
     from ...db import get_player_party, get_player, upsert_player as db_upsert_player
 
-    template = QUEST_TEMPLATES.get(quest_id)
+    # Try to get quest from templates or generate via AI
+    template, is_generated = get_or_generate_quest(quest_id, player)
     if not template:
         return ActionResponse(ok=False, error="Unknown quest.")
+
+    if is_generated:
+        print(f"[QUEST] Player {player.name} accepting AI-generated quest: {template.name}")
 
     # Check if quest is already in any quest list
     if quest_id in player.active_quests:

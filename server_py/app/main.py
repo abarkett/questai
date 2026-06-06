@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Header, Body
 from fastapi.middleware.cors import CORSMiddleware
 from .engine.parse_command import parse_command, ParseError
