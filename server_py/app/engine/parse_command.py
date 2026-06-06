@@ -243,5 +243,18 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}
 
+    # ---- STORY ARCS ----
+    if verb in ("story", "arcs", "saga", "tales"):
+        return {"action": "story"}
+
+    if verb in ("begin", "embark") and rest:
+        return {"action": "begin_arc", "args": {"arc_id": rest[0]}}
+
+    if verb == "choose" and rest:
+        from ..story_content import STORY_ARCS
+        if len(rest) >= 2 and rest[0].lower() in STORY_ARCS:
+            return {"action": "choose", "args": {"arc_id": rest[0].lower(), "choice": rest[1]}}
+        return {"action": "choose", "args": {"choice": rest[0]}}
+
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")

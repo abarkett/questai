@@ -150,6 +150,8 @@ def init_db() -> None:
               joined_at INTEGER NOT NULL,
               joined_turn INTEGER NOT NULL,
               choices_json TEXT DEFAULT '[]',   -- Track player decisions
+              current_chapter INTEGER DEFAULT 1,
+              status TEXT DEFAULT 'active',      -- per-player: 'active' | 'completed'
               PRIMARY KEY (player_id, arc_id)
             );
 
@@ -274,7 +276,21 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     for column_name, column_type in expected_columns.items():
         if column_name not in columns:
             conn.execute(f"ALTER TABLE players ADD COLUMN {column_name} {column_type}")
-    
+
+    # Per-player story-arc progress columns (added after the table shipped).
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='player_story_arcs'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(player_story_arcs)")
+        arc_cols = {row[1] for row in cursor.fetchall()}
+        for col, coltype in {
+            "current_chapter": "INTEGER DEFAULT 1",
+            "status": "TEXT DEFAULT 'active'",
+        }.items():
+            if col not in arc_cols:
+                conn.execute(f"ALTER TABLE player_story_arcs ADD COLUMN {col} {coltype}")
+
     # Clean up duplicate players (keep oldest by player_id)
     _remove_duplicate_players(conn)
     
@@ -985,6 +1001,75 @@ def create_story_arc(
                 now,
                 json.dumps(metadata or {}),
             ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_player_arc(player_id: str, arc_id: str) -> Optional[Dict[str, Any]]:
+    """Per-player progress on a single story arc, or None if not started."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM player_story_arcs WHERE player_id = ? AND arc_id = ?",
+            (player_id, arc_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_player_arcs(player_id: str) -> List[Dict[str, Any]]:
+    """All story arcs this player has started (any status)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM player_story_arcs WHERE player_id = ?",
+            (player_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def start_player_arc(player_id: str, arc_id: str) -> None:
+    """Begin an arc for a player at chapter 1 (no-op if already started)."""
+    conn = get_conn()
+    try:
+        now = int(time.time() * 1000)
+        turn = get_world_turn()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO player_story_arcs
+              (player_id, arc_id, joined_at, joined_turn, choices_json, current_chapter, status)
+            VALUES (?, ?, ?, ?, '[]', 1, 'active')
+            """,
+            (player_id, arc_id, now, turn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_player_arc(
+    player_id: str,
+    arc_id: str,
+    *,
+    current_chapter: int,
+    status: str,
+    choices: List[Dict[str, Any]],
+) -> None:
+    """Persist a player's arc progress (chapter, status, recorded choices)."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            UPDATE player_story_arcs
+            SET current_chapter = ?, status = ?, choices_json = ?
+            WHERE player_id = ? AND arc_id = ?
+            """,
+            (current_chapter, status, json.dumps(choices), player_id, arc_id),
         )
         conn.commit()
     finally:

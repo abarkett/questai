@@ -187,8 +187,13 @@ def talk(player: Player, target: str) -> ActionResponse:
             messages.append(f'"Take a look at my wares: {items}."')
             messages.append("You can `buy <item>`.")
 
-    # Generic NPC dialogue (not quest_giver or shop)
-    if npc.get("role") not in ["quest_giver", "shop"]:
+    # Recurring story-arc giver: narrate the player's arc state.
+    if npc.get("role") == "arc_giver":
+        from .story import arc_talk_lines
+        messages.extend(arc_talk_lines(player))
+
+    # Generic NPC dialogue (not quest_giver, shop, or arc_giver)
+    if npc.get("role") not in ["quest_giver", "shop", "arc_giver"]:
         # Try to generate AI dialogue for generic greeting
         from ...miriel_dialogue import generate_npc_dialogue
         ai_dialogue = generate_npc_dialogue(

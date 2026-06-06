@@ -32,6 +32,7 @@ from .actions.sell import sell
 from .actions.craft import craft
 from .actions.gather import gather
 from .actions.use_ability import use_ability
+from .actions.story import story_status, begin_arc, choose
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -122,11 +123,17 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = gather(player)
     elif req.action == "use_ability":
         result = use_ability(player, req.args.ability, req.args.target)
+    elif req.action == "story":
+        result = story_status(player)
+    elif req.action == "begin_arc":
+        result = begin_arc(player, req.args.arc_id)
+    elif req.action == "choose":
+        result = choose(player, req.args.choice, req.args.arc_id)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades"]:
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story"]:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
 

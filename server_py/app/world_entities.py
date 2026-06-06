@@ -25,6 +25,12 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             role="quest_giver",
             quests=["rat_problem"],
         ),
+        Entity(
+            entity_id="wanderer",
+            name="The Wanderer",
+            type="npc",
+            role="arc_giver",
+        ),
     ],
     "market": [
         Entity(
@@ -41,6 +47,12 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
         ),
     ],
     "forest": [
+        Entity(
+            entity_id="wanderer",
+            name="The Wanderer",
+            type="npc",
+            role="arc_giver",
+        ),
         Entity(
             entity_id="rat_1",
             name="Rat",
@@ -81,6 +93,12 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
         ),
     ],
     "cavern": [
+        Entity(
+            entity_id="wanderer",
+            name="The Wanderer",
+            type="npc",
+            role="arc_giver",
+        ),
         Entity(
             entity_id="cave_spider_1",
             name="Cave Spider",

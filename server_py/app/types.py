@@ -236,6 +236,30 @@ class UseAbilityReq(BaseModel):
     args: UseAbilityArgs
 
 
+class StoryReq(BaseModel):
+    action: Literal["story"]
+    args: Optional[dict] = None
+
+
+class BeginArcArgs(BaseModel):
+    arc_id: str = Field(min_length=1, max_length=48)
+
+
+class BeginArcReq(BaseModel):
+    action: Literal["begin_arc"]
+    args: BeginArcArgs
+
+
+class ChooseArgs(BaseModel):
+    choice: str = Field(min_length=1, max_length=48)
+    arc_id: Optional[str] = Field(default=None, max_length=48)
+
+
+class ChooseReq(BaseModel):
+    action: Literal["choose"]
+    args: ChooseArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -263,6 +287,9 @@ ActionRequest = Union[
     CraftReq,
     GatherReq,
     UseAbilityReq,
+    StoryReq,
+    BeginArcReq,
+    ChooseReq,
 ]
 
 
