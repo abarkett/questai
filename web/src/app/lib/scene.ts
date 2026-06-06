@@ -1,14 +1,20 @@
 export function buildScenePrompt(params: {
   location?: any;
-  entities?: string[];
+  entities?: any[];
 }) {
   const locationName = params.location?.name ?? "unknown place";
   const description = params.location?.description ?? "";
 
-  const entities =
-    params.entities && params.entities.length > 0
-      ? `Visible creatures or objects: ${params.entities.join(", ")}.`
-      : "No visible creatures.";
+  // Entities arrive as objects ({type,name,...}); pull names of creatures/NPCs
+  // only (never other players) so the image matches what's actually present.
+  const names = (params.entities ?? [])
+    .filter((e: any) => e && (typeof e === "string" || e.type === "monster" || e.type === "npc"))
+    .map((e: any) => (typeof e === "string" ? e : e.name));
+
+  const creatures =
+    names.length > 0
+      ? `Depict exactly these living things and no others: ${names.join(", ")}.`
+      : `No creatures or people are present; depict the empty location.`;
 
   return `
   Fantasy RPG scene illustration.
@@ -24,7 +30,8 @@ export function buildScenePrompt(params: {
   Style: detailed hand-painted fantasy art.
   Location: ${locationName}.
   Description: ${description}
-  ${entities}
+  ${creatures}
+  Do not add extra characters, companions, adventurers, or a party.
 
   No text, no UI, no labels.
   `.trim();

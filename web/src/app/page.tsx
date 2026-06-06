@@ -195,16 +195,11 @@ function MapGraph({ mapData, thumbs }: { mapData: any; thumbs: Record<string, st
             )}
             <text
               x={cx(p[0])} y={Y + nodeH + 14}
-              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#6b7280"}
+              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#4b5563"}
               fontSize="12" textAnchor="middle"
             >
-              {n.name}
+              {n.visited ? n.name : "Unexplored"}
             </text>
-            {!n.visited && (
-              <text x={cx(p[0])} y={Y + nodeH + 27} fill="#4b5563" fontSize="9" textAnchor="middle">
-                (unexplored)
-              </text>
-            )}
           </g>
         );
       })}
@@ -319,7 +314,7 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
                         onClick={() => onCommand(`attack ${m.name}`)}>attack</button>
-                      {abilities.filter((a: any) => a.kind === "attack" && a.ready).map((a: any) => (
+                      {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
                         <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
                           title={a.description} onClick={() => onCommand(`${a.id} ${m.name}`)}>{a.name}</button>
                       ))}
@@ -329,10 +324,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
-            {abilities.some((a: any) => a.kind !== "attack") && (
-              <Section title="Self">
+            {abilities.some((a: any) => a.kind === "heal" || a.kind === "aoe") && (
+              <Section title="Self / Area">
                 <div className="flex flex-wrap gap-1">
-                  {abilities.filter((a: any) => a.kind !== "attack").map((a: any) => (
+                  {abilities.filter((a: any) => a.kind === "heal" || a.kind === "aoe").map((a: any) => (
                     <button key={a.id} disabled={!a.ready}
                       title={a.ready ? a.description : `On cooldown (${a.remaining}s)`}
                       className="px-1 border border-green-800 text-xs hover:bg-green-900 disabled:opacity-40"
@@ -436,15 +431,18 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
             ) : (
               <div className="space-y-2">
                 {abilities.map((a: any) => {
-                  const canUse = a.ready && (a.kind !== "attack" || monsters.length > 0);
-                  const hint = !a.ready ? `On cooldown (${a.remaining}s)` : (a.kind === "attack" && monsters.length === 0 ? "No enemy here" : "Use");
+                  const needsTarget = a.kind === "attack" || a.kind === "dot";
+                  const needsEnemy = needsTarget || a.kind === "aoe";
+                  const canUse = a.ready && (!needsEnemy || monsters.length > 0);
+                  const icon = a.kind === "heal" ? " ✚" : a.kind === "aoe" ? " ✸" : a.kind === "dot" ? " ☠" : " ⚔";
+                  const hint = !a.ready ? `On cooldown (${a.remaining}s)` : (needsEnemy && monsters.length === 0 ? "No enemy here" : "Use");
                   return (
                     <div key={a.id} className="border border-green-900 p-1">
                       <div className="flex justify-between items-center">
-                        <span className="text-green-300">{a.name}{a.kind === "attack" ? " ⚔" : " ✚"}</span>
+                        <span className="text-green-300">{a.name}{icon}</span>
                         <button disabled={!canUse} title={hint}
                           className="text-xs px-1 border border-green-700 hover:bg-green-900 disabled:opacity-40"
-                          onClick={() => onCommand(a.kind === "attack" && monsters.length > 0 ? `${a.id} ${monsters[0].name}` : a.id)}>
+                          onClick={() => onCommand(needsTarget && monsters.length > 0 ? `${a.id} ${monsters[0].name}` : a.id)}>
                           {a.ready ? "use" : `${a.remaining}s`}
                         </button>
                       </div>

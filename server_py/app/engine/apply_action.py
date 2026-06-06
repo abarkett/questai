@@ -190,8 +190,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
                     data={"error": str(e)}
                 )
                 triggered_rules = []
-            if triggered_rules and result.messages:
-                result.messages.append(f"[World changed: {', '.join(triggered_rules)}]")
+            # (World-change notices were debug-only and are intentionally not
+            # surfaced to the player.)
 
     log_action(
         player_id=player.player_id,

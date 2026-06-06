@@ -21,7 +21,7 @@ from ..world import get_location
 
 # How long after death a (non-rat) monster comes back. Rats use the separate
 # forest-infestation rules.
-MONSTER_RESPAWN_MS = 90 * 1000
+MONSTER_RESPAWN_MS = 5 * 60 * 1000
 
 
 def _death_key(instance_id: str) -> str:
@@ -48,14 +48,16 @@ def respawn_due_monsters() -> int:
             if monster_exists(e.entity_id):
                 continue
             died_raw = get_world_state(_death_key(e.entity_id))
-            if not died_raw:
-                continue
-            try:
-                died = int(died_raw)
-            except ValueError:
-                continue
-            if now - died < MONSTER_RESPAWN_MS:
-                continue
+            if died_raw:
+                # Tracked death: respawn once the timer elapses.
+                try:
+                    died = int(died_raw)
+                except ValueError:
+                    died = 0
+                if died and now - died < MONSTER_RESPAWN_MS:
+                    continue
+            # No death stamp (killed before respawn tracking, or otherwise
+            # untracked): it's been gone a while, so bring it back now.
             spawn_monster(
                 instance_id=e.entity_id,
                 location_id=location_id,
