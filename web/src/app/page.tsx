@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sendCommand } from "./lib/api";
 import { generateSceneImage } from "./lib/gemini";
 import { buildScenePrompt } from "./lib/scene";
@@ -73,6 +73,39 @@ function computeSceneKeyFromResponse(resp: any) {
       .sort((a: any, b: any) => a.name.localeCompare(b.name)),
   });
 }
+
+function Modal({
+  title,
+  onClose,
+  children,
+}: {
+  title: string;
+  onClose: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/90 p-6 overflow-auto"
+      onClick={onClose}
+    >
+      <div className="max-w-5xl mx-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-lg text-green-300">{title}</h2>
+          <button
+            className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900"
+            onClick={onClose}
+          >
+            Close
+          </button>
+        </div>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// Heuristic: which inventory items are equippable gear vs. consumed/used.
+const GEAR_RE = /(sword|blade|dagger|armor|mail|scale|axe|shield|bow|staff)/i;
 
 function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
   if (!state?.player || !state?.location) {
@@ -251,9 +284,22 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
       {/* Stats */}
       <div>
         <div className="text-green-400 font-bold">Stats</div>
-        <div>HP: {player.hp}/{player.max_hp}</div>
-        <div>XP: {player.xp}</div>
-        <div>Level: {player.level}</div>
+        <div className="flex items-center gap-2">
+          <div className="flex-1 h-3 bg-green-950 border border-green-800">
+            <div
+              className="h-full bg-green-600"
+              style={{
+                width: `${Math.max(0, Math.min(100, (100 * player.hp) / player.max_hp))}%`,
+              }}
+            />
+          </div>
+          <span className="text-xs whitespace-nowrap">
+            {player.hp}/{player.max_hp}
+          </span>
+        </div>
+        <div className="text-xs mt-1">
+          Level {player.level} · XP {player.xp}
+        </div>
       </div>
 
       {/* Equipped */}
@@ -296,16 +342,31 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
       <div>
         <div className="text-green-400 font-bold">Inventory</div>
         {player.inventory && Object.keys(player.inventory).length > 0 ? (
-          <ul className="list-disc list-inside">
-            {Object.entries(player.inventory).map(([item, qty]) => (
-              <li
-                key={item}
-                className="cursor-pointer hover:underline"
-                onClick={() => onCommand(`use ${item}`)}
-              >
-                {item} × {qty as number}
-              </li>
-            ))}
+          <ul className="space-y-0.5">
+            {Object.entries(player.inventory).map(([item, qty]) => {
+              const gear = GEAR_RE.test(item);
+              return (
+                <li key={item} className="flex justify-between items-center gap-2">
+                  <span>
+                    {item.replace(/_/g, " ")} × {qty as number}
+                  </span>
+                  <span className="flex gap-2 shrink-0">
+                    <button
+                      className="text-green-400 hover:underline text-xs"
+                      onClick={() => onCommand(`${gear ? "equip" : "use"} ${item}`)}
+                    >
+                      {gear ? "equip" : "use"}
+                    </button>
+                    <button
+                      className="text-green-700 hover:underline text-xs"
+                      onClick={() => onCommand(`sell ${item}`)}
+                    >
+                      sell
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
           </ul>
         ) : (
           <div className="text-green-700">Empty</div>
@@ -326,6 +387,10 @@ export default function Page() {
   const [currentSceneKey, setCurrentSceneKey] = useState<string | null>(null);
   const [mapData, setMapData] = useState<any | null>(null);
   const [showMap, setShowMap] = useState(false);
+  const [journalData, setJournalData] = useState<any | null>(null);
+  const [showJournal, setShowJournal] = useState(false);
+  const [bestiaryData, setBestiaryData] = useState<any | null>(null);
+  const [showBestiary, setShowBestiary] = useState(false);
   const thumbsRef = useRef<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -460,10 +525,18 @@ export default function Page() {
         setLastState(resp.state);
       }
 
-      // Map command: open the map overlay with the discovered graph.
+      // Panel commands open their overlays with the returned structured data.
       if (resp.state?.map) {
         setMapData(resp.state.map);
         setShowMap(true);
+      }
+      if (resp.state?.journal) {
+        setJournalData(resp.state.journal);
+        setShowJournal(true);
+      }
+      if (resp.state?.bestiary) {
+        setBestiaryData(resp.state.bestiary);
+        setShowBestiary(true);
       }
 
       // Capture player_id if returned
@@ -518,77 +591,157 @@ export default function Page() {
 
   return (
     <div className="h-screen bg-black text-green-300 font-mono p-4 flex flex-col">
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
         <h1 className="text-xl">QuestAI</h1>
-        <button
-          className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900 disabled:opacity-40"
-          onClick={() => runCommand("map")}
-          disabled={!playerId || isWaitingForResponse}
-        >
-          🗺 Map
-        </button>
+        <div className="flex flex-wrap gap-1">
+          {[
+            ["Look", "look"],
+            ["🗺 Map", "map"],
+            ["Journal", "journal"],
+            ["Bestiary", "bestiary"],
+            ["Stats", "stats"],
+            ["Inventory", "inventory"],
+            ["Gather", "gather"],
+            ["Heal", "heal"],
+          ].map(([label, cmd]) => (
+            <button
+              key={cmd}
+              className="border border-green-700 px-2 py-1 text-xs hover:bg-green-900 disabled:opacity-40"
+              onClick={() => runCommand(cmd)}
+              disabled={!playerId || isWaitingForResponse}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {showMap && mapData && (
-        <div
-          className="fixed inset-0 z-50 bg-black/90 p-6 overflow-auto"
-          onClick={() => setShowMap(false)}
-        >
-          <div
-            className="max-w-5xl mx-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg text-green-300">World Map</h2>
-              <button
-                className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900"
-                onClick={() => setShowMap(false)}
-              >
-                Close
-              </button>
-            </div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-              {mapData.locations.map((n: any) => {
-                const isHere = n.id === mapData.current;
-                const thumb = n.visited ? thumbsRef.current[n.id] : undefined;
-                return (
+        <Modal title="World Map" onClose={() => setShowMap(false)}>
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+            {mapData.locations.map((n: any) => {
+              const isHere = n.id === mapData.current;
+              const thumb = n.visited ? thumbsRef.current[n.id] : undefined;
+              return (
+                <div
+                  key={n.id}
+                  className={`border p-2 ${
+                    isHere
+                      ? "border-green-300"
+                      : n.visited
+                      ? "border-green-700"
+                      : "border-green-900 opacity-50"
+                  }`}
+                >
                   <div
-                    key={n.id}
-                    className={`border p-2 ${
-                      isHere
-                        ? "border-green-300"
-                        : n.visited
-                        ? "border-green-700"
-                        : "border-green-900 opacity-50"
-                    }`}
+                    className="aspect-video bg-green-950 mb-1 bg-center bg-cover flex items-center justify-center text-green-700 text-xs"
+                    style={thumb ? { backgroundImage: `url(${thumb})` } : {}}
                   >
-                    <div
-                      className="aspect-video bg-green-950 mb-1 bg-center bg-cover flex items-center justify-center text-green-700 text-xs"
-                      style={thumb ? { backgroundImage: `url(${thumb})` } : {}}
-                    >
-                      {!thumb && (n.visited ? "" : "?")}
-                    </div>
-                    <div className="text-xs text-green-300">
-                      {n.visited ? n.name : "Unexplored"}
-                    </div>
-                    {isHere && (
-                      <div className="text-[10px] text-green-400">you are here</div>
-                    )}
-                    {n.visited && n.exits?.length > 0 && (
-                      <div className="text-[10px] text-green-700 mt-1">
-                        exits: {n.exits.map((e: any) => e.label).join(", ")}
-                      </div>
-                    )}
+                    {!thumb && (n.visited ? "" : "?")}
                   </div>
-                );
-              })}
-            </div>
-            <div className="text-[10px] text-green-700 mt-4">
-              Tip: type <span className="text-green-400">map</span> any time, or
-              click a direction to travel.
-            </div>
+                  <div className="text-xs text-green-300">
+                    {n.visited ? n.name : "Unexplored"}
+                  </div>
+                  {isHere && (
+                    <div className="text-[10px] text-green-400">you are here</div>
+                  )}
+                  {n.visited && n.exits?.length > 0 && (
+                    <div className="text-[10px] text-green-700 mt-1">
+                      exits: {n.exits.map((e: any) => e.label).join(", ")}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
-        </div>
+        </Modal>
+      )}
+
+      {showJournal && journalData && (
+        <Modal title="Quest Journal" onClose={() => setShowJournal(false)}>
+          {["active", "completed", "archived"].map((bucket) => {
+            const items = journalData[bucket] ?? [];
+            if (items.length === 0) return null;
+            const heading =
+              bucket === "active"
+                ? "Active"
+                : bucket === "completed"
+                ? "Ready to turn in"
+                : "Finished";
+            return (
+              <div key={bucket} className="mb-4">
+                <div className="text-green-400 font-bold mb-1">{heading}</div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  {items.map((q: any) => (
+                    <div key={q.quest_id} className="border border-green-800 p-2">
+                      <div className="text-green-300">{q.name}</div>
+                      <div className="text-[11px] text-green-700 mb-1">
+                        {q.description}
+                      </div>
+                      {q.objectives?.map((o: any, i: number) => {
+                        const done = o.progress >= o.required;
+                        return (
+                          <div
+                            key={i}
+                            className={`text-xs ${done ? "text-green-400" : "text-green-600"}`}
+                          >
+                            {done ? "✓" : "•"} {o.type} {o.target.replace(/_/g, " ")}:{" "}
+                            {o.progress}/{o.required}
+                          </div>
+                        );
+                      })}
+                      <div className="text-[10px] text-green-700 mt-1">
+                        reward:{" "}
+                        {Object.entries(q.rewards || {})
+                          .map(([it, n]) => `${n} ${it.replace(/_/g, " ")}`)
+                          .join(", ")}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {(journalData.active?.length ?? 0) === 0 &&
+            (journalData.completed?.length ?? 0) === 0 &&
+            (journalData.archived?.length ?? 0) === 0 && (
+              <div className="text-green-700">
+                No quests yet — talk to a quest giver (Warden, Huntmaster, Scholar).
+              </div>
+            )}
+        </Modal>
+      )}
+
+      {showBestiary && bestiaryData && (
+        <Modal
+          title={`Bestiary — ${bestiaryData.discovered.length}/${bestiaryData.total} discovered`}
+          onClose={() => setShowBestiary(false)}
+        >
+          {bestiaryData.discovered.length === 0 ? (
+            <div className="text-green-700">
+              Nothing discovered yet — explore and fight to fill these pages.
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {bestiaryData.discovered.map((e: any) => (
+                <div key={e.name} className="border border-green-800 p-2">
+                  <div className="text-green-300">{e.name}</div>
+                  <div className="text-xs text-green-600">
+                    HP {e.max_hp} · ATK {e.attack} · {e.xp_reward} XP
+                  </div>
+                  {e.inflicts && (
+                    <div className="text-[11px] text-red-400">
+                      inflicts {e.inflicts}
+                    </div>
+                  )}
+                  <div className="text-[10px] text-green-700 mt-1">
+                    found in: {e.locations.join(", ")}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </Modal>
       )}
 
       {/* Top area: image + status pane */}
