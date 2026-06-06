@@ -5,6 +5,24 @@ import time
 from ..types import Player
 
 
+def consume_quest_items(player: Player, quest) -> list[str]:
+    """
+    Remove the items a quest's collect objectives required, on turn-in.
+    Returns messages naming what was handed over.
+    """
+    messages: list[str] = []
+    for o in quest.objectives:
+        if o.type == "collect":
+            have = player.inventory.get(o.target, 0)
+            remaining = have - o.required
+            if remaining > 0:
+                player.inventory[o.target] = remaining
+            else:
+                player.inventory.pop(o.target, None)
+            messages.append(f"Handed over: {o.required}x {o.target}")
+    return messages
+
+
 def refresh_quests(player: Player) -> list[str]:
     """
     Recompute progress for collect/visit objectives from the player's current

@@ -1343,6 +1343,19 @@ def set_monster_attack(instance_id: str, attack: int) -> None:
         conn.close()
 
 
+def set_monster_hp(instance_id: str, hp: int) -> None:
+    """Set a live monster's HP (e.g. boss regeneration / phase heal). Clamped to max_hp."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE monsters SET hp = MIN(?, max_hp) WHERE instance_id = ?",
+            (hp, instance_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
 def remove_monster(instance_id: str) -> None:
     conn = get_conn()
     try:

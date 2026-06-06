@@ -66,7 +66,9 @@ def talk(player: Player, target: str) -> ActionResponse:
             # dynamic quests via giver_npc_id) and it's completed.
             if ((quest.giver_npc_id == npc["id"] or qid in npc.get("quests", []))
                     and quest.status == "completed"):
-                # Turn in the quest
+                # Consume collected items, then grant the reward.
+                from ..quest_progress import consume_quest_items
+                consume_quest_items(player, quest)
                 for item, quantity in quest.rewards.items():
                     player.inventory[item] = player.inventory.get(item, 0) + quantity
 
@@ -84,6 +86,14 @@ def talk(player: Player, target: str) -> ActionResponse:
                 for item, quantity in quest.rewards.items():
                     messages.append(f"Received: {quantity}x {item}")
             upsert_player(player)
+            # Don't immediately re-offer in the same breath — make the player
+            # talk again to pick up the next job.
+            messages.append('"Come speak with me again when you\'re ready for more work."')
+            return ActionResponse(
+                ok=True,
+                messages=messages,
+                state=build_action_state(player, scene_dirty=False),
+            )
 
     if npc.get("role") == "quest_giver":
         # Active quests with this NPC: templates via static list, dynamic via giver.

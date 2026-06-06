@@ -21,6 +21,7 @@ seed_world_monsters()
 from app.types import Player  # noqa: E402
 from app.db import upsert_player  # noqa: E402
 from app.engine.actions.accept_quest import accept_quest  # noqa: E402
+from app.engine.actions.turn_in_quest import turn_in_quest  # noqa: E402
 from app.engine.quest_progress import refresh_quests  # noqa: E402
 from app.engine.actions.gather import gather  # noqa: E402
 from app.engine.actions.move import move  # noqa: E402
@@ -82,6 +83,18 @@ def main() -> None:
         refresh_quests(g)
     assert "gather_herbs" in g.completed_quests, (g.inventory, list(g.completed_quests))
     print(f"PASS  gathering in the world completes the collect quest: {dict(g.inventory)}")
+
+    # Turning in a collect quest consumes the required items (and grants reward).
+    c = mk(player_id="cons", inventory={"herb_bundle": 4})  # one spare
+    upsert_player(c)
+    accept_quest(c, "gather_herbs")
+    refresh_quests(c)  # 4 >= 3 -> completed
+    assert "gather_herbs" in c.completed_quests
+    r = turn_in_quest(c, "gather_herbs")
+    assert r.ok, r.error
+    assert c.inventory.get("herb_bundle") == 1, c.inventory  # 4 - 3 consumed
+    assert c.inventory.get("healing_potion") == 1, c.inventory  # reward granted
+    print(f"PASS  turn-in consumes collected items: {dict(c.inventory)}")
 
     print("\nALL RICH QUEST TESTS PASSED")
 
