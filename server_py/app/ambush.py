@@ -27,14 +27,22 @@ def has_aggressive(location_id: str) -> bool:
     return bool(aggressive_monsters_at(location_id))
 
 
-def maybe_ambush(player: Player, *, rng: Optional[random.Random] = None) -> List[str]:
+def maybe_ambush(
+    player: Player,
+    *,
+    rng: Optional[random.Random] = None,
+    exclude_id: Optional[str] = None,
+    chance: float = AMBUSH_CHANCE,
+) -> List[str]:
     """
-    With some chance, a hostile monster present strikes the player. Mutates the
-    player (hp, effects, possible respawn). Returns player-facing messages.
+    With some chance, a hostile monster present (other than `exclude_id`)
+    strikes the player. Mutates the player (hp, effects, possible respawn).
+    Returns player-facing messages.
     """
     r = rng or random
-    hostiles = aggressive_monsters_at(player.location)
-    if not hostiles or r.random() >= AMBUSH_CHANCE:
+    hostiles = [m for m in aggressive_monsters_at(player.location)
+                if m["instance_id"] != exclude_id]
+    if not hostiles or r.random() >= chance:
         return []
 
     mon = hostiles[0]

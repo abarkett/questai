@@ -50,4 +50,73 @@ def use_ability(player: Player, ability_name: str, target: str | None = None) ->
             state=build_action_state(player, scene_dirty=False),
         )
 
+    if ability.kind == "dot":
+        if not target:
+            return ActionResponse(ok=False, error=f"Use {ability.name} on what?")
+        return _resolve_dot(player, target, ability, now_ms)
+
+    if ability.kind == "aoe":
+        return _resolve_aoe(player, ability, now_ms)
+
     return ActionResponse(ok=False, error="You can't use that ability right now.")
+
+
+def _resolve_dot(player: Player, target: str, ability, now_ms: int) -> ActionResponse:
+    from ..entities import find_entity
+    from ...dots import apply_bleed
+
+    entity = find_entity(player.location, target)
+    if not entity or entity["type"] != "monster":
+        return ActionResponse(ok=False, error="There's nothing like that to wound here.")
+
+    apply_bleed(entity["id"], ability.dot_damage or 0, ability.dot_turns or 0)
+    player.ability_cooldowns[ability.ability_id] = now_ms + ability.cooldown_s * 1000
+    upsert_player(player)
+    return ActionResponse(
+        ok=True,
+        messages=[f"{ability.name}! The {entity['name']} starts to bleed "
+                  f"({ability.dot_damage} per strike for {ability.dot_turns})."],
+        state=build_action_state(player, scene_dirty=False),
+    )
+
+
+def _resolve_aoe(player: Player, ability, now_ms: int) -> ActionResponse:
+    from ...db import get_monsters_at, damage_monster
+    from ...combat import roll_damage
+    from ...progression import total_attack_damage, apply_xp
+    from ...status_effects import damage_modifier
+    from ...bestiary import discover
+    from ...bosses import clear_boss_state
+    from ...dots import clear_bleed
+    from ..entities import record_monster_death
+    from .attack import update_quest_progress
+
+    monsters = get_monsters_at(player.location)
+    if not monsters:
+        return ActionResponse(ok=False, error=f"There are no enemies here to {ability.name.lower()}.")
+
+    base = int((total_attack_damage(player) + damage_modifier(player)) * (ability.multiplier or 1.0))
+    player.ability_cooldowns[ability.ability_id] = now_ms + ability.cooldown_s * 1000
+
+    messages = [f"{ability.name}! You strike every enemy here."]
+    for m in monsters:
+        discover(player, m["name"])
+        dmg, _crit = roll_damage(base)
+        res = damage_monster(m["instance_id"], dmg)
+        if res is None:
+            continue
+        if res["killed"]:
+            clear_boss_state(m["instance_id"], res["name"])
+            clear_bleed(m["instance_id"])
+            record_monster_death(m["instance_id"])
+            messages.append(f"You strike the {res['name']} for {dmg} — defeated!")
+            for item, qty in (res.get("loot") or {}).items():
+                player.inventory[item] = player.inventory.get(item, 0) + qty
+                messages.append(f"You found: {qty}x {item}")
+            messages.extend(apply_xp(player, res.get("xp_reward") or 0))
+            messages.extend(update_quest_progress(player, res["name"]))
+        else:
+            messages.append(f"You strike the {res['name']} for {dmg} damage.")
+
+    upsert_player(player)
+    return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))

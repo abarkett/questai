@@ -95,6 +95,8 @@ def parse_command(text: str) -> Dict[str, Any]:
         "second_wind": "second_wind",
         "secondwind": "second_wind",
         "rend": "rend",
+        "cleave": "cleave",
+        "rupture": "rupture",
     }
     if verb in _ability_aliases:
         return {

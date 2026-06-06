@@ -12,7 +12,7 @@ from typing import Dict, List, Literal, Optional
 from pydantic import BaseModel
 
 
-AbilityKind = Literal["attack", "heal"]
+AbilityKind = Literal["attack", "heal", "aoe", "dot"]
 
 
 class Ability(BaseModel):
@@ -22,8 +22,10 @@ class Ability(BaseModel):
     kind: AbilityKind
     cooldown_s: int
     description: str
-    multiplier: Optional[float] = None   # attack: damage multiplier
+    multiplier: Optional[float] = None   # attack/aoe: damage multiplier
     heal_frac: Optional[float] = None    # heal: fraction of max HP restored
+    dot_damage: Optional[int] = None     # dot: damage per tick
+    dot_turns: Optional[int] = None      # dot: number of ticks
 
 
 ABILITIES: Dict[str, Ability] = {
@@ -53,6 +55,25 @@ ABILITIES: Dict[str, Ability] = {
         multiplier=2.4,
         cooldown_s=75,
         description="A savage strike dealing 2.4x damage.",
+    ),
+    "cleave": Ability(
+        ability_id="cleave",
+        name="Cleave",
+        learn_level=8,
+        kind="aoe",
+        multiplier=1.2,
+        cooldown_s=60,
+        description="Strike every enemy present for 1.2x damage each.",
+    ),
+    "rupture": Ability(
+        ability_id="rupture",
+        name="Rupture",
+        learn_level=10,
+        kind="dot",
+        dot_damage=5,
+        dot_turns=3,
+        cooldown_s=50,
+        description="Wound a foe so it bleeds 5 damage on each of your next 3 strikes.",
     ),
 }
 

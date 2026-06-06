@@ -146,6 +146,10 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
         upsert_player(player)
         return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))
 
+    # Bleed (monster DoT) ticks on your strikes.
+    from ...dots import tick_bleeds
+    messages.extend(tick_bleeds(player.location))
+
     # An offensive ability scales the hit and triggers its cooldown on use.
     ability_obj = get_ability(ability) if ability else None
     mult = ability_obj.multiplier if (ability_obj and ability_obj.multiplier) else 1.0
@@ -186,7 +190,9 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
         if result["killed"]:
             from ...bosses import clear_boss_state
             from ..entities import record_monster_death
+            from ...dots import clear_bleed
             clear_boss_state(entity["id"], result["name"])
+            clear_bleed(entity["id"])
             record_monster_death(entity["id"])  # schedule its respawn
             messages.append(f"The {result['name']} is defeated.")
 
@@ -235,6 +241,14 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
                 messages.append(
                     f"You were defeated by the {result['name']} and wake up back in the Town Square."
                 )
+
+        # A second hostile in the area may join the fray.
+        if player.hp > 0:
+            from ...ambush import maybe_ambush
+            joiner = maybe_ambush(player, exclude_id=entity["id"], chance=0.35)
+            if joiner:
+                messages.append("Another enemy joins the fight!")
+                messages.extend(joiner)
 
         upsert_player(player)
 
