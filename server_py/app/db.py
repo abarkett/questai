@@ -1314,6 +1314,17 @@ def get_monsters_at(location_id: str) -> List[Dict[str, Any]]:
         conn.close()
 
 
+def monster_exists(instance_id: str) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM monsters WHERE instance_id = ?", (instance_id,)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
 def count_monsters_at(location_id: str) -> int:
     conn = get_conn()
     try:

@@ -77,6 +77,10 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     from ..presence import now_ms
     touch_last_seen(player.player_id, now_ms())
 
+    # Bring back any monsters whose respawn timer has elapsed.
+    from .entities import respawn_due_monsters
+    respawn_due_monsters()
+
     if req.action == "look":
         result = look(player)
     elif req.action == "move":

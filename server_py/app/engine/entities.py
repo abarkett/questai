@@ -5,15 +5,70 @@ from typing import List, Dict, Any
 
 from ..types_entities import Entity
 from ..world_entities import WORLD_ENTITIES
+import time
+
 from ..db import (
     get_players_at_location,
     get_monsters_at,
     spawn_monster,
     remove_monster,
+    monster_exists,
     get_world_state,
     set_world_state,
 )
 from ..world import get_location
+
+
+# How long after death a (non-rat) monster comes back. Rats use the separate
+# forest-infestation rules.
+MONSTER_RESPAWN_MS = 90 * 1000
+
+
+def _death_key(instance_id: str) -> str:
+    return f"died_{instance_id}"
+
+
+def record_monster_death(instance_id: str) -> None:
+    """Stamp when a catalog monster died so it can respawn later."""
+    set_world_state(_death_key(instance_id), str(int(time.time() * 1000)))
+
+
+def respawn_due_monsters() -> int:
+    """
+    Respawn catalog monsters whose death was long enough ago. Returns the count
+    respawned. Cheap to call each action: only dead, timer-stamped monsters do
+    any work.
+    """
+    now = int(time.time() * 1000)
+    respawned = 0
+    for location_id, entity_list in WORLD_ENTITIES.items():
+        for e in entity_list:
+            if e.type != "monster" or e.entity_id.startswith("rat"):
+                continue
+            if monster_exists(e.entity_id):
+                continue
+            died_raw = get_world_state(_death_key(e.entity_id))
+            if not died_raw:
+                continue
+            try:
+                died = int(died_raw)
+            except ValueError:
+                continue
+            if now - died < MONSTER_RESPAWN_MS:
+                continue
+            spawn_monster(
+                instance_id=e.entity_id,
+                location_id=location_id,
+                name=e.name,
+                hp=e.hp or 1,
+                max_hp=e.hp or 1,
+                attack=e.attack or 1,
+                xp_reward=e.xp_reward or 0,
+                loot=e.loot or {},
+            )
+            set_world_state(_death_key(e.entity_id), "")
+            respawned += 1
+    return respawned
 
 
 def find_player_by_name_at(location_id: str, name: str):

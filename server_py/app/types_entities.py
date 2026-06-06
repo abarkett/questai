@@ -20,6 +20,9 @@ class Entity(BaseModel):
     # status effect this monster inflicts on retaliation, e.g.
     # {"effect": "poison", "magnitude": 2, "turns": 3}
     inflicts: dict | None = None
+    # hostile monsters may ambush a player who acts carelessly (e.g. gathers)
+    # near them; passive ones (rats, beetles) do not.
+    aggressive: bool = False
 
     # npc-relevant
     role: str | None = None          # e.g. "shop"

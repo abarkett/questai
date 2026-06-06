@@ -78,7 +78,9 @@ def main() -> None:
     g = mk(player_id="g", location="forest", inventory={})
     upsert_player(g)
     accept_quest(g, "gather_herbs")
+    from app.db import set_world_state
     for _ in range(3):
+        set_world_state(f"gather_cd_{g.player_id}", "0")  # bypass the safe-gather cooldown
         gather(g)            # forest -> herb_bundle
         refresh_quests(g)
     assert "gather_herbs" in g.completed_quests, (g.inventory, list(g.completed_quests))

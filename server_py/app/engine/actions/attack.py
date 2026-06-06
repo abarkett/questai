@@ -181,7 +181,9 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
 
         if result["killed"]:
             from ...bosses import clear_boss_state
+            from ..entities import record_monster_death
             clear_boss_state(entity["id"], result["name"])
+            record_monster_death(entity["id"])  # schedule its respawn
             messages.append(f"The {result['name']} is defeated.")
 
             # Loot drops go straight into the inventory.

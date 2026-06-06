@@ -234,3 +234,18 @@ MONSTER_INFLICTS: Dict[str, dict] = {
     for e in ents
     if e.type == "monster" and e.inflicts
 }
+
+# Most monsters are hostile; a few are passive and won't ambush you.
+_PASSIVE_MONSTERS = {"Rat", "Giant Beetle"}
+for _ents in WORLD_ENTITIES.values():
+    for _e in _ents:
+        if _e.type == "monster" and _e.name not in _PASSIVE_MONSTERS:
+            _e.aggressive = True
+
+# Lookup: monster name -> whether it's aggressive (will ambush).
+MONSTER_AGGRO: Dict[str, bool] = {
+    e.name: e.aggressive
+    for ents in WORLD_ENTITIES.values()
+    for e in ents
+    if e.type == "monster"
+}
