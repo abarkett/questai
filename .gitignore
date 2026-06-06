@@ -24,3 +24,12 @@ build/
 # Logs
 *.log
 
+# Secrets / local env — NEVER commit real API keys.
+# (Exposed Gemini/Miriel keys get auto-blocked by the provider.)
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
+
