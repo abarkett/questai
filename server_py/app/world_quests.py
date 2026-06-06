@@ -1,9 +1,10 @@
 from __future__ import annotations
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, List
 from .types_quests import Quest, QuestObjective
 from .db import get_world_state
 from .engine.entities import get_world_entities_at
 from .types import Player
+from .world_entities import WORLD_ENTITIES
 
 
 QUEST_TEMPLATES = {
@@ -59,3 +60,31 @@ def is_quest_available(quest_id: str, player: Optional[Player] = None) -> Tuple[
     # Prerequisites are checked via Miriel context during generation
     # Templates take priority, so if we reach here, it's an AI quest
     return True, ""
+
+
+def _snapshot_quest_targets() -> Tuple[List[str], List[str]]:
+    """
+    Snapshot the monsters and obtainable items defined in the world *at import
+    time*, so generated quests only ever reference targets that actually exist
+    (and so runtime mutation of WORLD_ENTITIES can't shrink the catalog).
+    """
+    monsters: set[str] = set()
+    items: set[str] = set()
+    for entity_list in WORLD_ENTITIES.values():
+        for e in entity_list:
+            if getattr(e, "type", None) == "monster":
+                monsters.add(e.name)
+                for item in (getattr(e, "loot", None) or {}).keys():
+                    items.add(item)
+            elif getattr(e, "role", None) == "shop":
+                for item in (getattr(e, "inventory", None) or {}).keys():
+                    items.add(item)
+    return sorted(monsters), sorted(items)
+
+
+_VALID_MONSTERS, _VALID_ITEMS = _snapshot_quest_targets()
+
+
+def get_valid_quest_targets() -> Dict[str, List[str]]:
+    """Monsters/items that generated quests may reference so they stay completable."""
+    return {"monsters": list(_VALID_MONSTERS), "items": list(_VALID_ITEMS)}

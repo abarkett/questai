@@ -10,6 +10,42 @@ from ...db import upsert_player
 from copy import deepcopy
 
 
+def _dynamic_quest_id(player: Player, npc_id: str) -> str:
+    """
+    Id for this NPC's current dynamic quest. Stable within an offer→accept
+    cycle, and rotates as the player finishes quests so they never get the
+    same generated quest twice.
+    """
+    seed = len(player.completed_quests) + len(player.archived_quests)
+    short = player.player_id.replace("-", "")[:8]
+    return f"dyn_{npc_id}_{short}_{seed}"
+
+
+def _offer_dynamic_quest(player: Player, npc: dict, messages: list) -> bool:
+    """Generate and offer a fresh AI quest from this NPC. Returns True if offered."""
+    qid = _dynamic_quest_id(player, npc["id"])
+    # Never re-offer something already in the player's logs.
+    if (qid in player.active_quests or qid in player.completed_quests
+            or qid in player.archived_quests):
+        return False
+
+    from ...miriel_quests import get_or_generate_quest
+    quest, _is_generated = get_or_generate_quest(qid, player, npc["id"])
+    if not quest:
+        return False
+
+    from ...miriel_dialogue import generate_quest_offer_dialogue
+    ai_dialogue = generate_quest_offer_dialogue(
+        player=player,
+        quest_name=quest.name,
+        quest_description=quest.description,
+        npc_id=npc["id"],
+    )
+    messages.append(f'"{ai_dialogue}"' if ai_dialogue else f'"{quest.description}"')
+    messages.append(f"You may `accept {qid}`.")
+    return True
+
+
 def talk(player: Player, target: str) -> ActionResponse:
     npc = find_entity(player.location, target)
 
@@ -26,8 +62,10 @@ def talk(player: Player, target: str) -> ActionResponse:
         turned_in_quests = []
         for qid in list(player.completed_quests.keys()):
             quest = player.completed_quests[qid]
-            # Check if this quest is offered by this NPC and is completed
-            if qid in npc.get("quests", []) and quest.status == "completed":
+            # Turn in if this NPC gave the quest (templates via static list,
+            # dynamic quests via giver_npc_id) and it's completed.
+            if ((quest.giver_npc_id == npc["id"] or qid in npc.get("quests", []))
+                    and quest.status == "completed"):
                 # Turn in the quest
                 for item, quantity in quest.rewards.items():
                     player.inventory[item] = player.inventory.get(item, 0) + quantity
@@ -48,11 +86,11 @@ def talk(player: Player, target: str) -> ActionResponse:
             upsert_player(player)
 
     if npc.get("role") == "quest_giver":
-        # Check for active quests with this NPC
-        active_with_npc = []
-        for qid in npc.get("quests", []):
-            if qid in player.active_quests:
-                active_with_npc.append(player.active_quests[qid])
+        # Active quests with this NPC: templates via static list, dynamic via giver.
+        active_with_npc = [
+            q for q in player.active_quests.values()
+            if q.giver_npc_id == npc["id"] or q.quest_id in npc.get("quests", [])
+        ]
 
         if active_with_npc:
             # Player has active quest(s) with this NPC
@@ -98,7 +136,7 @@ def talk(player: Player, target: str) -> ActionResponse:
             print(f"[QUEST OFFER] Unavailable reasons: {unavailable_reasons}")
 
             if available:
-                # Offer the first available quest
+                # Offer the first available template quest
                 qid = available[0]
                 quest = QUEST_TEMPLATES.get(qid)
 
@@ -119,24 +157,24 @@ def talk(player: Player, target: str) -> ActionResponse:
                         messages.append(f'"{quest.description}"')
 
                     messages.append(f"You may `accept {qid}`.")
-            elif unavailable_reasons:
-                # Try to generate AI dialogue for quest unavailable
-                from ...miriel_dialogue import generate_npc_dialogue
-                ai_dialogue = generate_npc_dialogue(
-                    player=player,
-                    npc_id=npc["id"],
-                    npc_role="quest_giver",
-                    dialogue_type="quest_unavailable"
-                )
-
-                if ai_dialogue:
-                    messages.append(f'"{ai_dialogue}"')
-                else:
-                    # Fallback to context-aware dialogue from world state
-                    messages.append(f'"{unavailable_reasons[0]}"')
             else:
-                # Player has completed all quests
-                messages.append('"You have done all I asked. Thank you."')
+                # No template available -> offer a fresh, dynamically generated quest
+                # so the quest giver always has new work once templates run out.
+                offered = _offer_dynamic_quest(player, npc, messages)
+                if not offered:
+                    if unavailable_reasons:
+                        from ...miriel_dialogue import generate_npc_dialogue
+                        ai_dialogue = generate_npc_dialogue(
+                            player=player,
+                            npc_id=npc["id"],
+                            npc_role="quest_giver",
+                            dialogue_type="quest_unavailable"
+                        )
+                        messages.append(
+                            f'"{ai_dialogue}"' if ai_dialogue else f'"{unavailable_reasons[0]}"'
+                        )
+                    else:
+                        messages.append('"You have done all I asked. Thank you."')
 
     if npc.get("role") == "shop":
         if not npc.get("inventory"):

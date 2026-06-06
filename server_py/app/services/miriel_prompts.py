@@ -42,7 +42,19 @@ def build_quest_generation_prompt(
         recent = context['recent_actions'][:5]  # Last 5 actions
         recent_actions_str = ', '.join([a.get('action', 'unknown') for a in recent])
 
-    prompt = f"""Generate a medieval fantasy quest for player '{player.name}' (Level {player.level}).
+    # Only reference monsters that actually exist, so the quest is completable.
+    valid_targets = context.get('valid_targets', {}) or {}
+    valid_monsters = valid_targets.get('monsters') or ['Rat']
+    monsters_str = ', '.join(valid_monsters)
+    example_target = valid_monsters[0]
+
+    # Anti-repeat: discourage reusing quests the player has already seen.
+    seen_names = context.get('seen_quest_names', []) or []
+    avoid_str = '; '.join(seen_names[-12:]) if seen_names else 'None yet'
+
+    novelty_seed = context.get('novelty_seed', 0)
+
+    prompt = f"""Generate a UNIQUE medieval fantasy quest for player '{player.name}' (Level {player.level}).
 
 PLAYER CONTEXT:
 - Current Location: {context.get('location', 'unknown')}
@@ -54,27 +66,33 @@ PLAYER CONTEXT:
 WORLD STATE:
 {world_state_str}
 
-QUEST REQUIREMENTS:
-1. Quest must be appropriate for Level {player.level} player
-2. Connect to player's recent activities or faction relationships
-3. Use medieval fantasy tone (no modern references)
-4. Objectives should be achievable in the current game world
-5. Rewards should match difficulty and player level
-6. Quest should feel personal and contextual, not generic
+AVOID REPETITION — do NOT reuse the names, themes, targets, or framing of these
+quests the player has already seen:
+- {avoid_str}
 
-OBJECTIVE TYPES AVAILABLE:
-- "kill": Defeat specific monsters (target must be exact monster name like "Rat" or "Bandit")
-- "collect": Gather items from inventory or monster drops
+VARIETY:
+- Variation token: {novelty_seed} (use as a seed — make this quest clearly distinct from earlier ones)
+- Vary the name, framing, stakes, monster count, and rewards every time
+- Give it a memorable hook (a rumor, a character, or a twist) in the description
+
+QUEST REQUIREMENTS:
+1. Appropriate for a Level {player.level} player
+2. Connect to the player's recent activity, location, or faction standing
+3. Medieval fantasy tone (no modern references), personal and contextual — not generic
+4. Must be COMPLETABLE in the current world: only "kill" objectives are supported
+5. The "kill" target MUST be exactly one of these in-world monsters: {monsters_str}.
+   Do NOT invent monsters outside that list, or the quest becomes impossible.
+6. Rewards should match difficulty/level (coin, optionally healing_herb)
 
 Return ONLY valid JSON matching this exact schema (no additional text):
 {{
   "quest_id": "{quest_id_hint or 'generated_quest_' + str(player.level)}",
-  "name": "Quest Name Here",
-  "description": "Quest description from NPC perspective (1-2 sentences)",
+  "name": "Distinct Quest Name",
+  "description": "Quest hook from the NPC's perspective (1-2 sentences)",
   "objectives": [
     {{
       "type": "kill",
-      "target": "Exact Monster Name",
+      "target": "{example_target}",
       "required": 3
     }}
   ],
