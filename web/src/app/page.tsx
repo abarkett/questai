@@ -374,7 +374,7 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               <div className="flex flex-wrap gap-2 mt-1">
                 {location.exits.map((e: any) => (
                   <button key={e.to} className="px-2 py-1 border border-green-700 hover:bg-green-900 text-green-300 text-xs"
-                    onClick={() => onCommand(`go ${e.label}`)}>{e.label}</button>
+                    onClick={() => onCommand(`go ${e.label}`)}>{e.name ?? e.label}</button>
                 ))}
               </div>
             </Section>

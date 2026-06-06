@@ -10,18 +10,23 @@ from ..state_view import build_action_state
 def move(player: Player, to_label_or_id: str) -> ActionResponse:
     from_loc = get_location(player.location)
     needle = to_label_or_id.strip().lower()
+    needle_id = needle.replace(" ", "_")
 
     exit_match = None
     for e in from_loc.exits:
-        if e.label.lower() == needle or e.to.lower() == needle:
+        dest = get_location(e.to)
+        if (e.label.lower() == needle
+                or e.to.lower() == needle
+                or e.to.lower() == needle_id
+                or dest.name.lower() == needle):
             exit_match = e
             break
 
     if not exit_match:
-        exits = ", ".join([e.label for e in from_loc.exits]) if from_loc.exits else "none"
+        exits = ", ".join(get_location(e.to).name for e in from_loc.exits) if from_loc.exits else "none"
         return ActionResponse(
             ok=False,
-            error=f'No exit matching "{to_label_or_id}". Exits: {exits}'
+            error=f'You can\'t go to "{to_label_or_id}". You can go to: {exits}'
         )
 
     # Move player

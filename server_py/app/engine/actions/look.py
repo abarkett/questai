@@ -5,7 +5,7 @@ from ...world import get_location
 from ...db import get_world_state, upsert_player
 from ..entities import get_entities_at, serialize_entity, filter_current_player
 from ..visited import mark_visited
-from ..state_view import build_action_state
+from ..state_view import build_action_state, effective_description
 
 
 def look(player: Player) -> ActionResponse:
@@ -26,13 +26,13 @@ def look(player: Player) -> ActionResponse:
         f"You are at {loc.name}.",
     ]
     
-    # Phase 8: Add world state flavor to location descriptions
-    description = loc.description
+    # Context-aware description (quiet once cleared), plus world-state flavor.
+    description = effective_description(loc)
     if loc.id == "forest":
         is_infested = get_world_state("forest_infested") == "true"
         if is_infested:
             description += " The forest feels particularly dangerous today."
-    
+
     messages.append(description)
 
     if entities:
@@ -40,7 +40,8 @@ def look(player: Player) -> ActionResponse:
             "You see: " + ", ".join(e["name"] for e in entities)
         )
 
-    exits = ", ".join(e.label for e in loc.exits) if loc.exits else "none"
+    from ...world import get_location as _gl
+    exits = ", ".join(_gl(e.to).name for e in loc.exits) if loc.exits else "none"
     messages.append(f"Exits: {exits}")
 
     return ActionResponse(

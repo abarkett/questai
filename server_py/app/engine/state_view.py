@@ -12,6 +12,23 @@ from ..db import (
     get_player_party_invites,
 )
 from .entities import get_entities_at, filter_current_player
+from ..db import count_monsters_at
+
+
+def effective_description(loc) -> str:
+    """Use the 'cleared' description when no monsters remain at the location."""
+    if loc.cleared_description and count_monsters_at(loc.id) == 0:
+        return loc.cleared_description
+    return loc.description
+
+
+def _exits_view(loc) -> List[Dict[str, Any]]:
+    """Exits with raw label (for map direction) plus the destination's name (for display)."""
+    out = []
+    for e in loc.exits:
+        dest = get_location(e.to)
+        out.append({"to": e.to, "label": e.label, "name": dest.name})
+    return out
 
 
 def build_location_view_for_player(player: Player) -> Dict[str, Any]:
@@ -33,8 +50,8 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         "location": {
             "id": loc.id,
             "name": loc.name,
-            "description": loc.description,
-            "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
+            "description": effective_description(loc),
+            "exits": _exits_view(loc),
         },
         "entities": entities,
         "adjacent_scenes": get_adjacent_scenes_for_prefetch(loc.id),
@@ -56,8 +73,8 @@ def get_adjacent_scenes_for_prefetch(location_id: str) -> List[Dict[str, Any]]:
                 "location": {
                     "id": next_loc.id,
                     "name": next_loc.name,
-                    "description": next_loc.description,
-                    "exits": [{"to": e.to, "label": e.label} for e in next_loc.exits],
+                    "description": effective_description(next_loc),
+                    "exits": _exits_view(next_loc),
                 },
                 "entities": get_entities_at(next_loc.id),
             }
