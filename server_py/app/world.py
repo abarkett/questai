@@ -69,7 +69,32 @@ WORLD: Dict[str, Location] = {
         id="north_road",
         name="North Road",
         description="A dirt road leading toward darker trees.",
-        exits=[Exit(to="town_square", label="south"), Exit(to="forest", label="north")],
+        exits=[
+            Exit(to="town_square", label="south"),
+            Exit(to="forest", label="north"),
+            Exit(to="foothills", label="hills"),
+        ],
+    ),
+    "foothills": Location(
+        id="foothills",
+        name="Windy Foothills",
+        description="Grassy slopes rise toward jagged peaks. Loose scree shifts underfoot and shapes move among the rocks.",
+        cleared_description="Grassy slopes rise toward jagged peaks under a wide, empty sky.",
+        exits=[Exit(to="north_road", label="down"), Exit(to="mountain_pass", label="up")],
+    ),
+    "mountain_pass": Location(
+        id="mountain_pass",
+        name="Mountain Pass",
+        description="A knife-edge trail between cliffs. Wind screams through the gap and wings beat somewhere above.",
+        cleared_description="A knife-edge trail between cliffs, silent now but for the wind.",
+        exits=[Exit(to="foothills", label="down"), Exit(to="frozen_cave", label="cave")],
+    ),
+    "frozen_cave": Location(
+        id="frozen_cave",
+        name="Frozen Cave",
+        description="Walls of blue ice glitter in the dark. The cold bites deep, and something vast shifts in the glacier.",
+        cleared_description="Walls of blue ice glitter in the dark, still and silent.",
+        exits=[Exit(to="mountain_pass", label="out")],
     ),
     "forest": Location(
         id="forest",

@@ -64,25 +64,29 @@ def update_quest_progress(player: Player, target_name: str) -> list[str]:
         player_messages = []
         player_completed = []
 
+        from ...engine.quest_progress import current_objectives, completion_message, stage_message
+
         for quest_id, quest in p.active_quests.items():
             if quest.status != "accepted":
                 continue
 
-            for objective in quest.objectives:
+            objs = current_objectives(quest)
+            for objective in objs:
                 if objective.type == "kill" and objective.target.lower() == target_name.lower():
                     if objective.progress < objective.required:
                         objective.progress += 1
                         player_messages.append(f"Quest progress: {quest.name} ({objective.progress}/{objective.required})")
 
-                        # Check if all objectives are complete
-                        if all(obj.progress >= obj.required for obj in quest.objectives):
-                            quest.status = "completed"
-                            quest.completed_at = int(time.time() * 1000)
-                            player_completed.append(quest_id)
-                            if quest_id.startswith("arc__"):
-                                player_messages.append(f"Story task complete: {quest.name}. Continue with `choose`.")
+                        # Stage / completion check on the current stage's objectives.
+                        if all(obj.progress >= obj.required for obj in objs):
+                            if quest.stages and quest.current_stage < len(quest.stages) - 1:
+                                quest.current_stage += 1
+                                player_messages.append(stage_message(quest))
                             else:
-                                player_messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
+                                quest.status = "completed"
+                                quest.completed_at = int(time.time() * 1000)
+                                player_completed.append(quest_id)
+                                player_messages.append(completion_message(quest))
                         break
 
         # Move completed quests after iteration

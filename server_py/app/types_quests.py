@@ -15,12 +15,20 @@ class QuestObjective(BaseModel):
     progress: int = 0
 
 
+class QuestStage(BaseModel):
+    """One stage of a multi-stage quest; only the current stage is active."""
+    description: str
+    objectives: list[QuestObjective]
+
+
 class Quest(BaseModel):
     quest_id: str
     name: str
     description: str
-    objectives: list[QuestObjective]
-    rewards: Dict[str, int]          # item -> quantity
+    objectives: list[QuestObjective] = []   # single-stage quests
+    stages: list[QuestStage] = []           # multi-stage quests (overrides objectives)
+    current_stage: int = 0
+    rewards: Dict[str, int]          # item -> quantity (granted on final completion)
     repeatable: bool = False         # Can be taken again after completion
     status: QuestStatus = "offered"
     giver_npc_id: Optional[str] = None

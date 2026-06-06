@@ -224,6 +224,75 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             inflicts={"effect": "burn", "magnitude": 6, "turns": 4},
         ),
     ],
+    "foothills": [
+        Entity(
+            entity_id="ranger",
+            name="Mountain Ranger",
+            type="npc",
+            role="quest_giver",
+            quests=["cull_harpies", "the_frozen_throne"],
+        ),
+        Entity(
+            entity_id="rock_hound_1",
+            name="Rock Hound",
+            type="monster",
+            hp=16,
+            attack=4,
+            xp_reward=12,
+            loot={"coin": 5, "iron_ore": 1},
+        ),
+        Entity(
+            entity_id="mountain_goat_1",
+            name="Mountain Goat",
+            type="monster",
+            hp=10,
+            attack=2,
+            xp_reward=4,
+            loot={"coin": 1, "pelt": 1},
+        ),
+    ],
+    "mountain_pass": [
+        Entity(
+            entity_id="harpy_1",
+            name="Harpy",
+            type="monster",
+            hp=28,
+            attack=7,
+            xp_reward=28,
+            loot={"coin": 10, "pelt": 1},
+        ),
+        Entity(
+            entity_id="yeti_1",
+            name="Yeti",
+            type="monster",
+            hp=45,
+            attack=10,
+            xp_reward=50,
+            loot={"coin": 14, "frost_crystal": 1},
+        ),
+    ],
+    "frozen_cave": [
+        Entity(
+            entity_id="frost_wisp_1",
+            name="Frost Wisp",
+            type="monster",
+            hp=30,
+            attack=8,
+            xp_reward=32,
+            loot={"coin": 10, "frost_crystal": 1},
+            inflicts={"effect": "weaken", "magnitude": 2, "turns": 3},
+        ),
+        Entity(
+            entity_id="ice_troll_1",
+            name="Ice Troll",
+            type="monster",
+            hp=90,
+            attack=16,
+            xp_reward=160,
+            loot={"coin": 90, "frost_crystal": 3, "frostguard_plate": 1, "frost_brand": 1},
+            inflicts={"effect": "weaken", "magnitude": 3, "turns": 3},
+        ),
+    ],
 }
 
 
@@ -236,7 +305,7 @@ MONSTER_INFLICTS: Dict[str, dict] = {
 }
 
 # Most monsters are hostile; a few are passive and won't ambush you.
-_PASSIVE_MONSTERS = {"Rat", "Giant Beetle"}
+_PASSIVE_MONSTERS = {"Rat", "Giant Beetle", "Mountain Goat"}
 for _ents in WORLD_ENTITIES.values():
     for _e in _ents:
         if _e.type == "monster" and _e.name not in _PASSIVE_MONSTERS:

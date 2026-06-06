@@ -104,9 +104,10 @@ def talk(player: Player, target: str) -> ActionResponse:
 
         if active_with_npc:
             # Player has active quest(s) with this NPC
+            from ..quest_progress import current_objectives
             for quest in active_with_npc:
                 progress_strs = []
-                for obj in quest.objectives:
+                for obj in current_objectives(quest):
                     progress_strs.append(f"{obj.target}: {obj.progress}/{obj.required}")
                 progress = ", ".join(progress_strs)
                 messages.append(f'"How goes {quest.name}? ({progress})"')

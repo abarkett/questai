@@ -144,6 +144,16 @@ ITEMS: Dict[str, Item] = {
     "iron_ore": Item(item_id="iron_ore", name="Iron Ore", type="material", value=5),
     "mythril_ore": Item(item_id="mythril_ore", name="Mythril Ore", type="material", value=12),
     "ember_core": Item(item_id="ember_core", name="Ember Core", type="material", value=20),
+    "frost_crystal": Item(item_id="frost_crystal", name="Frost Crystal", type="material", value=16),
+    # ----- Frost-tier gear (mountains) -----
+    "frost_brand": Item(
+        item_id="frost_brand", name="Frost Brand", type="weapon", slot="weapon",
+        damage=12, value=180,
+    ),
+    "frostguard_plate": Item(
+        item_id="frostguard_plate", name="Frostguard Plate", type="armor", slot="armor",
+        defense=8, value=220,
+    ),
 }
 
 
@@ -161,6 +171,8 @@ RECIPES: Dict[str, Dict[str, Any]] = {
     "chainmail": {"inputs": {"mythril_ore": 3, "iron_ore": 3}, "qty": 1},
     "wyrmfang_blade": {"inputs": {"ember_core": 3, "mythril_ore": 5}, "qty": 1},
     "dragonscale_armor": {"inputs": {"ember_core": 4, "mythril_ore": 4}, "qty": 1},
+    "frost_brand": {"inputs": {"frost_crystal": 4, "mythril_ore": 3}, "qty": 1},
+    "frostguard_plate": {"inputs": {"frost_crystal": 5, "mythril_ore": 2}, "qty": 1},
 }
 
 # What each location yields when gathered.
@@ -172,6 +184,9 @@ LOCATION_RESOURCES: Dict[str, str] = {
     "cavern": "iron_ore",
     "underdeep": "mythril_ore",
     "magma_core": "ember_core",
+    "foothills": "iron_ore",
+    "mountain_pass": "frost_crystal",
+    "frozen_cave": "frost_crystal",
 }
 
 

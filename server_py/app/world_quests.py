@@ -1,6 +1,6 @@
 from __future__ import annotations
 from typing import Tuple, Optional, Dict, List
-from .types_quests import Quest, QuestObjective
+from .types_quests import Quest, QuestObjective, QuestStage
 from .db import get_world_state
 from .engine.entities import get_world_entities_at
 from .types import Player
@@ -59,6 +59,38 @@ QUEST_TEMPLATES = {
         ],
         rewards={"coin": 30, "steel_armor": 1},
         repeatable=True,
+    ),
+    # ----- Mountains -----
+    "cull_harpies": Quest(
+        quest_id="cull_harpies",
+        name="Skies of Talon",
+        description="Harpies harry the mountain pass. Bring one down.",
+        objectives=[
+            QuestObjective(type="kill", target="Harpy", required=1),
+        ],
+        rewards={"coin": 20, "frost_crystal": 1},
+        repeatable=True,
+    ),
+    # ----- Multi-stage (no per-stage reward) -----
+    "the_frozen_throne": Quest(
+        quest_id="the_frozen_throne",
+        name="The Frozen Throne",
+        description="An ancient cold stirs in the peaks. See it ended.",
+        stages=[
+            QuestStage(
+                description="Climb to the Frozen Cave.",
+                objectives=[QuestObjective(type="visit", target="frozen_cave", required=1)],
+            ),
+            QuestStage(
+                description="Gather 3 frost crystals from the heights.",
+                objectives=[QuestObjective(type="collect", target="frost_crystal", required=3)],
+            ),
+            QuestStage(
+                description="Slay the Ice Troll that guards the glacier.",
+                objectives=[QuestObjective(type="kill", target="Ice Troll", required=1)],
+            ),
+        ],
+        rewards={"coin": 120, "frostguard_plate": 1},
     ),
 }
 

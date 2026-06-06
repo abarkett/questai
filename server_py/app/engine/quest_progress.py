@@ -5,13 +5,37 @@ import time
 from ..types import Player
 
 
+def current_objectives(quest) -> list:
+    """The objectives that are currently active (the current stage, if staged)."""
+    if getattr(quest, "stages", None):
+        if 0 <= quest.current_stage < len(quest.stages):
+            return quest.stages[quest.current_stage].objectives
+        return []
+    return quest.objectives
+
+
+def _all_collect_objectives(quest) -> list:
+    objs = list(quest.objectives or [])
+    for s in (getattr(quest, "stages", None) or []):
+        objs.extend(s.objectives)
+    return objs
+
+
+def completion_message(quest) -> str:
+    if quest.quest_id.startswith("arc__"):
+        return f"Story task complete: {quest.name}. Continue with `choose`."
+    return f"Quest completed: {quest.name}! Return to the quest giver to turn it in."
+
+
+def stage_message(quest) -> str:
+    stage = quest.stages[quest.current_stage]
+    return f"Stage complete! Next: {stage.description}"
+
+
 def consume_quest_items(player: Player, quest) -> list[str]:
-    """
-    Remove the items a quest's collect objectives required, on turn-in.
-    Returns messages naming what was handed over.
-    """
+    """Remove items the quest's collect objectives required, on turn-in."""
     messages: list[str] = []
-    for o in quest.objectives:
+    for o in _all_collect_objectives(quest):
         if o.type == "collect":
             have = player.inventory.get(o.target, 0)
             remaining = have - o.required
@@ -25,37 +49,37 @@ def consume_quest_items(player: Player, quest) -> list[str]:
 
 def refresh_quests(player: Player) -> list[str]:
     """
-    Recompute progress for collect/visit objectives from the player's current
-    state and complete any quest whose objectives are all met. Kill objectives
-    are handled at the moment of the kill (in attack), so they're left as-is.
-
-    Returns player-facing messages for newly completed quests.
+    Recompute collect/visit progress for active quests' current stage, advancing
+    stages and completing quests as objectives are met. Kill objectives are
+    handled at the moment of the kill (in attack). Returns player-facing messages.
     """
     messages: list[str] = []
     newly_completed: list[str] = []
     visited = set(player.visited_locations) | {player.location}
 
-    for quest_id, quest in player.active_quests.items():
+    for quest_id, quest in list(player.active_quests.items()):
         if quest.status != "accepted":
             continue
 
-        for obj in quest.objectives:
-            if obj.type == "collect":
-                obj.progress = min(obj.required, player.inventory.get(obj.target, 0))
-            elif obj.type == "visit":
-                if obj.target in visited:
-                    obj.progress = obj.required
+        while True:
+            objs = current_objectives(quest)
+            for obj in objs:
+                if obj.type == "collect":
+                    obj.progress = min(obj.required, player.inventory.get(obj.target, 0))
+                elif obj.type == "visit":
+                    if obj.target in visited:
+                        obj.progress = obj.required
 
-        if all(o.progress >= o.required for o in quest.objectives):
-            quest.status = "completed"
-            quest.completed_at = int(time.time() * 1000)
-            newly_completed.append(quest_id)
-            if quest_id.startswith("arc__"):
-                messages.append(f"Story task complete: {quest.name}. Continue with `choose`.")
-            else:
-                messages.append(
-                    f"Quest completed: {quest.name}! Return to the quest giver to turn it in."
-                )
+            if objs and all(o.progress >= o.required for o in objs):
+                if quest.stages and quest.current_stage < len(quest.stages) - 1:
+                    quest.current_stage += 1
+                    messages.append(stage_message(quest))
+                    continue  # re-evaluate the new stage (may already be satisfied)
+                quest.status = "completed"
+                quest.completed_at = int(time.time() * 1000)
+                newly_completed.append(quest_id)
+                messages.append(completion_message(quest))
+            break
 
     for quest_id in newly_completed:
         player.completed_quests[quest_id] = player.active_quests.pop(quest_id)

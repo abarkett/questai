@@ -5,7 +5,9 @@ from ..state_view import build_action_state
 
 
 def _quest_view(quest) -> dict:
-    return {
+    from ..quest_progress import current_objectives
+    objs = current_objectives(quest)
+    view = {
         "quest_id": quest.quest_id,
         "name": quest.name,
         "description": quest.description,
@@ -17,10 +19,15 @@ def _quest_view(quest) -> dict:
                 "progress": o.progress,
                 "required": o.required,
             }
-            for o in quest.objectives
+            for o in objs
         ],
         "rewards": dict(quest.rewards),
     }
+    if getattr(quest, "stages", None):
+        view["stage"] = quest.current_stage + 1
+        view["total_stages"] = len(quest.stages)
+        view["stage_description"] = quest.stages[quest.current_stage].description
+    return view
 
 
 def journal(player: Player) -> ActionResponse:

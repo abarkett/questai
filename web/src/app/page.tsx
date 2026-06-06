@@ -362,16 +362,25 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
             {player.active_quests && Object.keys(player.active_quests).length > 0 && (
               <Section title="Active Quests">
-                {Object.values(player.active_quests).map((q: any) => (
-                  <div key={q.quest_id} className="text-xs mb-1">
-                    <div className="font-semibold">{q.name}</div>
-                    {q.objectives.map((obj: any, i: number) => (
-                      <div key={i} className={obj.progress >= obj.required ? "text-green-400" : "text-green-700"}>
-                        {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
-                      </div>
-                    ))}
-                  </div>
-                ))}
+                {Object.values(player.active_quests).map((q: any) => {
+                  const staged = q.stages && q.stages.length > 0;
+                  const objs = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
+                  return (
+                    <div key={q.quest_id} className="text-xs mb-1">
+                      <div className="font-semibold">{q.name}</div>
+                      {staged && (
+                        <div className="text-green-600">
+                          Stage {q.current_stage + 1}/{q.stages.length}: {q.stages[q.current_stage]?.description}
+                        </div>
+                      )}
+                      {objs.map((obj: any, i: number) => (
+                        <div key={i} className={obj.progress >= obj.required ? "text-green-400" : "text-green-700"}>
+                          {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </Section>
             )}
 
@@ -771,6 +780,11 @@ export default function Page() {
                       <div className="text-[11px] text-green-700 mb-1">
                         {q.description}
                       </div>
+                      {q.total_stages && (
+                        <div className="text-[11px] text-green-500 mb-1">
+                          Stage {q.stage}/{q.total_stages}: {q.stage_description}
+                        </div>
+                      )}
                       {q.objectives?.map((o: any, i: number) => {
                         const done = o.progress >= o.required;
                         return (

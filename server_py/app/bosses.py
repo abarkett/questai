@@ -51,6 +51,13 @@ BOSS_MECHANICS: Dict[str, dict] = {
              "message": "The Bone Knight raises a fallen warrior to fight at its side!"},
         ],
     },
+    "Ice Troll": {
+        "regen_per_hit": 4,
+        "phases": [
+            {"at": 0.4, "enrage_mult": 1.5, "heal_frac": 0.1,
+             "message": "The Ice Troll bellows, ice knitting over its wounds as it lashes out harder!"},
+        ],
+    },
 }
 
 
