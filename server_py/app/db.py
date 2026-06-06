@@ -1177,7 +1177,7 @@ def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
         cur = conn.cursor()
         cur.execute("BEGIN IMMEDIATE")
         row = cur.execute(
-            "SELECT hp, name, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
+            "SELECT hp, name, attack, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
             (instance_id,),
         ).fetchone()
         if row is None:
@@ -1192,6 +1192,7 @@ def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
                 "killed": True,
                 "name": row["name"],
                 "hp": 0,
+                "attack": row["attack"],
                 "location_id": row["location_id"],
                 "xp_reward": row["xp_reward"],
                 "loot": json.loads(row["loot_json"] or "{}"),
@@ -1203,6 +1204,7 @@ def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
             "killed": False,
             "name": row["name"],
             "hp": new_hp,
+            "attack": row["attack"],
             "location_id": row["location_id"],
         }
     finally:

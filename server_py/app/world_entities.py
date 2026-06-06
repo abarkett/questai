@@ -43,5 +43,45 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             xp_reward=2,
             loot={"coin": 1, "healing_herb": 1},
         ),
-    ]
+    ],
+    "deep_forest": [
+        Entity(
+            entity_id="goblin_1",
+            name="Goblin",
+            type="monster",
+            hp=12,
+            attack=3,
+            xp_reward=8,
+            loot={"coin": 3, "healing_herb": 1},
+        ),
+        Entity(
+            entity_id="wolf_1",
+            name="Wolf",
+            type="monster",
+            hp=16,
+            attack=4,
+            xp_reward=12,
+            loot={"coin": 4},
+        ),
+    ],
+    "cavern": [
+        Entity(
+            entity_id="cave_spider_1",
+            name="Cave Spider",
+            type="monster",
+            hp=20,
+            attack=5,
+            xp_reward=18,
+            loot={"coin": 6, "healing_herb": 2},
+        ),
+        Entity(
+            entity_id="cave_troll_1",
+            name="Cave Troll",
+            type="monster",
+            hp=40,
+            attack=8,
+            xp_reward=50,
+            loot={"coin": 25, "healing_herb": 3},
+        ),
+    ],
 }

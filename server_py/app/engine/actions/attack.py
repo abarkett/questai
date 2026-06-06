@@ -163,9 +163,17 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             from ...world_rules import track_monster_survival
             track_monster_survival(player.location)
         else:
-            retaliation = 2
+            retaliation = result.get("attack") or 2
             player.hp -= retaliation
             messages.append(f"The {result['name']} hits you for {retaliation} damage.")
+
+            if player.hp <= 0:
+                player.hp = player.max_hp
+                player.location = RESPAWN_LOCATION
+                player.last_defeated_at = current_time_ms
+                messages.append(
+                    f"You were defeated by the {result['name']} and wake up back in the Town Square."
+                )
 
         upsert_player(player)
 

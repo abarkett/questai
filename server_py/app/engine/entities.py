@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import List, Dict, Any
 
 from ..types_entities import Entity
@@ -78,18 +79,36 @@ def get_world_entities_at(location_id: str) -> List[Entity]:
     return entities
 
 
+# Monsters that existed before instance-tracked seeding. Used only to migrate
+# older saves so their (possibly slain) rats are never resurrected.
+_LEGACY_SEEDED_IDS = {"rat_1", "rat_2"}
+
+
 def seed_world_monsters() -> None:
     """
-    Populate the persistent monster table from the static catalog, once.
+    Spawn any catalog monster instance that has never been seeded before.
 
-    Guarded by a world_state flag so monsters persist across restarts (a slain
-    monster stays slain until the respawn rules bring it back).
+    Tracking *which instances* have been seeded (rather than a single boolean)
+    lets new content land in existing worlds while guaranteeing a slain monster
+    is never resurrected: a killed instance stays in the seeded set, so it is
+    only ever brought back by the respawn rules.
     """
-    if get_world_state("monsters_seeded") == "true":
-        return
+    seeded_raw = get_world_state("seeded_monster_instances")
+    if seeded_raw:
+        try:
+            seeded = set(json.loads(seeded_raw))
+        except Exception:
+            seeded = set()
+    elif get_world_state("monsters_seeded") == "true":
+        # Migrate older saves: original rats are already accounted for.
+        seeded = set(_LEGACY_SEEDED_IDS)
+    else:
+        seeded = set()
+
+    changed = False
     for location_id, entity_list in WORLD_ENTITIES.items():
         for e in entity_list:
-            if e.type == "monster":
+            if e.type == "monster" and e.entity_id not in seeded:
                 spawn_monster(
                     instance_id=e.entity_id,
                     location_id=location_id,
@@ -100,7 +119,11 @@ def seed_world_monsters() -> None:
                     xp_reward=e.xp_reward or 0,
                     loot=e.loot or {},
                 )
-    set_world_state("monsters_seeded", "true")
+                seeded.add(e.entity_id)
+                changed = True
+
+    if changed or seeded_raw is None:
+        set_world_state("seeded_monster_instances", json.dumps(sorted(seeded)))
 
 
 def get_entities_at(location_id: str) -> List[Dict[str, Any]]:

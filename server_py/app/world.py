@@ -51,7 +51,19 @@ WORLD: Dict[str, Location] = {
         id="forest",
         name="Forest",
         description="Tall pines and shadows. Something watches from afar.",
-        exits=[Exit(to="north_road", label="south")],
+        exits=[Exit(to="north_road", label="south"), Exit(to="deep_forest", label="deeper")],
+    ),
+    "deep_forest": Location(
+        id="deep_forest",
+        name="Deep Forest",
+        description="The canopy closes overhead. Twisted roots and the growls of larger beasts fill the gloom.",
+        exits=[Exit(to="forest", label="back"), Exit(to="cavern", label="cave")],
+    ),
+    "cavern": Location(
+        id="cavern",
+        name="Echoing Cavern",
+        description="A damp cave mouth breathes cold air. Bones litter the floor and something massive stirs in the dark.",
+        exits=[Exit(to="deep_forest", label="out")],
     ),
 }
 
