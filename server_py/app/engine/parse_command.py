@@ -96,6 +96,18 @@ def parse_command(text: str) -> Dict[str, Any]:
                 "item": " ".join(rest)
             }
         }
+
+    # ---- SELL ----
+    if verb == "sell" and rest:
+        return {"action": "sell", "args": {"item": " ".join(rest)}}
+
+    # ---- CRAFT ----
+    if verb in ("craft", "make") and rest:
+        return {"action": "craft", "args": {"item": " ".join(rest)}}
+
+    # ---- GATHER ----
+    if verb in ("gather", "forage", "mine", "harvest"):
+        return {"action": "gather"}
     
     if verb == "accept" and rest:
         return {

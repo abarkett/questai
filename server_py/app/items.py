@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from typing import Dict
+from typing import Any, Dict
 from pydantic import BaseModel
 from typing import Literal
 
 
-ItemType = Literal["consumable", "currency", "weapon", "armor"]
+ItemType = Literal["consumable", "currency", "weapon", "armor", "material"]
 EquipSlot = Literal["weapon", "armor"]
 
 
@@ -68,8 +68,40 @@ ITEMS: Dict[str, Item] = {
         defense=4,
         value=40,
     ),
+    # ----- Consumables -----
+    "healing_potion": Item(
+        item_id="healing_potion",
+        name="Healing Potion",
+        type="consumable",
+        heal=8,
+        value=10,
+    ),
+    # ----- Crafting materials -----
+    "herb_bundle": Item(item_id="herb_bundle", name="Herb Bundle", type="material", value=2),
+    "pelt": Item(item_id="pelt", name="Wolf Pelt", type="material", value=4),
+    "iron_ore": Item(item_id="iron_ore", name="Iron Ore", type="material", value=5),
+}
+
+
+# Crafting recipes: output_id -> {"inputs": {material: qty}, "qty": output_count}
+RECIPES: Dict[str, Dict[str, Any]] = {
+    "healing_potion": {"inputs": {"herb_bundle": 3}, "qty": 1},
+    "leather_armor": {"inputs": {"pelt": 3}, "qty": 1},
+    "iron_sword": {"inputs": {"iron_ore": 3}, "qty": 1},
+    "steel_armor": {"inputs": {"iron_ore": 5, "pelt": 2}, "qty": 1},
+}
+
+# What each location yields when gathered.
+LOCATION_RESOURCES: Dict[str, str] = {
+    "forest": "herb_bundle",
+    "deep_forest": "pelt",
+    "cavern": "iron_ore",
 }
 
 
 def get_item(item_id: str) -> Item | None:
     return ITEMS.get(item_id)
+
+
+def get_recipe(item_id: str) -> Dict[str, Any] | None:
+    return RECIPES.get(item_id)

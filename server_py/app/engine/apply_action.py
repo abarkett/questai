@@ -28,6 +28,9 @@ from .actions.leave_party import leave_party
 from .actions.party_status import party_status
 from .actions.reputation import reputation
 from .actions.equip import equip, unequip
+from .actions.sell import sell
+from .actions.craft import craft
+from .actions.gather import gather
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -110,6 +113,12 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = equip(player, req.args.item)
     elif req.action == "unequip":
         result = unequip(player, req.args.slot)
+    elif req.action == "sell":
+        result = sell(player, req.args.item)
+    elif req.action == "craft":
+        result = craft(player, req.args.item)
+    elif req.action == "gather":
+        result = gather(player)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 

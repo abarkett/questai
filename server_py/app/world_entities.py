@@ -14,6 +14,8 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             inventory={
                 "healing_herb": {"price": 5},
                 "torch": {"price": 2},
+                "leather_armor": {"price": 15},
+                "iron_sword": {"price": 20},
             },
         ),
         Entity(

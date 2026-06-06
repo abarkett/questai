@@ -201,6 +201,29 @@ class UnequipReq(BaseModel):
     args: UnequipArgs
 
 
+class SellArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class SellReq(BaseModel):
+    action: Literal["sell"]
+    args: SellArgs
+
+
+class CraftArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class CraftReq(BaseModel):
+    action: Literal["craft"]
+    args: CraftArgs
+
+
+class GatherReq(BaseModel):
+    action: Literal["gather"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -224,6 +247,9 @@ ActionRequest = Union[
     ReputationReq,
     EquipReq,
     UnequipReq,
+    SellReq,
+    CraftReq,
+    GatherReq,
 ]
 
 
