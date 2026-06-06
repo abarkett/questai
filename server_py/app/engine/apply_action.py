@@ -144,6 +144,18 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
+    # Refresh collect/visit quest objectives from current state (kills are
+    # progressed at the moment of the kill). Surface any new completions.
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status",
+                                        "reputation", "list_trades", "story", "map",
+                                        "bestiary", "journal"]:
+        from .quest_progress import refresh_quests
+        quest_msgs = refresh_quests(player)
+        if quest_msgs:
+            from ..db import upsert_player as _upsert
+            _upsert(player)
+            result.messages.extend(quest_msgs)
+
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
     if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map", "bestiary", "journal"]:
         new_turn = increment_world_turn()

@@ -13,18 +13,53 @@ QUEST_TEMPLATES = {
         name="A Rat Problem",
         description="The forest has been overrun by rats. Deal with them.",
         objectives=[
-            QuestObjective(
-                type="kill",
-                target="Rat",
-                required=2,
-            )
+            QuestObjective(type="kill", target="Rat", required=2),
         ],
-        rewards={
-            "coin": 5,
-            "healing_herb": 1,
-        },
+        rewards={"coin": 5, "healing_herb": 1},
         repeatable=True,
-    )
+    ),
+    # ----- Collect -----
+    "gather_herbs": Quest(
+        quest_id="gather_herbs",
+        name="Healer's Request",
+        description="The temple needs herbs. Gather 3 herb bundles from the wilds.",
+        objectives=[
+            QuestObjective(type="collect", target="herb_bundle", required=3),
+        ],
+        rewards={"coin": 10, "healing_potion": 1},
+        repeatable=True,
+    ),
+    "arm_yourself": Quest(
+        quest_id="arm_yourself",
+        name="Arm Yourself",
+        description="A real adventurer needs steel. Acquire an iron sword (loot or craft one).",
+        objectives=[
+            QuestObjective(type="collect", target="iron_sword", required=1),
+        ],
+        rewards={"coin": 25},
+    ),
+    # ----- Visit -----
+    "explore_cavern": Quest(
+        quest_id="explore_cavern",
+        name="Into the Deep",
+        description="Scout the Echoing Cavern and report back.",
+        objectives=[
+            QuestObjective(type="visit", target="cavern", required=1),
+        ],
+        rewards={"coin": 20, "healing_herb": 2},
+    ),
+    # ----- Multi-objective -----
+    "thin_the_pack": Quest(
+        quest_id="thin_the_pack",
+        name="Thin the Pack",
+        description="The wolves grow bold. Cull 2 wolves and bring back 3 pelts.",
+        objectives=[
+            QuestObjective(type="kill", target="Wolf", required=2),
+            QuestObjective(type="collect", target="pelt", required=3),
+        ],
+        rewards={"coin": 30, "steel_armor": 1},
+        repeatable=True,
+    ),
 }
 
 

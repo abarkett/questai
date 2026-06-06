@@ -7,7 +7,9 @@ QuestStatus = Literal["offered", "accepted", "completed", "turned_in", "archived
 
 
 class QuestObjective(BaseModel):
-    type: Literal["kill", "collect"]
+    # kill: defeat N of a monster; collect: possess N of an item;
+    # visit: reach a location (target is a location id), required is 1.
+    type: Literal["kill", "collect", "visit"]
     target: str
     required: int
     progress: int = 0

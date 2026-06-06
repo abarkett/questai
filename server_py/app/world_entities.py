@@ -24,7 +24,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             name="Town Warden",
             type="npc",
             role="quest_giver",
-            quests=["rat_problem"],
+            quests=["rat_problem", "explore_cavern"],
         ),
         Entity(
             entity_id="wanderer",
@@ -39,6 +39,24 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             name="Temple Priest",
             type="npc",
             role="healer",
+        ),
+    ],
+    "tavern": [
+        Entity(
+            entity_id="scholar",
+            name="Wandering Scholar",
+            type="npc",
+            role="quest_giver",
+            quests=["gather_herbs", "arm_yourself"],
+        ),
+    ],
+    "north_road": [
+        Entity(
+            entity_id="huntmaster",
+            name="Huntmaster",
+            type="npc",
+            role="quest_giver",
+            quests=["thin_the_pack"],
         ),
     ],
     "old_mill": [

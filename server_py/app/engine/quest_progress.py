@@ -1,0 +1,42 @@
+from __future__ import annotations
+
+import time
+
+from ..types import Player
+
+
+def refresh_quests(player: Player) -> list[str]:
+    """
+    Recompute progress for collect/visit objectives from the player's current
+    state and complete any quest whose objectives are all met. Kill objectives
+    are handled at the moment of the kill (in attack), so they're left as-is.
+
+    Returns player-facing messages for newly completed quests.
+    """
+    messages: list[str] = []
+    newly_completed: list[str] = []
+    visited = set(player.visited_locations) | {player.location}
+
+    for quest_id, quest in player.active_quests.items():
+        if quest.status != "accepted":
+            continue
+
+        for obj in quest.objectives:
+            if obj.type == "collect":
+                obj.progress = min(obj.required, player.inventory.get(obj.target, 0))
+            elif obj.type == "visit":
+                if obj.target in visited:
+                    obj.progress = obj.required
+
+        if all(o.progress >= o.required for o in quest.objectives):
+            quest.status = "completed"
+            quest.completed_at = int(time.time() * 1000)
+            newly_completed.append(quest_id)
+            messages.append(
+                f"Quest completed: {quest.name}! Return to the quest giver to turn it in."
+            )
+
+    for quest_id in newly_completed:
+        player.completed_quests[quest_id] = player.active_quests.pop(quest_id)
+
+    return messages
