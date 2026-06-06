@@ -24,6 +24,36 @@ from ..world import get_location
 MONSTER_RESPAWN_MS = 5 * 60 * 1000
 
 
+def world_level() -> int:
+    """The highest player level seen — monsters scale to it as players grow."""
+    try:
+        return max(1, int(get_world_state("world_level") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def scale_stats(base_hp: int, base_attack: int, base_xp: int, level: int) -> tuple[int, int, int]:
+    """
+    Gently scale a monster's stats to the world level so basic foes don't stay
+    trivial forever (a rat grows from 5 HP toward ~10-15) while never exploding.
+    """
+    hp_mult = min(3.0, 1 + 0.06 * (level - 1))
+    atk_mult = min(2.5, 1 + 0.035 * (level - 1))
+    return (
+        max(1, round(base_hp * hp_mult)),
+        max(1, round(base_attack * atk_mult)),
+        max(0, round(base_xp * hp_mult)),
+    )
+
+
+def _spawn_scaled(entity_id: str, location_id: str, e) -> None:
+    hp, atk, xp = scale_stats(e.hp or 1, e.attack or 1, e.xp_reward or 0, world_level())
+    spawn_monster(
+        instance_id=entity_id, location_id=location_id, name=e.name,
+        hp=hp, max_hp=hp, attack=atk, xp_reward=xp, loot=e.loot or {},
+    )
+
+
 def _death_key(instance_id: str) -> str:
     return f"died_{instance_id}"
 
@@ -58,16 +88,7 @@ def respawn_due_monsters() -> int:
                     continue
             # No death stamp (killed before respawn tracking, or otherwise
             # untracked): it's been gone a while, so bring it back now.
-            spawn_monster(
-                instance_id=e.entity_id,
-                location_id=location_id,
-                name=e.name,
-                hp=e.hp or 1,
-                max_hp=e.hp or 1,
-                attack=e.attack or 1,
-                xp_reward=e.xp_reward or 0,
-                loot=e.loot or {},
-            )
+            _spawn_scaled(e.entity_id, location_id, e)
             set_world_state(_death_key(e.entity_id), "")
             respawned += 1
     return respawned
@@ -166,16 +187,7 @@ def seed_world_monsters() -> None:
     for location_id, entity_list in WORLD_ENTITIES.items():
         for e in entity_list:
             if e.type == "monster" and e.entity_id not in seeded:
-                spawn_monster(
-                    instance_id=e.entity_id,
-                    location_id=location_id,
-                    name=e.name,
-                    hp=e.hp or 1,
-                    max_hp=e.hp or 1,
-                    attack=e.attack or 1,
-                    xp_reward=e.xp_reward or 0,
-                    loot=e.loot or {},
-                )
+                _spawn_scaled(e.entity_id, location_id, e)
                 seeded.add(e.entity_id)
                 changed = True
 

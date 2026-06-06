@@ -73,9 +73,16 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         return ActionResponse(ok=False, error="Unknown player_id.")
 
     # Presence: record that this player is active right now.
-    from ..db import touch_last_seen
+    from ..db import touch_last_seen, get_world_state, set_world_state
     from ..presence import now_ms
     touch_last_seen(player.player_id, now_ms())
+
+    # Track the world's threat level (highest player level) so respawns scale.
+    try:
+        if player.level > int(get_world_state("world_level") or 1):
+            set_world_state("world_level", str(player.level))
+    except (TypeError, ValueError):
+        set_world_state("world_level", str(player.level))
 
     # Bring back any monsters whose respawn timer has elapsed.
     from .entities import respawn_due_monsters
