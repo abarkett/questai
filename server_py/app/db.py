@@ -159,6 +159,17 @@ def init_db() -> None:
               expires_at INTEGER NOT NULL
             );
 
+            -- Persistent, shared scene-image cache (single shared world).
+            -- Keyed by a hash of the render prompt so the same place yields the
+            -- same image for every player and across sessions/restarts.
+            CREATE TABLE IF NOT EXISTS scene_images (
+              cache_key TEXT PRIMARY KEY,
+              prompt TEXT NOT NULL,
+              image_data TEXT NOT NULL,         -- data:image/...;base64,... URI
+              model TEXT,
+              created_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
 
@@ -1040,6 +1051,36 @@ def get_cached_miriel_content(cache_key: str) -> Optional[str]:
             (cache_key, now),
         ).fetchone()
         return row["content_json"] if row else None
+    finally:
+        conn.close()
+
+
+# ===== Scene image cache (persistent, shared across players) =====
+
+def get_cached_scene_image(cache_key: str) -> Optional[str]:
+    """Return a cached scene image (data URI) for a prompt hash, or None."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT image_data FROM scene_images WHERE cache_key = ?", (cache_key,)
+        ).fetchone()
+        return row["image_data"] if row else None
+    finally:
+        conn.close()
+
+
+def cache_scene_image(cache_key: str, prompt: str, image_data: str, model: Optional[str]) -> None:
+    """Persist a rendered scene image so the same place reuses it everywhere."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO scene_images (cache_key, prompt, image_data, model, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (cache_key, prompt, image_data, model, int(time.time() * 1000)),
+        )
+        conn.commit()
     finally:
         conn.close()
 
