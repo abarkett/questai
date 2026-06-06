@@ -28,7 +28,20 @@ WORLD: Dict[str, Location] = {
             Exit(to="market", label="market"),
             Exit(to="temple", label="temple"),
             Exit(to="north_road", label="north"),
+            Exit(to="riverside", label="east"),
         ],
+    ),
+    "riverside": Location(
+        id="riverside",
+        name="Riverside",
+        description="A reedy bank where a slow river glints in the sun. An old waterwheel creaks downstream.",
+        exits=[Exit(to="town_square", label="west"), Exit(to="old_mill", label="mill")],
+    ),
+    "old_mill": Location(
+        id="old_mill",
+        name="Abandoned Mill",
+        description="A rotting mill leans over the water. Rope, sacks, and the smell of someone who shouldn't be here.",
+        exits=[Exit(to="riverside", label="out")],
     ),
     "temple": Location(
         id="temple",
@@ -58,7 +71,23 @@ WORLD: Dict[str, Location] = {
         id="forest",
         name="Forest",
         description="Tall pines and shadows. Something watches from afar.",
-        exits=[Exit(to="north_road", label="south"), Exit(to="deep_forest", label="deeper")],
+        exits=[
+            Exit(to="north_road", label="south"),
+            Exit(to="deep_forest", label="deeper"),
+            Exit(to="thornwood", label="west"),
+        ],
+    ),
+    "thornwood": Location(
+        id="thornwood",
+        name="Thornwood",
+        description="A tangle of black brambles and broken light. The thorns seem to lean inward as you pass.",
+        exits=[Exit(to="forest", label="back"), Exit(to="spider_hollow", label="hollow")],
+    ),
+    "spider_hollow": Location(
+        id="spider_hollow",
+        name="Spider Hollow",
+        description="A web-choked gully thick with silk. A dark tunnel at the far end breathes cold cave air.",
+        exits=[Exit(to="thornwood", label="back"), Exit(to="cavern", label="tunnel")],
     ),
     "deep_forest": Location(
         id="deep_forest",
@@ -70,7 +99,11 @@ WORLD: Dict[str, Location] = {
         id="cavern",
         name="Echoing Cavern",
         description="A damp cave mouth breathes cold air. Bones litter the floor and something massive stirs in the dark.",
-        exits=[Exit(to="deep_forest", label="out"), Exit(to="underdeep", label="descend")],
+        exits=[
+            Exit(to="deep_forest", label="out"),
+            Exit(to="spider_hollow", label="hollow"),
+            Exit(to="underdeep", label="descend"),
+        ],
     ),
     "underdeep": Location(
         id="underdeep",

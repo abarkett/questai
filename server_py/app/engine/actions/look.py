@@ -2,13 +2,16 @@ from __future__ import annotations
 
 from ...types import Player, ActionResponse
 from ...world import get_location
-from ...db import get_world_state
+from ...db import get_world_state, upsert_player
 from ..entities import get_entities_at, serialize_entity, filter_current_player
+from ..visited import mark_visited
 from ..state_view import build_action_state
 
 
 def look(player: Player) -> ActionResponse:
     loc = get_location(player.location)
+    if mark_visited(player):
+        upsert_player(player)
     entities = get_entities_at(player.location)
     entities = filter_current_player(entities, player.player_id)
 

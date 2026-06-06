@@ -166,6 +166,8 @@ RECIPES: Dict[str, Dict[str, Any]] = {
 # What each location yields when gathered.
 LOCATION_RESOURCES: Dict[str, str] = {
     "forest": "herb_bundle",
+    "riverside": "herb_bundle",
+    "thornwood": "pelt",
     "deep_forest": "pelt",
     "cavern": "iron_ore",
     "underdeep": "mythril_ore",

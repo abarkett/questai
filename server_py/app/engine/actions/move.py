@@ -26,6 +26,8 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
 
     # Move player
     player.location = exit_match.to
+    from ..visited import mark_visited
+    mark_visited(player)
     upsert_player(player)
 
     to_loc = get_location(player.location)

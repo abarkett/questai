@@ -13,6 +13,47 @@ type Line = {
 // cache survives re-renders
 const sceneImageCache = new Map<string, string>();
 
+// ---- Map thumbnails (downscaled scene art, persisted in localStorage) ----
+const THUMBS_KEY = "location_thumbs";
+
+function loadThumbs(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(THUMBS_KEY) || "{}");
+  } catch {
+    return {};
+  }
+}
+
+function saveThumbs(thumbs: Record<string, string>) {
+  try {
+    localStorage.setItem(THUMBS_KEY, JSON.stringify(thumbs));
+  } catch {
+    // localStorage full / unavailable — thumbnails are best-effort.
+  }
+}
+
+// Shrink a full scene image to a tiny JPEG so the whole map fits in localStorage.
+function downscale(dataUri: string, w = 160, h = 90): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => {
+      try {
+        const c = document.createElement("canvas");
+        c.width = w;
+        c.height = h;
+        const ctx = c.getContext("2d");
+        if (!ctx) return resolve(dataUri);
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(c.toDataURL("image/jpeg", 0.6));
+      } catch {
+        resolve(dataUri);
+      }
+    };
+    img.onerror = () => resolve(dataUri);
+    img.src = dataUri;
+  });
+}
+
 
 function computeSceneKeyFromResponse(resp: any) {
   const state = resp?.state;
@@ -283,7 +324,18 @@ export default function Page() {
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [lastState, setLastState] = useState<any | null>(null);
   const [currentSceneKey, setCurrentSceneKey] = useState<string | null>(null);
+  const [mapData, setMapData] = useState<any | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const thumbsRef = useRef<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Record a downscaled thumbnail for a location (first image we see wins).
+  async function recordThumb(locId?: string, img?: string | null) {
+    if (!locId || !img || thumbsRef.current[locId]) return;
+    const small = await downscale(img);
+    thumbsRef.current = { ...thumbsRef.current, [locId]: small };
+    saveThumbs(thumbsRef.current);
+  }
 
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -294,7 +346,9 @@ export default function Page() {
     setCurrentSceneKey(newKey);
 
     if (sceneImageCache.has(newKey)) {
-      setSceneImage(sceneImageCache.get(newKey)!);
+      const cached = sceneImageCache.get(newKey)!;
+      setSceneImage(cached);
+      recordThumb(resp.state?.location?.id, cached);
       return;
     }
 
@@ -308,6 +362,7 @@ export default function Page() {
       const img = await generateSceneImage(prompt);
       sceneImageCache.set(newKey, img);
       setSceneImage(img);
+      recordThumb(resp.state?.location?.id, img);
     } catch {
       // non-fatal
     } finally {
@@ -325,10 +380,11 @@ export default function Page() {
     inputRef.current?.focus();
   }, []);
 
-  // Restore player_id from localStorage
+  // Restore player_id + saved map thumbnails from localStorage
   useEffect(() => {
     const saved = localStorage.getItem("player_id");
     if (saved) setPlayerId(saved);
+    thumbsRef.current = loadThumbs();
   }, []);
 
   useEffect(() => {
@@ -378,6 +434,7 @@ export default function Page() {
 
         const img = await generateSceneImage(prompt);
         sceneImageCache.set(key, img);
+        recordThumb(scene.location?.id, img);
       } catch {
         // prefetch failure is fine
       }
@@ -401,6 +458,12 @@ export default function Page() {
 
       if (resp.state) {
         setLastState(resp.state);
+      }
+
+      // Map command: open the map overlay with the discovered graph.
+      if (resp.state?.map) {
+        setMapData(resp.state.map);
+        setShowMap(true);
       }
 
       // Capture player_id if returned
@@ -455,7 +518,78 @@ export default function Page() {
 
   return (
     <div className="h-screen bg-black text-green-300 font-mono p-4 flex flex-col">
-      <h1 className="text-xl mb-2">QuestAI</h1>
+      <div className="flex items-center justify-between mb-2">
+        <h1 className="text-xl">QuestAI</h1>
+        <button
+          className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900 disabled:opacity-40"
+          onClick={() => runCommand("map")}
+          disabled={!playerId || isWaitingForResponse}
+        >
+          🗺 Map
+        </button>
+      </div>
+
+      {showMap && mapData && (
+        <div
+          className="fixed inset-0 z-50 bg-black/90 p-6 overflow-auto"
+          onClick={() => setShowMap(false)}
+        >
+          <div
+            className="max-w-5xl mx-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg text-green-300">World Map</h2>
+              <button
+                className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900"
+                onClick={() => setShowMap(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+              {mapData.locations.map((n: any) => {
+                const isHere = n.id === mapData.current;
+                const thumb = n.visited ? thumbsRef.current[n.id] : undefined;
+                return (
+                  <div
+                    key={n.id}
+                    className={`border p-2 ${
+                      isHere
+                        ? "border-green-300"
+                        : n.visited
+                        ? "border-green-700"
+                        : "border-green-900 opacity-50"
+                    }`}
+                  >
+                    <div
+                      className="aspect-video bg-green-950 mb-1 bg-center bg-cover flex items-center justify-center text-green-700 text-xs"
+                      style={thumb ? { backgroundImage: `url(${thumb})` } : {}}
+                    >
+                      {!thumb && (n.visited ? "" : "?")}
+                    </div>
+                    <div className="text-xs text-green-300">
+                      {n.visited ? n.name : "Unexplored"}
+                    </div>
+                    {isHere && (
+                      <div className="text-[10px] text-green-400">you are here</div>
+                    )}
+                    {n.visited && n.exits?.length > 0 && (
+                      <div className="text-[10px] text-green-700 mt-1">
+                        exits: {n.exits.map((e: any) => e.label).join(", ")}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            <div className="text-[10px] text-green-700 mt-4">
+              Tip: type <span className="text-green-400">map</span> any time, or
+              click a direction to travel.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Top area: image + status pane */}
       <div className="h-[420px] mb-2 flex border border-green-700">

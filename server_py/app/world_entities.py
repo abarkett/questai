@@ -41,6 +41,40 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             role="healer",
         ),
     ],
+    "old_mill": [
+        Entity(
+            entity_id="bandit_1",
+            name="Bandit",
+            type="monster",
+            hp=14,
+            attack=4,
+            xp_reward=10,
+            loot={"coin": 8, "healing_herb": 1},
+        ),
+    ],
+    "thornwood": [
+        Entity(
+            entity_id="giant_beetle_1",
+            name="Giant Beetle",
+            type="monster",
+            hp=18,
+            attack=4,
+            xp_reward=12,
+            loot={"coin": 4, "iron_ore": 1},
+        ),
+    ],
+    "spider_hollow": [
+        Entity(
+            entity_id="venomous_spider_1",
+            name="Venomous Spider",
+            type="monster",
+            hp=22,
+            attack=5,
+            xp_reward=16,
+            loot={"coin": 6, "herb_bundle": 1},
+            inflicts={"effect": "poison", "magnitude": 2, "turns": 3},
+        ),
+    ],
     "market": [
         Entity(
             entity_id="blacksmith",

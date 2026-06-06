@@ -33,6 +33,7 @@ from .actions.craft import craft
 from .actions.gather import gather
 from .actions.use_ability import use_ability
 from .actions.heal import heal
+from .actions.world_map import world_map
 from .actions.story import story_status, begin_arc, choose
 
 
@@ -126,6 +127,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = use_ability(player, req.args.ability, req.args.target)
     elif req.action == "heal":
         result = heal(player)
+    elif req.action == "map":
+        result = world_map(player)
     elif req.action == "story":
         result = story_status(player)
     elif req.action == "begin_arc":
@@ -136,7 +139,7 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story"]:
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map"]:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
 

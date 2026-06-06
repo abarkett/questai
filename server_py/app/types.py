@@ -34,6 +34,7 @@ class Player(BaseModel):
     abilities: list[str] = []        # learned ability ids
     ability_cooldowns: dict[str, int] = {}   # ability_id -> ready-at epoch ms
     status_effects: dict[str, dict] = {}     # effect_id -> {"turns", "magnitude"}
+    visited_locations: list[str] = []        # location ids the player has discovered
     active_quests: dict[str, Quest] = {}
     completed_quests: dict[str, Quest] = {}
     archived_quests: dict[str, Quest] = {}
@@ -242,6 +243,11 @@ class HealReq(BaseModel):
     args: Optional[dict] = None
 
 
+class MapReq(BaseModel):
+    action: Literal["map"]
+    args: Optional[dict] = None
+
+
 class StoryReq(BaseModel):
     action: Literal["story"]
     args: Optional[dict] = None
@@ -294,6 +300,7 @@ ActionRequest = Union[
     GatherReq,
     UseAbilityReq,
     HealReq,
+    MapReq,
     StoryReq,
     BeginArcReq,
     ChooseReq,
