@@ -33,6 +33,7 @@ class Player(BaseModel):
     equipment: dict[str, str] = {}   # slot -> item_id (e.g. {"weapon": "iron_sword"})
     abilities: list[str] = []        # learned ability ids
     ability_cooldowns: dict[str, int] = {}   # ability_id -> ready-at epoch ms
+    status_effects: dict[str, dict] = {}     # effect_id -> {"turns", "magnitude"}
     active_quests: dict[str, Quest] = {}
     completed_quests: dict[str, Quest] = {}
     archived_quests: dict[str, Quest] = {}

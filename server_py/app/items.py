@@ -19,6 +19,11 @@ class Item(BaseModel):
     damage: int | None = None        # weapon: bonus to attack damage
     defense: int | None = None       # armor: flat reduction to damage taken
     value: int | None = None         # base coin value (economy slice)
+    # Status-effect consumables
+    cure: bool = False               # removes negative status effects when used
+    effect: str | None = None        # status effect to apply when used
+    effect_magnitude: int | None = None
+    effect_turns: int | None = None
 
 
 ITEMS: Dict[str, Item] = {
@@ -83,6 +88,22 @@ ITEMS: Dict[str, Item] = {
         heal=20,
         value=25,
     ),
+    "antidote": Item(
+        item_id="antidote",
+        name="Antidote",
+        type="consumable",
+        cure=True,
+        value=6,
+    ),
+    "elixir_of_strength": Item(
+        item_id="elixir_of_strength",
+        name="Elixir of Strength",
+        type="consumable",
+        effect="strength",
+        effect_magnitude=3,
+        effect_turns=5,
+        value=15,
+    ),
     # ----- Weapons (deep-dungeon tiers) -----
     "knight_blade": Item(
         item_id="knight_blade",
@@ -132,6 +153,8 @@ RECIPES: Dict[str, Dict[str, Any]] = {
     "leather_armor": {"inputs": {"pelt": 3}, "qty": 1},
     "iron_sword": {"inputs": {"iron_ore": 3}, "qty": 1},
     "steel_armor": {"inputs": {"iron_ore": 5, "pelt": 2}, "qty": 1},
+    "antidote": {"inputs": {"herb_bundle": 2}, "qty": 1},
+    "elixir_of_strength": {"inputs": {"herb_bundle": 2, "iron_ore": 1}, "qty": 1},
     # Deep-dungeon recipes
     "greater_healing_potion": {"inputs": {"herb_bundle": 5}, "qty": 1},
     "knight_blade": {"inputs": {"mythril_ore": 4}, "qty": 1},

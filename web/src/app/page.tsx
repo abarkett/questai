@@ -227,6 +227,18 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
         </div>
       )}
 
+      {/* Status effects */}
+      {player.status_effects && Object.keys(player.status_effects).length > 0 && (
+        <div>
+          <div className="text-green-400 font-bold">Status</div>
+          {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
+            <div key={eid} className="text-xs">
+              {String(eid).replace(/_/g, " ")} ({st?.turns ?? 0} turns)
+            </div>
+          ))}
+        </div>
+      )}
+
       {/* Abilities */}
       {Array.isArray(player.abilities) && player.abilities.length > 0 && (
         <div>

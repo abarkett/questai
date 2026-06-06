@@ -15,6 +15,11 @@ def stats(player: Player) -> ActionResponse:
         f"XP: {player.xp}",
     ]
 
+    if player.status_effects:
+        from ...status_effects import describe
+        messages.append("Status effects:")
+        messages.extend(describe(player))
+
     if player.abilities:
         now_ms = int(time.time() * 1000)
         messages.append("Abilities:")

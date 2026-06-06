@@ -14,6 +14,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             inventory={
                 "healing_herb": {"price": 5},
                 "torch": {"price": 2},
+                "antidote": {"price": 8},
                 "leather_armor": {"price": 15},
                 "iron_sword": {"price": 20},
             },
@@ -43,6 +44,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
                 "chainmail": {"price": 70},
                 "knight_blade": {"price": 60},
                 "greater_healing_potion": {"price": 25},
+                "elixir_of_strength": {"price": 20},
             },
         ),
     ],
@@ -107,6 +109,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             attack=5,
             xp_reward=18,
             loot={"coin": 6, "healing_herb": 2, "iron_sword": 1},
+            inflicts={"effect": "poison", "magnitude": 2, "turns": 3},
         ),
         Entity(
             entity_id="cave_troll_1",
@@ -127,6 +130,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             attack=7,
             xp_reward=30,
             loot={"coin": 10, "mythril_ore": 1},
+            inflicts={"effect": "weaken", "magnitude": 2, "turns": 3},
         ),
         Entity(
             entity_id="bone_knight_1",
@@ -147,6 +151,7 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             attack=12,
             xp_reward=70,
             loot={"coin": 18, "ember_core": 1},
+            inflicts={"effect": "burn", "magnitude": 4, "turns": 3},
         ),
         Entity(
             entity_id="molten_wyrm_1",
@@ -156,6 +161,16 @@ WORLD_ENTITIES: Dict[str, List[Entity]] = {
             attack=18,
             xp_reward=180,
             loot={"coin": 120, "ember_core": 2, "dragonscale_armor": 1, "wyrmfang_blade": 1},
+            inflicts={"effect": "burn", "magnitude": 6, "turns": 4},
         ),
     ],
+}
+
+
+# Lookup: monster name -> the status effect it inflicts on retaliation.
+MONSTER_INFLICTS: Dict[str, dict] = {
+    e.name: e.inflicts
+    for ents in WORLD_ENTITIES.values()
+    for e in ents
+    if e.type == "monster" and e.inflicts
 }

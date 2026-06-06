@@ -19,6 +19,8 @@ from ..state_view import build_action_state
 from ...progression import total_attack_damage, defense_bonus, apply_xp
 from ...combat import roll_damage
 from ...abilities import get_ability
+from ...status_effects import tick_effects, damage_modifier, apply_effect
+from ...world_entities import MONSTER_INFLICTS
 
 
 # Simple shared combat constants
@@ -126,12 +128,23 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
 
+    # Status effects tick as time passes in combat; a lingering DoT can be fatal.
+    messages.extend(tick_effects(player))
+    if player.hp <= 0:
+        player.hp = player.max_hp
+        player.location = RESPAWN_LOCATION
+        player.last_defeated_at = current_time_ms
+        player.status_effects.clear()
+        messages.append("Your wounds overcome you. You wake back in the Town Square.")
+        upsert_player(player)
+        return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))
+
     # An offensive ability scales the hit and triggers its cooldown on use.
     ability_obj = get_ability(ability) if ability else None
     mult = ability_obj.multiplier if (ability_obj and ability_obj.multiplier) else 1.0
     label = f"{ability_obj.name}! " if ability_obj else ""
 
-    base = int(total_attack_damage(player) * mult)
+    base = int((total_attack_damage(player) + damage_modifier(player)) * mult)
     dmg, is_crit = roll_damage(base)
     crit_suffix = " (CRITICAL HIT!)" if is_crit else ""
 
@@ -185,10 +198,23 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
             player.hp -= retaliation
             messages.append(f"The {result['name']} hits you for {retaliation} damage.")
 
+            # Some monsters afflict a status effect when they land a blow.
+            inflict = MONSTER_INFLICTS.get(result["name"])
+            if inflict and player.hp > 0:
+                msg = apply_effect(
+                    player,
+                    inflict["effect"],
+                    inflict.get("magnitude", 1),
+                    inflict.get("turns", 1),
+                )
+                if msg:
+                    messages.append(msg)
+
             if player.hp <= 0:
                 player.hp = player.max_hp
                 player.location = RESPAWN_LOCATION
                 player.last_defeated_at = current_time_ms
+                player.status_effects.clear()
                 messages.append(
                     f"You were defeated by the {result['name']} and wake up back in the Town Square."
                 )
