@@ -251,6 +251,14 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("map", "m"):
         return {"action": "map"}
 
+    # ---- BESTIARY ----
+    if verb in ("bestiary", "monsters", "codex"):
+        return {"action": "bestiary"}
+
+    # ---- JOURNAL (quests) ----
+    if verb in ("journal", "quests", "quest", "log"):
+        return {"action": "journal"}
+
     # ---- STORY ARCS ----
     if verb in ("story", "arcs", "saga", "tales"):
         return {"action": "story"}

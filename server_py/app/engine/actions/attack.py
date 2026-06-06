@@ -159,6 +159,8 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
     # -------------------------------------------------
     entity = find_entity(player.location, target_name)
     if entity and entity["type"] == "monster":
+        from ...bestiary import discover
+        discover(player, entity["name"])
         # Atomic, persistent monster combat (safe under concurrent attackers).
         from ...db import damage_monster
         result = damage_monster(entity["id"], dmg)

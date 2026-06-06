@@ -10,10 +10,17 @@ from ..state_view import build_action_state
 
 def look(player: Player) -> ActionResponse:
     loc = get_location(player.location)
-    if mark_visited(player):
-        upsert_player(player)
+    changed = mark_visited(player)
     entities = get_entities_at(player.location)
     entities = filter_current_player(entities, player.player_id)
+
+    # Record any monsters present in the bestiary.
+    from ...bestiary import discover
+    for e in entities:
+        if e.get("type") == "monster" and discover(player, e["name"]):
+            changed = True
+    if changed:
+        upsert_player(player)
 
     messages = [
         f"You are at {loc.name}.",

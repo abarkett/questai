@@ -35,6 +35,7 @@ class Player(BaseModel):
     ability_cooldowns: dict[str, int] = {}   # ability_id -> ready-at epoch ms
     status_effects: dict[str, dict] = {}     # effect_id -> {"turns", "magnitude"}
     visited_locations: list[str] = []        # location ids the player has discovered
+    discovered_monsters: list[str] = []      # monster names recorded in the bestiary
     active_quests: dict[str, Quest] = {}
     completed_quests: dict[str, Quest] = {}
     archived_quests: dict[str, Quest] = {}
@@ -248,6 +249,16 @@ class MapReq(BaseModel):
     args: Optional[dict] = None
 
 
+class BestiaryReq(BaseModel):
+    action: Literal["bestiary"]
+    args: Optional[dict] = None
+
+
+class JournalReq(BaseModel):
+    action: Literal["journal"]
+    args: Optional[dict] = None
+
+
 class StoryReq(BaseModel):
     action: Literal["story"]
     args: Optional[dict] = None
@@ -301,6 +312,8 @@ ActionRequest = Union[
     UseAbilityReq,
     HealReq,
     MapReq,
+    BestiaryReq,
+    JournalReq,
     StoryReq,
     BeginArcReq,
     ChooseReq,

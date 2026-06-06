@@ -37,6 +37,7 @@ def init_db() -> None:
               ability_cooldowns_json TEXT DEFAULT '{}',
               status_effects_json TEXT DEFAULT '{}',
               visited_locations_json TEXT DEFAULT '[]',
+              discovered_monsters_json TEXT DEFAULT '[]',
               active_quests_json TEXT DEFAULT '{}',
               completed_quests_json TEXT DEFAULT '{}',
               archived_quests_json TEXT DEFAULT '{}',
@@ -268,6 +269,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "ability_cooldowns_json": "TEXT DEFAULT '{}'",
         "status_effects_json": "TEXT DEFAULT '{}'",
         "visited_locations_json": "TEXT DEFAULT '[]'",
+        "discovered_monsters_json": "TEXT DEFAULT '[]'",
         "active_quests_json": "TEXT DEFAULT '{}'",
         "completed_quests_json": "TEXT DEFAULT '{}'",
         "archived_quests_json": "TEXT DEFAULT '{}'",
@@ -317,6 +319,7 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data["ability_cooldowns"] = json.loads(data.get("ability_cooldowns_json") or "{}")
     data["status_effects"] = json.loads(data.get("status_effects_json") or "{}")
     data["visited_locations"] = json.loads(data.get("visited_locations_json") or "[]")
+    data["discovered_monsters"] = json.loads(data.get("discovered_monsters_json") or "[]")
 
     # Handle quest fields for backwards compatibility
     data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
@@ -389,6 +392,7 @@ def upsert_player(p: Player) -> None:
               ability_cooldowns_json,
               status_effects_json,
               visited_locations_json,
+              discovered_monsters_json,
               active_quests_json,
               completed_quests_json,
               archived_quests_json,
@@ -396,7 +400,7 @@ def upsert_player(p: Player) -> None:
               last_attacked_target,
               last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -410,6 +414,7 @@ def upsert_player(p: Player) -> None:
               ability_cooldowns_json=excluded.ability_cooldowns_json,
               status_effects_json=excluded.status_effects_json,
               visited_locations_json=excluded.visited_locations_json,
+              discovered_monsters_json=excluded.discovered_monsters_json,
               active_quests_json=excluded.active_quests_json,
               completed_quests_json=excluded.completed_quests_json,
               archived_quests_json=excluded.archived_quests_json,
@@ -431,6 +436,7 @@ def upsert_player(p: Player) -> None:
                 json.dumps(p.ability_cooldowns),
                 json.dumps(p.status_effects),
                 json.dumps(p.visited_locations),
+                json.dumps(p.discovered_monsters),
                 json.dumps({k: v.model_dump() for k, v in p.active_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.completed_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.archived_quests.items()}),
