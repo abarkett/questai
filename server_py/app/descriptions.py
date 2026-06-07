@@ -21,8 +21,7 @@ _OUTDOOR = {
 _TIME_OF_DAY = ["dawn", "midday", "afternoon", "dusk", "night"]
 
 
-class MirielUnavailable(RuntimeError):
-    """Raised when a Miriel-backed feature is used but Miriel isn't working."""
+from .services.miriel_client import MirielUnavailable  # re-exported for callers
 
 
 def time_of_day(location_id: str, world_turn: int) -> Optional[str]:

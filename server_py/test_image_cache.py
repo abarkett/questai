@@ -56,9 +56,29 @@ def main() -> None:
         assert r.status_code == 503, (r.status_code, r.text)
         print("PASS  distinct prompt -> distinct key -> 503")
 
-    # 4) Miriel enrichment degrades to the base prompt unchanged when disabled.
+    # 4) Miriel enrichment now requires Miriel: it crashes hard when Miriel is
+    #    down, enriches when Miriel returns prose, and uses the base prompt when
+    #    Miriel is reachable but returns nothing.
+    from app.services.miriel_client import (
+        install_test_responder, get_miriel_client, MirielUnavailable,
+    )
+    install_test_responder(None)
+    get_miriel_client().enabled = False
+    raised = False
+    try:
+        enrich_scene_prompt(PROMPT)
+    except MirielUnavailable:
+        raised = True
+    assert raised, "enrich must fail hard when Miriel is down"
+
+    install_test_responder(lambda q: "Lanterns gutter in a cold wind.")
+    assert "Lanterns gutter" in enrich_scene_prompt(PROMPT)
+
+    install_test_responder(lambda q: "")  # reachable but empty -> base prompt
     assert enrich_scene_prompt(PROMPT) == PROMPT
-    print("PASS  prompt enrichment no-ops gracefully when Miriel is off")
+
+    install_test_responder(None)
+    print("PASS  enrichment requires Miriel (crash hard / enrich / base-on-empty)")
 
     print("\nALL IMAGE CACHE TESTS PASSED")
 

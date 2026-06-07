@@ -103,31 +103,27 @@ def enrich_scene_prompt(base_prompt: str) -> str:
     """
     Use Miriel to add world-aware visual atmosphere to a scene prompt.
 
-    Querying Miriel automatically folds in the contextually relevant stored
-    knowledge (recent events, world conditions, story beats), so scenes reflect
-    what's actually happening in the world — not just the static location text.
-    Falls back to the base prompt unchanged if Miriel is disabled or errors;
-    callers cache under the *base* prompt so the enriched render stays stable.
+    No silent fallback: if Miriel is unconfigured or errors, this raises and the
+    image request fails hard. If Miriel is reachable but returns nothing, the
+    base prompt is used (Miriel working, just no extra atmosphere this time).
     """
-    try:
-        from .miriel_client import get_miriel_client
+    from .miriel_client import get_miriel_client, MirielUnavailable
 
-        client = get_miriel_client()
-        if not client.enabled:
-            return base_prompt
+    client = get_miriel_client()
+    if not client.enabled:
+        raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
 
-        query = (
-            "In 2-3 sentences, describe the visual atmosphere and any notable "
-            "current details of this fantasy RPG scene for an illustration. "
-            "Fold in relevant recent world events or conditions. Describe only "
-            "what is visibly present — no text, no UI, no labels.\n\n"
-            f"Scene:\n{base_prompt}"
-        )
-        resp = client.query(query=query, project="questai", force_exhaustive=False)
-        answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
-        answer = (answer or "").strip()
-        if answer:
-            return f"{base_prompt}\n\nAtmosphere & current details: {answer}"
-    except Exception as exc:  # noqa: BLE001 - enrichment is best-effort
-        _logger.warning("[image_gen] Miriel prompt enrichment failed: %s", exc)
+    query = (
+        "In 2-3 sentences, describe the visual atmosphere and any notable "
+        "current details of this fantasy RPG scene for an illustration. "
+        "Fold in relevant recent world events or conditions. Describe only "
+        "what is visibly present — no text, no UI, no labels.\n\n"
+        f"Scene:\n{base_prompt}"
+    )
+    # NOT wrapped in try/except: a Miriel outage propagates and fails the render.
+    resp = client.query(query=query, project="questai", force_exhaustive=False)
+    answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
+    answer = (answer or "").strip()
+    if answer:
+        return f"{base_prompt}\n\nAtmosphere & current details: {answer}"
     return base_prompt

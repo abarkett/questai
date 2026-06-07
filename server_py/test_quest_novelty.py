@@ -100,12 +100,34 @@ def main() -> None:
     assert '"type": "kill"' in prompt
     print("PASS  prompt has anti-repeat, valid target, variation seed, pinned id")
 
-    # 5) get_or_generate_quest: template hit; dynamic None when Miriel disabled
+    # 5) Templates resolve without Miriel; a non-template (AI) quest now requires
+    #    Miriel and fails hard when it's down (no silent fallback).
     tq, gen = get_or_generate_quest("rat_problem", mkplayer())
     assert tq is not None and gen is False, (tq, gen)
-    dq, gen2 = get_or_generate_quest("dyn_warden_aaaa_0", mkplayer())
-    assert dq is None and gen2 is False, (dq, gen2)
-    print("PASS  template returns; dynamic gracefully None when Miriel disabled")
+
+    from app.services.miriel_client import (
+        install_test_responder, get_miriel_client, MirielUnavailable,
+    )
+    install_test_responder(None)
+    get_miriel_client().enabled = False
+    raised = False
+    try:
+        get_or_generate_quest("dyn_warden_aaaa_0", mkplayer())
+    except MirielUnavailable:
+        raised = True
+    assert raised, "AI quest generation must fail hard when Miriel is down"
+
+    # With Miriel up (stubbed to return a valid quest), generation succeeds.
+    quest_json = (
+        '{"quest_id": "ignored", "name": "Test Hunt", "description": "Slay a goblin.",'
+        ' "objectives": [{"type": "kill", "target": "Goblin", "required": 1}],'
+        ' "rewards": {"coin": 5}}'
+    )
+    install_test_responder(lambda q: quest_json)
+    dq, gen2 = get_or_generate_quest("dyn_warden_bbbb_0", mkplayer())
+    assert dq is not None and gen2 is True and dq.quest_id == "dyn_warden_bbbb_0", (dq, gen2)
+    install_test_responder(None)
+    print("PASS  template resolves; AI quest crashes hard when Miriel down, works when up")
 
     print("\nALL QUEST NOVELTY TESTS PASSED")
 

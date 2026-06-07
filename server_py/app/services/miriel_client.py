@@ -38,6 +38,11 @@ class UnauthorizedError(Exception):
     pass
 
 
+class MirielUnavailable(RuntimeError):
+    """Raised when a Miriel-backed feature is used but Miriel isn't working
+    (unconfigured / unreachable). Surfaced as a hard failure, by design."""
+
+
 class MirielRequestError(Exception):
     """Generic API error (non-401)."""
 

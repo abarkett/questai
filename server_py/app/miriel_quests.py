@@ -11,7 +11,7 @@ import json
 import time
 from typing import Dict, Any, Optional, Tuple, List
 
-from .services.miriel_client import get_miriel_client
+from .services.miriel_client import get_miriel_client, MirielUnavailable
 from .services.miriel_prompts import build_quest_generation_prompt, build_story_arc_prompt
 from .types import Player
 from .types_quests import Quest, QuestObjective
@@ -88,8 +88,7 @@ def generate_quest_for_player(
     """
     client = get_miriel_client()
     if not client.enabled:
-        print("[MIRIEL] Quest generation skipped - Miriel not enabled")
-        return None
+        raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
 
     try:
         # Build rich context
@@ -191,8 +190,10 @@ def generate_quest_for_player(
             return None
 
     except Exception as e:
+        # Crash hard when Miriel isn't working. (An empty/malformed answer is
+        # handled above by returning None so templates can still be offered.)
         print(f"[MIRIEL] Quest generation error: {e}")
-        return None
+        raise
 
 
 def generate_story_arc(
