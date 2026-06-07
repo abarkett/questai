@@ -71,6 +71,12 @@ def main() -> None:
     assert any("Mist curls" in m for m in r.messages), r.messages
     print("PASS  descriptions come from Miriel and surface in look()")
 
+    # Miriel reachable but empty -> show the room's authored text (not a 500).
+    install_test_responder(lambda q: "")
+    base = "A quiet authored room."
+    assert describe(p, loc, [], base, 0) == base
+    print("PASS  empty Miriel answer falls through to the authored description")
+
     install_test_responder(None)
     print("\nALL DESCRIPTION TESTS PASSED")
 
