@@ -41,11 +41,19 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
     from ...world_rules import track_monster_survival
     track_monster_survival(player.location)
 
+    # Dynamic, Miriel-authored arrival description (warmed in advance by the
+    # neighbor prefetch, so this is usually a cache hit). No fallback.
+    from ..state_view import effective_description
+    from ...descriptions import describe
+    from ...db import get_world_turn
+    entities = filter_current_player(get_entities_at(player.location), player.player_id)
+    arrival = describe(player, to_loc, entities, effective_description(to_loc), get_world_turn())
+
     return ActionResponse(
         ok=True,
         messages=[
             f"You travel to {to_loc.name}.",
-            to_loc.description,
+            arrival,
         ],
         state=build_action_state(player, scene_dirty=True),
     )

@@ -39,6 +39,11 @@ from app.types import Player  # noqa: E402
 from app.engine.actions.attack import attack  # noqa: E402
 from app.engine.actions.move import move  # noqa: E402
 
+# move() now uses Miriel descriptions; install a test responder (a seam, not a
+# gameplay fallback) so move/look work offline.
+from app.services.miriel_client import install_test_responder  # noqa: E402
+install_test_responder(lambda q: "A vivid, AI-authored scene.")
+
 
 def test_fresh_seed():
     fresh_db()

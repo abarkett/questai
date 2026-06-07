@@ -40,6 +40,11 @@ from app.engine.actions.buy import buy  # noqa: E402
 from app.engine.actions.equip import equip  # noqa: E402
 from app.progression import defense_bonus, weapon_bonus  # noqa: E402
 
+# move() now uses Miriel descriptions; install a test responder (a seam, not a
+# gameplay fallback) so move/look work offline.
+from app.services.miriel_client import install_test_responder  # noqa: E402
+install_test_responder(lambda q: "A vivid, AI-authored scene.")
+
 
 def mk(**kw) -> Player:
     base = dict(player_id="p", location="town_square", level=1, xp=0, hp=300, max_hp=300)
