@@ -166,6 +166,17 @@ def generate_quest_offer_dialogue(
     if not client.enabled:
         raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
 
+    # Cache so the background warmer can pre-generate this and talk() reuses it.
+    cache_key = "qoffer_" + hashlib.sha256(
+        f"{player.player_id}|{npc_id}|{quest_name}".encode()
+    ).hexdigest()[:16]
+    cached = get_cached_miriel_content(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
+
     try:
         context = {}
 
@@ -192,9 +203,12 @@ def generate_quest_offer_dialogue(
             return None
 
         dialogue_text = response.get("results", {}).get("answer", "").strip()
+        if not dialogue_text:
+            return None
         if dialogue_text.startswith('"') and dialogue_text.endswith('"'):
             dialogue_text = dialogue_text[1:-1]
 
+        cache_miriel_content(cache_key, "dialogue", json.dumps(dialogue_text), ttl_seconds=1800)
         return dialogue_text
 
     except Exception as e:

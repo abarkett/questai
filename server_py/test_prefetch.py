@@ -48,8 +48,8 @@ def main() -> None:
     install_test_responder(lambda q: "An AI-authored vista.")
     res = warm_location_caches("p")
     assert res["ok"] and res["warmed"] >= 1, res
-    # town_square has several exits -> current + neighbors warmed.
-    assert res["warmed"] == 1 + len(get_location("town_square").exits), res
+    # town_square has several exits -> current + neighbors (+ NPC dialogue) warmed.
+    assert res["warmed"] >= 1 + len(get_location("town_square").exits), res
 
     turn = get_world_turn()
     cached = db.get_cached_miriel_content(desc_cache_key("town_square", turn))
@@ -58,6 +58,29 @@ def main() -> None:
     nbr = get_location("town_square").exits[0].to
     assert db.get_cached_miriel_content(desc_cache_key(nbr, turn)) is not None
     print(f"PASS  warmer populated {res['warmed']} description caches")
+
+    # Warming a quest-giver room pre-generates and caches its quest-offer dialogue.
+    import hashlib
+    from app.engine.entities import get_entities_at as _ents
+    from app.engine.npc_offers import next_offer
+    warden = next(e for e in _ents("town_square") if e.get("role") == "quest_giver")
+    offer = next_offer(p, warden)
+    assert offer is not None and offer[0].quest_id in warden["quests"], offer
+    qkey = "qoffer_" + hashlib.sha256(f"p|{warden['id']}|{offer[0].name}".encode()).hexdigest()[:16]
+    assert db.get_cached_miriel_content(qkey) is not None, "quest-offer dialogue should be warmed"
+    print(f"PASS  quest-giver dialogue pre-generated ({offer[0].name})")
+
+    # Warming a monster room pre-generates the 'cleared' description too.
+    pf = Player(player_id="f", name="F", location="forest", level=3, xp=0, hp=20, max_hp=20)
+    upsert_player(pf)
+    warm_location_caches("f")
+    cleared_key = desc_cache_key("forest", get_world_turn())  # forest with no monsters
+    # forest currently HAS rats, so the 'cleared' (no-monster) key is the warmed one:
+    import hashlib as _h
+    from app.descriptions import time_of_day as _tod
+    sig = _h.sha256(f"forest||{_tod('forest', get_world_turn())}|{get_world_turn()//12}".encode()).hexdigest()[:16]
+    assert db.get_cached_miriel_content(f"desc_{sig}") is not None, "cleared-room description should be warmed"
+    print("PASS  cleared-room description pre-generated")
 
     # Best-effort: with Miriel down it must NOT raise (warmer swallows errors).
     install_test_responder(None)

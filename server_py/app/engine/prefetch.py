@@ -42,4 +42,35 @@ def warm_location_caches(player_id: str) -> Dict[str, Any]:
             # request (the user-facing look() still crashes hard on its own).
             pass
 
+    here_entities = get_entities_at(loc.id)
+
+    # (3) The "cleared room" description, so looking/arriving after a kill is warm.
+    monsters = [e for e in here_entities if e.get("type") == "monster"]
+    if monsters:
+        try:
+            cleared = [e for e in here_entities if e.get("type") != "monster"]
+            describe(player, loc, cleared, loc.cleared_description or loc.description, turn)
+            warmed += 1
+        except Exception:
+            pass
+
+    # (1)/(2) NPC dialogue + the next (possibly dynamically generated) quest.
+    for npc in [e for e in here_entities if e.get("type") == "npc"]:
+        role = npc.get("role")
+        try:
+            if role == "quest_giver":
+                from .npc_offers import next_offer
+                from ..miriel_dialogue import generate_quest_offer_dialogue
+                offer = next_offer(player, npc)  # also generates+caches a dynamic quest
+                if offer:
+                    quest, _ = offer
+                    generate_quest_offer_dialogue(player, quest.name, quest.description, npc["id"])
+                    warmed += 1
+            elif role not in ("shop", "arc_giver", "healer"):
+                from ..miriel_dialogue import generate_npc_dialogue
+                generate_npc_dialogue(player, npc["id"], role or "generic", "greeting")
+                warmed += 1
+        except Exception:
+            pass
+
     return {"ok": True, "warmed": warmed}
