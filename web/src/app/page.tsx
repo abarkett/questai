@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { sendCommand } from "./lib/api";
+import { sendCommand, prefetchCaches } from "./lib/api";
 import { generateSceneImage } from "./lib/gemini";
 import { buildScenePrompt } from "./lib/scene";
 
@@ -596,6 +596,16 @@ export default function Page() {
   }
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const lastPrefetchLoc = useRef<string | null>(null);
+
+  // Warm Miriel description caches (this room + neighbors) once per room entry.
+  function maybePrefetch(state: any, pid: string | null) {
+    const loc = state?.location?.id;
+    if (loc && loc !== lastPrefetchLoc.current) {
+      lastPrefetchLoc.current = loc;
+      prefetchCaches(pid);
+    }
+  }
 
   async function handleSceneFromResponse(resp: any) {
     const newKey = computeSceneKeyFromResponse(resp);
@@ -656,6 +666,7 @@ export default function Page() {
           await handleSceneFromResponse(resp);
           prefetchAdjacentScenes(resp.state);
           prefetchCombatVariants(resp.state);
+          maybePrefetch(resp.state, playerId);
         }
 
         if (resp.messages) {
@@ -762,10 +773,12 @@ export default function Page() {
         await handleSceneFromResponse(resp);
       }
 
-      // Prefetch adjacent scenes + likely post-combat variants for this room
+      // Prefetch adjacent scenes + likely post-combat variants for this room,
+      // and warm Miriel description caches when we enter a new room.
       if (resp.state?.location) {
         prefetchAdjacentScenes(resp.state);
         prefetchCombatVariants(resp.state);
+        maybePrefetch(resp.state, playerId);
       }
 
       // Print messages

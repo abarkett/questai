@@ -78,6 +78,19 @@ def command(
     return apply_action(player_id=x_player_id, req_json=action_req)
 
 
+@app.post("/prefetch")
+def prefetch(x_player_id: str | None = Header(default=None)):
+    """
+    Warm Miriel text caches (location descriptions) for the player's current
+    room and its neighbors. Best-effort and never fails; called by the client in
+    the background to make subsequent `look`s instant.
+    """
+    if not x_player_id:
+        return {"ok": False}
+    from .engine.prefetch import warm_location_caches
+    return warm_location_caches(x_player_id)
+
+
 @app.post("/api/ai/image")
 def ai_image(prompt: str = Body(..., embed=True)):
     """
