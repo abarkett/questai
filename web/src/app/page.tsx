@@ -74,59 +74,70 @@ function computeSceneKeyFromResponse(resp: any) {
   });
 }
 
-// Direction labels -> grid deltas, used to lay the map out roughly spatially.
-const DIR: Record<string, [number, number]> = {
-  north: [0, -1], up: [0, -1], ascend: [0, -1], out: [0, -1], back: [0, -1], square: [0, -1],
-  south: [0, 1], down: [0, 1], descend: [0, 1], deeper: [0, 1], in: [0, 1],
-  cave: [0, 1], tunnel: [0, 1], hollow: [0, 1], mill: [0, 1],
-  east: [1, 0], west: [-1, 0],
-};
-
 function computeMapLayout(mapData: any) {
   const byId: Record<string, any> = {};
   for (const n of mapData.locations) byId[n.id] = n;
 
-  const pos: Record<string, [number, number]> = {};
-  const occupied = new Set<string>();
-  const key = (x: number, y: number) => `${x},${y}`;
+  // Undirected adjacency among known nodes.
+  const adj: Record<string, string[]> = {};
+  const link = (a: string, b: string) => { (adj[a] ||= []).push(b); };
+  for (const n of mapData.locations) {
+    for (const ex of n.exits || []) {
+      if (byId[ex.to]) { link(n.id, ex.to); link(ex.to, n.id); }
+    }
+  }
+  for (const k in adj) adj[k] = Array.from(new Set(adj[k]));
 
-  function place(id: string, x: number, y: number) {
-    let cx = x, cy = y, r = 1;
-    while (occupied.has(key(cx, cy))) {
-      let found = false;
-      for (let dy = -r; dy <= r && !found; dy++) {
-        for (let dx = -r; dx <= r && !found; dx++) {
-          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
-          if (!occupied.has(key(x + dx, y + dy))) { cx = x + dx; cy = y + dy; found = true; }
+  // Layered layout: BFS depth from the current location.
+  const root = mapData.current && byId[mapData.current] ? mapData.current : mapData.locations[0]?.id;
+  const depth: Record<string, number> = {};
+  const layers: string[][] = [];
+  if (root) {
+    depth[root] = 0;
+    layers[0] = [root];
+    const queue = [root];
+    while (queue.length) {
+      const cur = queue.shift() as string;
+      for (const nb of adj[cur] || []) {
+        if (depth[nb] === undefined) {
+          depth[nb] = depth[cur] + 1;
+          (layers[depth[nb]] ||= []).push(nb);
+          queue.push(nb);
         }
       }
-      if (!found) r++;
-      if (r > 60) break;
-    }
-    occupied.add(key(cx, cy));
-    pos[id] = [cx, cy];
-  }
-
-  const start =
-    mapData.current && byId[mapData.current] ? mapData.current : mapData.locations[0]?.id;
-  const queue: string[] = [];
-  if (start) { place(start, 0, 0); queue.push(start); }
-
-  while (queue.length) {
-    const cur = queue.shift() as string;
-    const node = byId[cur];
-    if (!node || !pos[cur]) continue;
-    const [px, py] = pos[cur];
-    for (const ex of node.exits || []) {
-      if (!byId[ex.to] || pos[ex.to]) continue;
-      const d = DIR[ex.label] || [1, 0];
-      place(ex.to, px + d[0], py + d[1]);
-      queue.push(ex.to);
     }
   }
-  // Any nodes not reached via forward edges: drop them in a spare row.
-  let spare = 0;
-  for (const n of mapData.locations) if (!pos[n.id]) place(n.id, spare++, 99);
+  for (const n of mapData.locations) {
+    if (depth[n.id] === undefined) {
+      const d = layers.length;
+      depth[n.id] = d;
+      (layers[d] ||= []).push(n.id);
+    }
+  }
+
+  // Barycenter ordering passes to reduce edge crossings.
+  const idx: Record<string, number> = {};
+  const reindex = () => { for (const L of layers) L.forEach((id, i) => (idx[id] = i)); };
+  const bary = (id: string, layerIdx: number): number => {
+    const neigh = (adj[id] || []).filter((nb) => depth[nb] === layerIdx);
+    if (!neigh.length) return idx[id] ?? 0;
+    return neigh.reduce((s, nb) => s + (idx[nb] ?? 0), 0) / neigh.length;
+  };
+  reindex();
+  for (let pass = 0; pass < 4; pass++) {
+    for (let d = 1; d < layers.length; d++) layers[d].sort((a, b) => bary(a, d - 1) - bary(b, d - 1));
+    reindex();
+    for (let d = layers.length - 2; d >= 0; d--) layers[d].sort((a, b) => bary(a, d + 1) - bary(b, d + 1));
+    reindex();
+  }
+
+  // Coordinates: y = depth (row), x centered within each layer.
+  const pos: Record<string, [number, number]> = {};
+  const maxWidth = Math.max(1, ...layers.map((L) => L.length));
+  layers.forEach((L, d) => {
+    const offset = (maxWidth - L.length) / 2;
+    L.forEach((id, i) => (pos[id] = [i + offset, d]));
+  });
 
   const edges: { a: [number, number]; b: [number, number]; current: boolean }[] = [];
   const seen = new Set<string>();
