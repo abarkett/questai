@@ -220,23 +220,34 @@ class MirielClient:
         Returns:
           dict with query response
         """
-        if _TEST_RESPONDER is not None:
-            return {"results": {"answer": _TEST_RESPONDER(query)}}
+        projects = self._project_param(project)
 
-        route = 'query'
-        payload = {
-            'query': query,
-            'streaming': False,
-            'voice_mode': False,
-            'force_exhaustive': force_exhaustive,
-            'project': self._project_param(project),
-            **{k: v for k, v in params.items() if v is not None},
-        }
-        # Only include response_format when set; strict validators reject null.
-        if response_format is not None:
-            payload['response_format'] = response_format
+        def _do_query():
+            if _TEST_RESPONDER is not None:
+                return {"results": {"answer": _TEST_RESPONDER(query)}}
+            route = 'query'
+            payload = {
+                'query': query,
+                'streaming': False,
+                'voice_mode': False,
+                'force_exhaustive': force_exhaustive,
+                'project': projects,
+                **{k: v for k, v in params.items() if v is not None},
+            }
+            # Only include response_format when set; strict validators reject null.
+            if response_format is not None:
+                payload['response_format'] = response_format
+            return self.make_post_request(route, payload=payload)
 
-        return self.make_post_request(route, payload=payload)
+        # Single-flight identical concurrent queries (e.g. a background warm and
+        # the real look/move/talk for the same scene) so they share one
+        # round-trip instead of duplicating the call.
+        import hashlib
+        from ..single_flight import run as single_flight
+        key = "q:" + hashlib.sha256(
+            f"{query}|{projects}|{force_exhaustive}".encode()
+        ).hexdigest()
+        return single_flight(key, _do_query)
 
     # ----------------------------
     # Learning

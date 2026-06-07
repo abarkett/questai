@@ -69,15 +69,15 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
         "Scene-setting prose only — no lists, no UI.\n\n" + context
     )
 
-    # NOTE: this call is NOT wrapped in try/except — if Miriel is unreachable or
-    # errors, the exception propagates and the request fails hard (by design).
+    # The Miriel query is single-flighted in the client, so a concurrent warm +
+    # look for the same scene share one round-trip. Not wrapped in try/except: a
+    # Miriel outage propagates and the request fails hard (by design).
     resp = get_miriel_client().query(query=query, project="questai")
     answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
     answer = (answer or "").strip()
     if not answer:
-        # Miriel is reachable but produced nothing for this scene — show the
-        # location's own authored description rather than 500 the request. (This
-        # is NOT hiding a Miriel outage: an outage raises above.)
+        # Miriel reachable but produced nothing for this scene — show the
+        # location's own authored description rather than 500 the request.
         return base
 
     cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=600)
