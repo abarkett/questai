@@ -12,6 +12,28 @@ type Line = {
 
 // cache survives re-renders
 const sceneImageCache = new Map<string, string>();
+// in-flight renders, so foreground + prefetch never render the same scene twice
+const sceneInFlight = new Map<string, Promise<string>>();
+
+// Get a scene image for a key, reusing the cache or any in-flight render.
+function renderSceneCached(key: string, prompt: string): Promise<string> {
+  const cached = sceneImageCache.get(key);
+  if (cached) return Promise.resolve(cached);
+  const existing = sceneInFlight.get(key);
+  if (existing) return existing;
+  const p = generateSceneImage(prompt)
+    .then((img) => {
+      sceneImageCache.set(key, img);
+      sceneInFlight.delete(key);
+      return img;
+    })
+    .catch((e) => {
+      sceneInFlight.delete(key);
+      throw e;
+    });
+  sceneInFlight.set(key, p);
+  return p;
+}
 
 // ---- Map thumbnails (downscaled scene art, persisted in localStorage) ----
 const THUMBS_KEY = "location_thumbs";
@@ -61,15 +83,14 @@ function computeSceneKeyFromResponse(resp: any) {
 
   const entities = state.entities ?? [];
 
+  // NOTE: the key intentionally excludes hp — the scene art shouldn't change as
+  // a monster takes damage, only when the *set* of creatures present changes
+  // (a monster dies/spawns). This avoids regenerating on every hit.
   return JSON.stringify({
     locationId: state.location.id,
     locationDescription: state.location.description,
     entities: entities
-      .map((e: any) => ({
-        type: e.type,
-        name: e.name,
-        hp: e.hp ?? null,
-      }))
+      .map((e: any) => ({ type: e.type, name: e.name }))
       .sort((a: any, b: any) => a.name.localeCompare(b.name)),
   });
 }
@@ -326,10 +347,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     <div>{m.name}{m.hp != null ? ` (${m.hp} hp)` : ""}</div>
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                        onClick={() => onCommand(`attack ${m.name}`)}>attack</button>
+                        onClick={() => onCommand(`attack ${m.id}`)}>attack</button>
                       {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
                         <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
-                          title={a.description} onClick={() => onCommand(`${a.id} ${m.name}`)}>{a.name}</button>
+                          title={a.description} onClick={() => onCommand(`${a.id} ${m.id}`)}>{a.name}</button>
                       ))}
                     </div>
                   </div>
@@ -390,12 +411,20 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     </div>
                   );
                 })}
-                {Object.values(player.completed_quests ?? {}).map((q: any) => (
-                  <div key={q.quest_id} className="text-xs mb-1">
-                    <div className="font-semibold text-yellow-400">{q.name}</div>
-                    <div className="text-yellow-600">✓ ready — return to the quest giver</div>
-                  </div>
-                ))}
+                {Object.values(player.completed_quests ?? {}).map((q: any) => {
+                  const staged = q.stages && q.stages.length > 0;
+                  const objs = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
+                  return (
+                    <div key={q.quest_id} className="text-xs mb-1">
+                      <div className="font-semibold">{q.name}</div>
+                      {objs.map((obj: any, i: number) => (
+                        <div key={i} className="text-green-400">
+                          {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
               </Section>
             )}
 
@@ -473,7 +502,7 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                         <span className="text-green-300">{a.name}{icon}</span>
                         <button disabled={!canUse} title={hint}
                           className="text-xs px-1 border border-green-700 hover:bg-green-900 disabled:opacity-40"
-                          onClick={() => onCommand(needsTarget && monsters.length > 0 ? `${a.id} ${monsters[0].name}` : a.id)}>
+                          onClick={() => onCommand(needsTarget && monsters.length > 0 ? `${a.id} ${monsters[0].id}` : a.id)}>
                           {a.ready ? "use" : `${a.remaining}s`}
                         </button>
                       </div>
@@ -588,8 +617,7 @@ export default function Page() {
         entities: resp.state?.entities ?? [],
       });
 
-      const img = await generateSceneImage(prompt);
-      sceneImageCache.set(newKey, img);
+      const img = await renderSceneCached(newKey, prompt); // reuses any prefetch
       setSceneImage(img);
       recordThumb(resp.state?.location?.id, img);
     } catch {
@@ -626,7 +654,8 @@ export default function Page() {
         if (resp.state) {
           setLastState(resp.state);
           await handleSceneFromResponse(resp);
-          prefetchAdjacentScenes(resp.state); // 👈 THIS WAS MISSING
+          prefetchAdjacentScenes(resp.state);
+          prefetchCombatVariants(resp.state);
         }
 
         if (resp.messages) {
@@ -648,25 +677,35 @@ export default function Page() {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [log, isWaitingForResponse]);
 
-  async function prefetchAdjacentScenes(state: any) {
+  function prefetchAdjacentScenes(state: any) {
     for (const scene of state.adjacent_scenes ?? []) {
-      const fakeResp = { state: scene };
-
-      const key = computeSceneKeyFromResponse(fakeResp);
+      const key = computeSceneKeyFromResponse({ state: scene });
       if (!key || sceneImageCache.has(key)) continue;
+      const prompt = buildScenePrompt({ location: scene.location, entities: scene.entities });
+      renderSceneCached(key, prompt)
+        .then((img) => recordThumb(scene.location?.id, img))
+        .catch(() => {});
+    }
+  }
 
-      try {
-        const prompt = buildScenePrompt({
-          location: scene.location,
-          entities: scene.entities,
-        });
+  // Pre-generate the likely post-combat scenes for the current room (each single
+  // enemy removed, and the fully-cleared room) so killing an enemy doesn't pause
+  // to render. Fire-and-forget; failures are ignored. Costs a few extra renders.
+  function prefetchCombatVariants(state: any) {
+    const entities = state.entities ?? [];
+    const monsters = entities.filter((e: any) => e.type === "monster");
+    if (monsters.length === 0) return;
 
-        const img = await generateSceneImage(prompt);
-        sceneImageCache.set(key, img);
-        recordThumb(scene.location?.id, img);
-      } catch {
-        // prefetch failure is fine
-      }
+    const variants: any[][] = [entities.filter((e: any) => e.type !== "monster")]; // cleared
+    if (monsters.length > 1) {
+      for (const m of monsters) variants.push(entities.filter((e: any) => e.id !== m.id));
+    }
+
+    for (const ents of variants) {
+      const key = computeSceneKeyFromResponse({ state: { ...state, entities: ents } });
+      if (!key || sceneImageCache.has(key)) continue;
+      const prompt = buildScenePrompt({ location: state.location, entities: ents });
+      renderSceneCached(key, prompt).catch(() => {});
     }
   }
 
@@ -723,9 +762,10 @@ export default function Page() {
         await handleSceneFromResponse(resp);
       }
 
-      // Prefetch adjacent scenes
+      // Prefetch adjacent scenes + likely post-combat variants for this room
       if (resp.state?.location) {
         prefetchAdjacentScenes(resp.state);
+        prefetchCombatVariants(resp.state);
       }
 
       // Print messages
