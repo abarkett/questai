@@ -128,7 +128,7 @@ function computeMapLayout(mapData: any) {
   let spare = 0;
   for (const n of mapData.locations) if (!pos[n.id]) place(n.id, spare++, 99);
 
-  const edges: [number, number][][] = [];
+  const edges: { a: [number, number]; b: [number, number]; current: boolean }[] = [];
   const seen = new Set<string>();
   for (const n of mapData.locations) {
     for (const ex of n.exits || []) {
@@ -138,7 +138,7 @@ function computeMapLayout(mapData: any) {
       const ek = `${a}|${b}`;
       if (seen.has(ek)) continue;
       seen.add(ek);
-      edges.push([pos[a], pos[b]]);
+      edges.push({ a: pos[a], b: pos[b], current: n.id === mapData.current || ex.to === mapData.current });
     }
   }
 
@@ -162,12 +162,14 @@ function MapGraph({ mapData, thumbs }: { mapData: any; thumbs: Record<string, st
 
   return (
     <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "72vh" }}>
-      {L.edges.map(([a, b], i) => (
-        <line
-          key={i}
-          x1={cx(a[0])} y1={cy(a[1])} x2={cx(b[0])} y2={cy(b[1])}
-          stroke="#15803d" strokeWidth={2}
-        />
+      {/* Non-current edges first (dim), then current-location edges on top (bright). */}
+      {L.edges.filter((e) => !e.current).map((e, i) => (
+        <line key={`d${i}`} x1={cx(e.a[0])} y1={cy(e.a[1])} x2={cx(e.b[0])} y2={cy(e.b[1])}
+          stroke="#14532d" strokeWidth={1.5} />
+      ))}
+      {L.edges.filter((e) => e.current).map((e, i) => (
+        <line key={`c${i}`} x1={cx(e.a[0])} y1={cy(e.a[1])} x2={cx(e.b[0])} y2={cy(e.b[1])}
+          stroke="#4ade80" strokeWidth={4} />
       ))}
       {mapData.locations.map((n: any) => {
         const p = L.pos[n.id];
@@ -769,8 +771,9 @@ export default function Page() {
         <Modal title="World Map" onClose={() => setShowMap(false)}>
           <MapGraph mapData={mapData} thumbs={thumbsRef.current} />
           <div className="text-[11px] text-green-700 mt-3">
-            Lines are paths between areas; the bright node is where you are.
-            Click an exit (in the side panel) or type a direction to travel.
+            <span className="text-green-400">Bright green lines</span> are the exits
+            from where you are now; dim lines are paths elsewhere. Use the Exits
+            buttons (side panel) or type a direction to travel.
           </div>
         </Modal>
       )}
