@@ -198,6 +198,9 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = begin_arc(player, req.args.arc_id)
     elif req.action == "choose":
         result = choose(player, req.args.choice, req.args.arc_id)
+    elif req.action == "explore":
+        from .actions.explore import explore
+        result = explore(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)

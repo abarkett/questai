@@ -327,6 +327,11 @@ class GoalsReq(BaseModel):
     args: Optional[dict] = None
 
 
+class ExploreReq(BaseModel):
+    action: Literal["explore"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -366,6 +371,7 @@ ActionRequest = Union[
     PostBountyReq,
     BountiesReq,
     GoalsReq,
+    ExploreReq,
 ]
 
 

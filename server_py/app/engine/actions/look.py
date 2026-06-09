@@ -59,6 +59,12 @@ def look(player: Player) -> ActionResponse:
     exits = ", ".join(_gl(e.to).name for e in loc.exits) if loc.exits else "none"
     messages.append(f"Exits: {exits}")
 
+    # An unopened frontier invites exploration.
+    from ...regiongen import frontier_at
+    from ...db import get_region_by_origin
+    if frontier_at(loc.id) and not get_region_by_origin(loc.id):
+        messages.append("Something here remains uncharted... (explore)")
+
     return ActionResponse(
         ok=True,
         messages=messages,

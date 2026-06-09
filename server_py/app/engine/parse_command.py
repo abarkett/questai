@@ -257,6 +257,10 @@ def parse_command(text: str) -> Dict[str, Any]:
             "args": {"invite_id": rest[0]}
         }
     
+    # ---- EXPLORE (open a frontier) ----
+    if verb in ("explore", "search", "chart"):
+        return {"action": "explore"}
+
     # ---- NOTES (noticeboard) ----
     if verb in ("note", "write", "scratch"):
         if not rest:
