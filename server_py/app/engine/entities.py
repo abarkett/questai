@@ -1,11 +1,97 @@
 from __future__ import annotations
 
+import json
 from typing import List, Dict, Any
 
 from ..types_entities import Entity
 from ..world_entities import WORLD_ENTITIES
-from ..db import get_players_at_location
+import time
+
+from ..db import (
+    get_players_at_location,
+    get_monsters_at,
+    spawn_monster,
+    remove_monster,
+    monster_exists,
+    get_world_state,
+    set_world_state,
+)
 from ..world import get_location
+
+
+# How long after death a (non-rat) monster comes back. Rats use the separate
+# forest-infestation rules.
+MONSTER_RESPAWN_MS = 5 * 60 * 1000
+
+
+def world_level() -> int:
+    """The highest player level seen — monsters scale to it as players grow."""
+    try:
+        return max(1, int(get_world_state("world_level") or 1))
+    except (TypeError, ValueError):
+        return 1
+
+
+def scale_stats(base_hp: int, base_attack: int, base_xp: int, level: int) -> tuple[int, int, int]:
+    """
+    Gently scale a monster's stats to the world level so basic foes don't stay
+    trivial forever (a rat grows from 5 HP toward ~10-15) while never exploding.
+    """
+    hp_mult = min(3.0, 1 + 0.06 * (level - 1))
+    atk_mult = min(2.5, 1 + 0.035 * (level - 1))
+    return (
+        max(1, round(base_hp * hp_mult)),
+        max(1, round(base_attack * atk_mult)),
+        max(0, round(base_xp * hp_mult)),
+    )
+
+
+def _spawn_scaled(entity_id: str, location_id: str, e) -> None:
+    hp, atk, xp = scale_stats(e.hp or 1, e.attack or 1, e.xp_reward or 0, world_level())
+    spawn_monster(
+        instance_id=entity_id, location_id=location_id, name=e.name,
+        hp=hp, max_hp=hp, attack=atk, xp_reward=xp, loot=e.loot or {},
+    )
+
+
+def _death_key(instance_id: str) -> str:
+    return f"died_{instance_id}"
+
+
+def record_monster_death(instance_id: str) -> None:
+    """Stamp when a catalog monster died so it can respawn later."""
+    set_world_state(_death_key(instance_id), str(int(time.time() * 1000)))
+
+
+def respawn_due_monsters() -> int:
+    """
+    Respawn catalog monsters whose death was long enough ago. Returns the count
+    respawned. Cheap to call each action: only dead, timer-stamped monsters do
+    any work.
+    """
+    now = int(time.time() * 1000)
+    respawned = 0
+    for location_id, entity_list in WORLD_ENTITIES.items():
+        for e in entity_list:
+            if e.type != "monster" or e.entity_id.startswith("rat"):
+                continue
+            if monster_exists(e.entity_id):
+                continue
+            died_raw = get_world_state(_death_key(e.entity_id))
+            if died_raw:
+                # Tracked death: respawn once the timer elapses.
+                try:
+                    died = int(died_raw)
+                except ValueError:
+                    died = 0
+                if died and now - died < MONSTER_RESPAWN_MS:
+                    continue
+            # No death stamp (killed before respawn tracking, or otherwise
+            # untracked): it's been gone a while, so bring it back now.
+            _spawn_scaled(e.entity_id, location_id, e)
+            set_world_state(_death_key(e.entity_id), "")
+            respawned += 1
+    return respawned
 
 
 def find_player_by_name_at(location_id: str, name: str):
@@ -46,8 +132,67 @@ def get_player_entities_at(location_id: str) -> List[Dict[str, Any]]:
 # World entities (monsters, NPCs, etc.)
 # -------------------------------------------------
 
+def _static_npcs_at(location_id: str) -> List[Entity]:
+    """NPCs are static definitions kept in code (they don't change at runtime)."""
+    return [e for e in WORLD_ENTITIES.get(location_id, []) if e.type == "npc"]
+
+
+def _monster_row_to_entity(row: Dict[str, Any]) -> Entity:
+    return Entity(
+        entity_id=row["instance_id"],
+        name=row["name"],
+        type="monster",
+        hp=row["hp"],
+        attack=row.get("attack"),
+        xp_reward=row.get("xp_reward"),
+        loot=row.get("loot") or {},
+    )
+
+
 def get_world_entities_at(location_id: str) -> List[Entity]:
-    return WORLD_ENTITIES.get(location_id, [])
+    """Static NPCs (from code) + live monster instances (from the DB)."""
+    entities: List[Entity] = list(_static_npcs_at(location_id))
+    for row in get_monsters_at(location_id):
+        entities.append(_monster_row_to_entity(row))
+    return entities
+
+
+# Monsters that existed before instance-tracked seeding. Used only to migrate
+# older saves so their (possibly slain) rats are never resurrected.
+_LEGACY_SEEDED_IDS = {"rat_1", "rat_2"}
+
+
+def seed_world_monsters() -> None:
+    """
+    Spawn any catalog monster instance that has never been seeded before.
+
+    Tracking *which instances* have been seeded (rather than a single boolean)
+    lets new content land in existing worlds while guaranteeing a slain monster
+    is never resurrected: a killed instance stays in the seeded set, so it is
+    only ever brought back by the respawn rules.
+    """
+    seeded_raw = get_world_state("seeded_monster_instances")
+    if seeded_raw:
+        try:
+            seeded = set(json.loads(seeded_raw))
+        except Exception:
+            seeded = set()
+    elif get_world_state("monsters_seeded") == "true":
+        # Migrate older saves: original rats are already accounted for.
+        seeded = set(_LEGACY_SEEDED_IDS)
+    else:
+        seeded = set()
+
+    changed = False
+    for location_id, entity_list in WORLD_ENTITIES.items():
+        for e in entity_list:
+            if e.type == "monster" and e.entity_id not in seeded:
+                _spawn_scaled(e.entity_id, location_id, e)
+                seeded.add(e.entity_id)
+                changed = True
+
+    if changed or seeded_raw is None:
+        set_world_state("seeded_monster_instances", json.dumps(sorted(seeded)))
 
 
 def get_entities_at(location_id: str) -> List[Dict[str, Any]]:
@@ -130,13 +275,10 @@ def find_entity(location_id: str, name: str) -> Dict[str, Any] | None:
 
 def remove_entity(location_id: str, entity_id: str) -> None:
     """
-    Remove a world entity (monsters/NPCs only).
-    Players are not removed this way.
+    Remove a monster instance from the world (NPCs are static and never removed,
+    players are not removed this way).
     """
-    WORLD_ENTITIES[location_id] = [
-        e for e in WORLD_ENTITIES.get(location_id, [])
-        if e.entity_id != entity_id
-    ]
+    remove_monster(entity_id)
 
 
 def get_adjacent_scenes(location_id: str) -> List[Dict[str, Any]]:

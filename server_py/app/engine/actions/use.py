@@ -21,18 +21,44 @@ def use(player: Player, item_name: str) -> ActionResponse:
     if not item:
         return ActionResponse(ok=False, error="You can't use that item.")
 
-    if item.type == "consumable" and item.heal:
+    if item.type != "consumable":
+        return ActionResponse(ok=False, error="You can't use that item.")
+
+    messages: list[str] = []
+
+    if item.heal:
         player.hp = min(player.max_hp, player.hp + item.heal)
-        player.inventory[item_key] -= 1
-        if player.inventory[item_key] <= 0:
-            del player.inventory[item_key]
+        messages.append(f"You use {item.name}. (+{item.heal} HP)")
 
-        upsert_player(player)
+    if item.cure:
+        from ...status_effects import clear_negative
+        cured = clear_negative(player)
+        messages.append(f"You use {item.name}.")
+        messages.extend(cured if cured else ["You had no ailments to cure."])
 
-        return ActionResponse(
-            ok=True,
-            messages=[f"You use {item.name}. (+{item.heal} HP)"],
-            state=build_action_state(player, scene_dirty=False),
+    if item.effect:
+        from ...status_effects import apply_effect
+        msg = apply_effect(
+            player,
+            item.effect,
+            item.effect_magnitude or 0,
+            item.effect_turns or 0,
         )
+        messages.append(f"You use {item.name}.")
+        if msg:
+            messages.append(msg)
 
-    return ActionResponse(ok=False, error="You can't use that item.")
+    if not messages:
+        return ActionResponse(ok=False, error="You can't use that item.")
+
+    player.inventory[item_key] -= 1
+    if player.inventory[item_key] <= 0:
+        del player.inventory[item_key]
+
+    upsert_player(player)
+
+    return ActionResponse(
+        ok=True,
+        messages=messages,
+        state=build_action_state(player, scene_dirty=False),
+    )

@@ -19,9 +19,28 @@ _logger = logging.getLogger(__name__)
 
 PROJECT_NAMESPACE = "questai"
 
+# Test-only seam: when set, query() returns a canned answer instead of making a
+# network call. This is for the offline test suite — it is never set at runtime,
+# so the real game always talks to Miriel (and fails hard if Miriel is down).
+_TEST_RESPONDER = None
+
+
+def install_test_responder(fn) -> None:
+    """fn(query: str) -> str. Pass None to uninstall. Installing one marks the
+    client enabled so is_miriel_enabled() reflects the stubbed-but-working AI."""
+    global _TEST_RESPONDER
+    _TEST_RESPONDER = fn
+    if fn is not None:
+        get_miriel_client().enabled = True
+
 
 class UnauthorizedError(Exception):
     pass
+
+
+class MirielUnavailable(RuntimeError):
+    """Raised when a Miriel-backed feature is used but Miriel isn't working
+    (unconfigured / unreachable). Surfaced as a hard failure, by design."""
 
 
 class MirielRequestError(Exception):
@@ -73,6 +92,15 @@ class MirielClient:
     def _build_url(self, route: str) -> str:
         return f'{self.base_url}/api/{self.api_version}/{route}'
 
+    @staticmethod
+    def _project_param(project) -> list:
+        """The API expects `project` as a list of namespaces (was a string)."""
+        if project is None:
+            return [PROJECT_NAMESPACE]
+        if isinstance(project, str):
+            return [project]
+        return list(project)
+
     def _apply_auth(self, headers: Optional[Dict[str, str]]) -> Dict[str, str]:
         headers = dict(headers or {})
         headers['x-access-token'] = self.api_key
@@ -103,7 +131,9 @@ class MirielClient:
                     pass
                 raise MirielRequestError(status, msg, body=body) from err
 
-            raise MirielRequestError(status, f'Miriel request error ({status})', body=body) from err
+            # Surface the API's error body — a bare "(400)" is undebuggable.
+            detail = f': {body[:500]}' if body else ''
+            raise MirielRequestError(status, f'Miriel request error ({status}){detail}', body=body) from err
 
     def _request_raw(self, method, route: str, **kwargs) -> requests.Response:
         """Perform an HTTP request and return the Response (no JSON parsing)."""
@@ -190,18 +220,34 @@ class MirielClient:
         Returns:
           dict with query response
         """
-        route = 'query'
-        payload = {
-            'query': query,
-            'streaming': False,
-            'voice_mode': False,
-            'force_exhaustive': force_exhaustive,
-            'response_format': response_format,
-            'project': project or PROJECT_NAMESPACE,
-            **{k: v for k, v in params.items() if v is not None},
-        }
+        projects = self._project_param(project)
 
-        return self.make_post_request(route, payload=payload)
+        def _do_query():
+            if _TEST_RESPONDER is not None:
+                return {"results": {"answer": _TEST_RESPONDER(query)}}
+            route = 'query'
+            payload = {
+                'query': query,
+                'streaming': False,
+                'voice_mode': False,
+                'force_exhaustive': force_exhaustive,
+                'project': projects,
+                **{k: v for k, v in params.items() if v is not None},
+            }
+            # Only include response_format when set; strict validators reject null.
+            if response_format is not None:
+                payload['response_format'] = response_format
+            return self.make_post_request(route, payload=payload)
+
+        # Single-flight identical concurrent queries (e.g. a background warm and
+        # the real look/move/talk for the same scene) so they share one
+        # round-trip instead of duplicating the call.
+        import hashlib
+        from ..single_flight import run as single_flight
+        key = "q:" + hashlib.sha256(
+            f"{query}|{projects}|{force_exhaustive}".encode()
+        ).hexdigest()
+        return single_flight(key, _do_query)
 
     # ----------------------------
     # Learning
@@ -262,7 +308,7 @@ class MirielClient:
             'discoverable': discoverable,
             'grant_ids': grant_ids,
             'priority': priority,
-            'project': project or PROJECT_NAMESPACE,
+            'project': self._project_param(project),
         }
 
         _logger.info(f'[MIRIEL] Learning {len(parsed_inputs)} items...')
@@ -293,7 +339,7 @@ class MirielClient:
         if user_id is not None:
             payload['user_id'] = user_id
         if project is not None:
-            payload['project'] = project
+            payload['project'] = self._project_param(project)
         if metadata_query is not None:
             payload['metadata_query'] = metadata_query
         return self.make_post_request('get_all_documents', payload=payload)

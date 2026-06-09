@@ -16,6 +16,11 @@ from ..entities import (
     filter_current_player,
 )
 from ..state_view import build_action_state
+from ...progression import total_attack_damage, defense_bonus, apply_xp
+from ...combat import roll_damage
+from ...abilities import get_ability
+from ...status_effects import tick_effects, damage_modifier, apply_effect
+from ...world_entities import MONSTER_INFLICTS
 
 
 # Simple shared combat constants
@@ -59,22 +64,29 @@ def update_quest_progress(player: Player, target_name: str) -> list[str]:
         player_messages = []
         player_completed = []
 
+        from ...engine.quest_progress import current_objectives, completion_message, stage_message
+
         for quest_id, quest in p.active_quests.items():
             if quest.status != "accepted":
                 continue
 
-            for objective in quest.objectives:
+            objs = current_objectives(quest)
+            for objective in objs:
                 if objective.type == "kill" and objective.target.lower() == target_name.lower():
                     if objective.progress < objective.required:
                         objective.progress += 1
                         player_messages.append(f"Quest progress: {quest.name} ({objective.progress}/{objective.required})")
 
-                        # Check if all objectives are complete
-                        if all(obj.progress >= obj.required for obj in quest.objectives):
-                            quest.status = "completed"
-                            quest.completed_at = int(time.time() * 1000)
-                            player_completed.append(quest_id)
-                            player_messages.append(f"Quest completed: {quest.name}! Return to the quest giver to turn it in.")
+                        # Stage / completion check on the current stage's objectives.
+                        if all(obj.progress >= obj.required for obj in objs):
+                            if quest.stages and quest.current_stage < len(quest.stages) - 1:
+                                quest.current_stage += 1
+                                player_messages.append(stage_message(quest))
+                            else:
+                                quest.status = "completed"
+                                quest.completed_at = int(time.time() * 1000)
+                                player_completed.append(quest_id)
+                                player_messages.append(completion_message(quest))
                         break
 
         # Move completed quests after iteration
@@ -119,40 +131,124 @@ def is_player_attackable(target: Player, attacker: Player, current_time_ms: int)
     return True, None
 
 
-def attack(player: Player, target_name: str) -> ActionResponse:
+def attack(player: Player, target_name: str, ability: str | None = None) -> ActionResponse:
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
+
+    # Status effects tick as time passes in combat; a lingering DoT can be fatal.
+    messages.extend(tick_effects(player))
+    if player.hp <= 0:
+        player.hp = player.max_hp
+        player.location = RESPAWN_LOCATION
+        player.last_defeated_at = current_time_ms
+        player.status_effects.clear()
+        messages.append("Your wounds overcome you. You wake back in the Town Square.")
+        upsert_player(player)
+        return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))
+
+    # Bleed (monster DoT) ticks on your strikes.
+    from ...dots import tick_bleeds
+    messages.extend(tick_bleeds(player.location))
+
+    # An offensive ability scales the hit and triggers its cooldown on use.
+    ability_obj = get_ability(ability) if ability else None
+    mult = ability_obj.multiplier if (ability_obj and ability_obj.multiplier) else 1.0
+    label = f"{ability_obj.name}! " if ability_obj else ""
+
+    base = int((total_attack_damage(player) + damage_modifier(player)) * mult)
+    dmg, is_crit = roll_damage(base)
+    crit_suffix = " (CRITICAL HIT!)" if is_crit else ""
+
+    def _start_cooldown() -> None:
+        if ability_obj:
+            player.ability_cooldowns[ability_obj.ability_id] = (
+                current_time_ms + ability_obj.cooldown_s * 1000
+            )
 
     # -------------------------------------------------
     # Try PvE first (monsters)
     # -------------------------------------------------
     entity = find_entity(player.location, target_name)
     if entity and entity["type"] == "monster":
-        # Monster combat (unchanged)
-        monster_hp = entity["hp"] - PLAYER_DAMAGE
-        messages.append(f"You attack the {entity['name']} for {PLAYER_DAMAGE} damage.")
+        from ...bestiary import discover
+        discover(player, entity["name"])
+        # Atomic, persistent monster combat (safe under concurrent attackers).
+        from ...db import damage_monster
+        result = damage_monster(entity["id"], dmg)
 
-        if monster_hp <= 0:
-            remove_entity(player.location, entity["id"])
-            messages.append(f"The {entity['name']} is defeated.")
-            
+        if result is None:
+            # Another player already finished it off between our look and our hit.
+            return ActionResponse(
+                ok=True,
+                messages=[f"The {entity['name']} is already gone."],
+                state=build_action_state(player, scene_dirty=True),
+            )
+
+        _start_cooldown()
+        messages.append(f"{label}You attack the {result['name']} for {dmg} damage.{crit_suffix}")
+
+        if result["killed"]:
+            from ...bosses import clear_boss_state
+            from ..entities import record_monster_death
+            from ...dots import clear_bleed
+            clear_boss_state(entity["id"], result["name"])
+            clear_bleed(entity["id"])
+            record_monster_death(entity["id"])  # schedule its respawn
+            messages.append(f"The {result['name']} is defeated.")
+
+            # Loot drops go straight into the inventory.
+            for item, qty in (result.get("loot") or {}).items():
+                player.inventory[item] = player.inventory.get(item, 0) + qty
+                messages.append(f"You found: {qty}x {item}")
+
+            # XP and any level-ups from the kill.
+            messages.extend(apply_xp(player, result.get("xp_reward") or 0))
+
             # Update quest progress
-            quest_messages = update_quest_progress(player, entity["name"])
+            quest_messages = update_quest_progress(player, result["name"])
             messages.extend(quest_messages)
-            
+
             # Phase 8: Track monster deaths for world evolution
             from ...world_rules import track_monster_survival
             track_monster_survival(player.location)
         else:
-            # Update monster HP in world state
-            for e in get_world_entities_at(player.location):
-                if e.entity_id == entity["id"]:
-                    e.hp = monster_hp
-                    break
-
-            retaliation = 2
+            raw = result.get("attack") or 2
+            retaliation = max(1, raw - defense_bonus(player))
             player.hp -= retaliation
-            messages.append(f"The {entity['name']} hits you for {retaliation} damage.")
+            messages.append(f"The {result['name']} hits you for {retaliation} damage.")
+
+            # Some monsters afflict a status effect when they land a blow.
+            inflict = MONSTER_INFLICTS.get(result["name"])
+            if inflict and player.hp > 0:
+                msg = apply_effect(
+                    player,
+                    inflict["effect"],
+                    inflict.get("magnitude", 1),
+                    inflict.get("turns", 1),
+                )
+                if msg:
+                    messages.append(msg)
+
+            # Boss mechanics: enrage / summon adds once below the HP threshold.
+            from ...bosses import trigger_boss_on_hit
+            messages.extend(trigger_boss_on_hit(entity["id"], result))
+
+            if player.hp <= 0:
+                player.hp = player.max_hp
+                player.location = RESPAWN_LOCATION
+                player.last_defeated_at = current_time_ms
+                player.status_effects.clear()
+                messages.append(
+                    f"You were defeated by the {result['name']} and wake up back in the Town Square."
+                )
+
+        # A second hostile in the area may join the fray.
+        if player.hp > 0:
+            from ...ambush import maybe_ambush
+            joiner = maybe_ambush(player, exclude_id=entity["id"], chance=0.35)
+            if joiner:
+                messages.append("Another enemy joins the fight!")
+                messages.extend(joiner)
 
         upsert_player(player)
 
@@ -182,9 +278,11 @@ def attack(player: Player, target_name: str) -> ActionResponse:
             state=build_action_state(player, scene_dirty=False),
         )
 
-    messages.append(f"You attack {target_player.name} for {PLAYER_DAMAGE} damage.")
+    _start_cooldown()
+    pvp_dmg = max(1, dmg - defense_bonus(target_player))
+    messages.append(f"{label}You attack {target_player.name} for {pvp_dmg} damage.{crit_suffix}")
 
-    target_player.hp -= PLAYER_DAMAGE
+    target_player.hp -= pvp_dmg
 
     if target_player.hp <= 0:
         messages.append(f"{target_player.name} is defeated!")

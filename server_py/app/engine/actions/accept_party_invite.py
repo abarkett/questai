@@ -30,7 +30,14 @@ def accept_party_invite(player: Player, invite_id: str) -> ActionResponse:
     invite = get_party_invite(invite_id)
     if not invite:
         return ActionResponse(ok=False, error="Invalid or expired invitation.")
-    
+
+    # Reject (and clean up) invitations that have expired.
+    from ...db import PARTY_INVITE_TTL_MS
+    from ...presence import now_ms
+    if now_ms() - (invite.get("created_at") or 0) > PARTY_INVITE_TTL_MS:
+        delete_party_invite(invite_id)
+        return ActionResponse(ok=False, error="That invitation has expired.")
+
     # Check if invitation is for this player
     if invite["to_player_id"] != player.player_id:
         return ActionResponse(ok=False, error="This invitation is not for you.")

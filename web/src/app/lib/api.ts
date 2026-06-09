@@ -23,3 +23,12 @@ export async function sendCommand(
 
   return await res.json();
 }
+
+// Background cache warming (Miriel location descriptions). Fire-and-forget.
+export function prefetchCaches(playerId?: string | null): void {
+  if (!playerId) return;
+  fetch(`${SERVER}/prefetch`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-player-id": playerId },
+  }).catch(() => {});
+}

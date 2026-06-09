@@ -33,6 +33,7 @@ def create_player(name: str) -> ActionResponse:
         xp=0,
         hp=10,
         max_hp=10,
+        visited_locations=["town_square"],
     )
     upsert_player(player)
 

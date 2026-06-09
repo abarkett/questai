@@ -11,12 +11,12 @@ import json
 import time
 from typing import Dict, Any, Optional, Tuple, List
 
-from .services.miriel_client import get_miriel_client
+from .services.miriel_client import get_miriel_client, MirielUnavailable
 from .services.miriel_prompts import build_quest_generation_prompt, build_story_arc_prompt
 from .types import Player
 from .types_quests import Quest, QuestObjective
 from .types_story_arcs import StoryArc, StoryArcChapter
-from .world_quests import QUEST_TEMPLATES
+from .world_quests import QUEST_TEMPLATES, get_valid_quest_targets
 from .db import (
     get_all_world_state,
     calculate_reputation,
@@ -88,15 +88,15 @@ def generate_quest_for_player(
     """
     client = get_miriel_client()
     if not client.enabled:
-        print("[MIRIEL] Quest generation skipped - Miriel not enabled")
-        return None
+        raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
 
     try:
         # Build rich context
         context = _build_quest_context(player)
 
-        # Check cache first
-        cache_key = _generate_cache_key("quest", context, quest_id_hint or "", npc_id or "")
+        # Check cache first. Quest identity is (player, quest_id_hint) so an offered
+        # quest stays stable through accept regardless of intervening state changes.
+        cache_key = _generate_cache_key("quest", context, quest_id_hint or "")
         cached = get_cached_miriel_content(cache_key)
         if cached:
             print(f"[MIRIEL] Using cached quest for {player.name}")
@@ -149,11 +149,16 @@ def generate_quest_for_player(
                 print(f"[MIRIEL] Quest missing required fields: {quest_data.keys()}")
                 return None
 
+            # Pin the quest_id to the hint so the offered id, the accepted id, and
+            # the active_quests dict key all agree (the model may rename it).
+            if quest_id_hint:
+                quest_data["quest_id"] = quest_id_hint
+
             # Create Quest object
             quest = Quest(**quest_data)
 
-            # Cache the generated quest
-            cache_miriel_content(cache_key, "quest", json.dumps(quest_data), ttl_seconds=3600)
+            # Cache the generated quest (24h) so an offer remains acceptable later.
+            cache_miriel_content(cache_key, "quest", json.dumps(quest_data), ttl_seconds=86400)
 
             # Learn the generated quest (auto-learning)
             if client.auto_learning_enabled:
@@ -185,8 +190,10 @@ def generate_quest_for_player(
             return None
 
     except Exception as e:
+        # Crash hard when Miriel isn't working. (An empty/malformed answer is
+        # handled above by returning None so templates can still be offered.)
         print(f"[MIRIEL] Quest generation error: {e}")
-        return None
+        raise
 
 
 def generate_story_arc(
@@ -332,31 +339,45 @@ def _build_quest_context(player: Player) -> Dict[str, Any]:
     except Exception:
         pass
 
+    # Anti-repeat: names of every quest this player has already seen.
+    seen_names: List[str] = []
+    for q in (
+        list(player.active_quests.values())
+        + list(player.completed_quests.values())
+        + list(player.archived_quests.values())
+    ):
+        name = getattr(q, "name", None)
+        if name:
+            seen_names.append(name)
+    context["seen_quest_names"] = seen_names
+
+    # Variation seed that advances as the player finishes quests, so repeated
+    # generations diverge instead of collapsing onto one "default" quest.
+    context["novelty_seed"] = len(player.completed_quests) + len(player.archived_quests)
+
+    # Constrain generated objectives to things that actually exist in the world.
+    try:
+        context["valid_targets"] = get_valid_quest_targets()
+    except Exception:
+        context["valid_targets"] = {"monsters": ["Rat"], "items": []}
+
     return context
 
 
 def _generate_cache_key(content_type: str, context: Dict[str, Any], *args) -> str:
     """
-    Generate deterministic cache key from content type, context, and additional args.
+    Deterministic cache key identifying a *specific quest instance*.
 
-    Args:
-        content_type: Type of content ('quest', 'dialogue', etc.)
-        context: Context dictionary
-        *args: Additional arguments to include in key
-
-    Returns:
-        SHA256 hash as cache key
+    Keyed by (content_type, player_id, args) where args carries the
+    quest_id_hint. This personalizes content per player (no cross-player
+    collisions) and keeps an offered quest stable through accept — the
+    quest_id_hint already rotates as the player progresses, so novelty comes
+    from a changing hint rather than from a volatile state hash.
     """
-    # Create a simplified context for caching (ignore timestamps and very specific data)
     cache_context = {
         "type": content_type,
-        "player_level": context.get("player_level"),
-        "location": context.get("location"),
-        "active_quests": context.get("active_quests", []),
-        "completed_count": len(context.get("completed_quests", [])),
-        "reputations": context.get("reputations", {}),
-        "world_state": context.get("world_state", {}),
-        "args": args
+        "player_id": context.get("player_id"),
+        "args": args,
     }
 
     combined = json.dumps(cache_context, sort_keys=True)

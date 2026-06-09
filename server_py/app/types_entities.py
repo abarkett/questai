@@ -17,6 +17,12 @@ class Entity(BaseModel):
     attack: int | None = None
     xp_reward: int | None = None
     loot: dict[str, int] | None = None
+    # status effect this monster inflicts on retaliation, e.g.
+    # {"effect": "poison", "magnitude": 2, "turns": 3}
+    inflicts: dict | None = None
+    # hostile monsters may ambush a player who acts carelessly (e.g. gathers)
+    # near them; passive ones (rats, beetles) do not.
+    aggressive: bool = False
 
     # npc-relevant
     role: str | None = None          # e.g. "shop"

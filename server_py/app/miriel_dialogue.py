@@ -9,7 +9,7 @@ import hashlib
 import json
 from typing import Optional, Dict, Any
 
-from .services.miriel_client import get_miriel_client
+from .services.miriel_client import get_miriel_client, MirielUnavailable
 from .services.miriel_prompts import build_dialogue_prompt, build_quest_offer_dialogue_prompt
 from .types import Player
 from .db import (
@@ -49,7 +49,7 @@ def generate_npc_dialogue(
     """
     client = get_miriel_client()
     if not client.enabled:
-        return None
+        raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
 
     try:
         # Build context
@@ -136,8 +136,10 @@ def generate_npc_dialogue(
         return dialogue_text
 
     except Exception as e:
+        # Crash hard when Miriel isn't working (no silent fallback). An empty
+        # answer is handled above by returning None (Miriel up, just no content).
         print(f"[MIRIEL] Dialogue generation error: {e}")
-        return None
+        raise
 
 
 def generate_quest_offer_dialogue(
@@ -162,7 +164,18 @@ def generate_quest_offer_dialogue(
     """
     client = get_miriel_client()
     if not client.enabled:
-        return None
+        raise MirielUnavailable("Miriel is not configured (set MIRIEL_API_KEY).")
+
+    # Cache so the background warmer can pre-generate this and talk() reuses it.
+    cache_key = "qoffer_" + hashlib.sha256(
+        f"{player.player_id}|{npc_id}|{quest_name}".encode()
+    ).hexdigest()[:16]
+    cached = get_cached_miriel_content(cache_key)
+    if cached:
+        try:
+            return json.loads(cached)
+        except Exception:
+            pass
 
     try:
         context = {}
@@ -190,14 +203,17 @@ def generate_quest_offer_dialogue(
             return None
 
         dialogue_text = response.get("results", {}).get("answer", "").strip()
+        if not dialogue_text:
+            return None
         if dialogue_text.startswith('"') and dialogue_text.endswith('"'):
             dialogue_text = dialogue_text[1:-1]
 
+        cache_miriel_content(cache_key, "dialogue", json.dumps(dialogue_text), ttl_seconds=1800)
         return dialogue_text
 
     except Exception as e:
         print(f"[MIRIEL] Quest offer dialogue error: {e}")
-        return None
+        raise
 
 
 def _get_npc_faction(npc_id: str) -> Optional[Dict[str, Any]]:

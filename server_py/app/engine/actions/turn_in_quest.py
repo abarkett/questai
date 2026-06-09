@@ -28,7 +28,11 @@ def turn_in_quest(player: Player, quest_id: str) -> ActionResponse:
 
     # Award rewards
     messages = [f"Quest turned in: {quest.name}"]
-    
+
+    # Consume any items the quest's collect objectives required.
+    from ..quest_progress import consume_quest_items
+    messages.extend(consume_quest_items(player, quest))
+
     for item, quantity in quest.rewards.items():
         if item in player.inventory:
             player.inventory[item] += quantity

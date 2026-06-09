@@ -30,7 +30,7 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {"action": "look"}
     
     # ---- STATS ----
-    if verb in ("stats", "hp", "me", "status"):
+    if verb in ("stats", "hp", "me", "status", "abilities", "skills"):
         return {"action": "stats"}
 
     # ---- MOVE ----
@@ -50,6 +50,17 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("use", "eat", "drink"):
         return {"action": "use", "args": {"item": " ".join(rest)}}
 
+    # ---- EQUIP / UNEQUIP ----
+    if verb in ("equip", "wield", "wear"):
+        if not rest:
+            raise ParseError("Equip what?")
+        return {"action": "equip", "args": {"item": " ".join(rest)}}
+
+    if verb in ("unequip", "remove"):
+        if not rest:
+            raise ParseError("Unequip which slot? (weapon or armor)")
+        return {"action": "unequip", "args": {"slot": " ".join(rest)}}
+
     # ---- CREATE PLAYER ----
     if verb in ("create", "new"):
         if not rest:
@@ -66,6 +77,31 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {
             "action": "attack",
             "args": {"target": " ".join(rest)}
+        }
+
+    # ---- ABILITIES ----
+    if verb in ("ability", "cast"):
+        if not rest:
+            raise ParseError("Use which ability?")
+        return {
+            "action": "use_ability",
+            "args": {"ability": rest[0], "target": " ".join(rest[1:]) or None},
+        }
+
+    _ability_aliases = {
+        "power_strike": "power_strike",
+        "powerstrike": "power_strike",
+        "strike": "power_strike",
+        "second_wind": "second_wind",
+        "secondwind": "second_wind",
+        "rend": "rend",
+        "cleave": "cleave",
+        "rupture": "rupture",
+    }
+    if verb in _ability_aliases:
+        return {
+            "action": "use_ability",
+            "args": {"ability": _ability_aliases[verb], "target": " ".join(rest) or None},
         }
 
     # ---- TALK ----
@@ -85,6 +121,18 @@ def parse_command(text: str) -> Dict[str, Any]:
                 "item": " ".join(rest)
             }
         }
+
+    # ---- SELL ----
+    if verb == "sell" and rest:
+        return {"action": "sell", "args": {"item": " ".join(rest)}}
+
+    # ---- CRAFT ----
+    if verb in ("craft", "make") and rest:
+        return {"action": "craft", "args": {"item": " ".join(rest)}}
+
+    # ---- GATHER ----
+    if verb in ("gather", "forage", "mine", "harvest"):
+        return {"action": "gather"}
     
     if verb == "accept" and rest:
         return {
@@ -196,6 +244,35 @@ def parse_command(text: str) -> Dict[str, Any]:
     # ---- REPUTATION ----
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}
+
+    # ---- HEAL (temple) ----
+    if verb in ("heal", "pray", "rest", "worship"):
+        return {"action": "heal"}
+
+    # ---- MAP ----
+    if verb in ("map", "m"):
+        return {"action": "map"}
+
+    # ---- BESTIARY ----
+    if verb in ("bestiary", "monsters", "codex"):
+        return {"action": "bestiary"}
+
+    # ---- JOURNAL (quests) ----
+    if verb in ("journal", "quests", "quest", "log"):
+        return {"action": "journal"}
+
+    # ---- STORY ARCS ----
+    if verb in ("story", "arcs", "saga", "tales"):
+        return {"action": "story"}
+
+    if verb in ("begin", "embark") and rest:
+        return {"action": "begin_arc", "args": {"arc_id": rest[0]}}
+
+    if verb == "choose" and rest:
+        from ..story_content import STORY_ARCS
+        if len(rest) >= 2 and rest[0].lower() in STORY_ARCS:
+            return {"action": "choose", "args": {"arc_id": rest[0].lower(), "choice": rest[1]}}
+        return {"action": "choose", "args": {"choice": rest[0]}}
 
     # ---- FALLBACK ----
     raise ParseError(f"Unknown command: {text}")

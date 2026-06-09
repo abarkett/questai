@@ -32,12 +32,19 @@ def init_db() -> None:
               hp INTEGER NOT NULL,
               max_hp INTEGER NOT NULL,
               inventory_json TEXT NOT NULL,
+              equipment_json TEXT DEFAULT '{}',
+              abilities_json TEXT DEFAULT '[]',
+              ability_cooldowns_json TEXT DEFAULT '{}',
+              status_effects_json TEXT DEFAULT '{}',
+              visited_locations_json TEXT DEFAULT '[]',
+              discovered_monsters_json TEXT DEFAULT '[]',
               active_quests_json TEXT DEFAULT '{}',
               completed_quests_json TEXT DEFAULT '{}',
               archived_quests_json TEXT DEFAULT '{}',
               last_defeated_at INTEGER,
               last_attacked_target TEXT,
-              last_attacked_at INTEGER
+              last_attacked_at INTEGER,
+              last_seen INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -147,6 +154,8 @@ def init_db() -> None:
               joined_at INTEGER NOT NULL,
               joined_turn INTEGER NOT NULL,
               choices_json TEXT DEFAULT '[]',   -- Track player decisions
+              current_chapter INTEGER DEFAULT 1,
+              status TEXT DEFAULT 'active',      -- per-player: 'active' | 'completed'
               PRIMARY KEY (player_id, arc_id)
             );
 
@@ -159,7 +168,34 @@ def init_db() -> None:
               expires_at INTEGER NOT NULL
             );
 
+            -- Persistent, shared scene-image cache (single shared world).
+            -- Keyed by a hash of the render prompt so the same place yields the
+            -- same image for every player and across sessions/restarts.
+            CREATE TABLE IF NOT EXISTS scene_images (
+              cache_key TEXT PRIMARY KEY,
+              prompt TEXT NOT NULL,
+              image_data TEXT NOT NULL,         -- data:image/...;base64,... URI
+              model TEXT,
+              created_at INTEGER NOT NULL
+            );
+
+            -- Live monster instances. Persisting these (instead of mutating an
+            -- in-memory global) survives restarts and makes combat atomic and
+            -- consistent across concurrent players. Monsters are deleted on death.
+            CREATE TABLE IF NOT EXISTS monsters (
+              instance_id TEXT PRIMARY KEY,
+              location_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              hp INTEGER NOT NULL,
+              max_hp INTEGER NOT NULL,
+              attack INTEGER NOT NULL DEFAULT 1,
+              xp_reward INTEGER NOT NULL DEFAULT 0,
+              loot_json TEXT NOT NULL DEFAULT '{}',
+              spawned_turn INTEGER NOT NULL DEFAULT 0
+            );
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
+            CREATE INDEX IF NOT EXISTS idx_monsters_location ON monsters(location_id);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
 
             -- Initialize world clock if not exists
@@ -229,19 +265,40 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
     
     # Define expected columns and their types for migration
     expected_columns = {
+        "equipment_json": "TEXT DEFAULT '{}'",
+        "abilities_json": "TEXT DEFAULT '[]'",
+        "ability_cooldowns_json": "TEXT DEFAULT '{}'",
+        "status_effects_json": "TEXT DEFAULT '{}'",
+        "visited_locations_json": "TEXT DEFAULT '[]'",
+        "discovered_monsters_json": "TEXT DEFAULT '[]'",
         "active_quests_json": "TEXT DEFAULT '{}'",
         "completed_quests_json": "TEXT DEFAULT '{}'",
         "archived_quests_json": "TEXT DEFAULT '{}'",
         "last_defeated_at": "INTEGER",
         "last_attacked_target": "TEXT",
         "last_attacked_at": "INTEGER",
+        "last_seen": "INTEGER DEFAULT 0",
     }
     
     # Add missing columns
     for column_name, column_type in expected_columns.items():
         if column_name not in columns:
             conn.execute(f"ALTER TABLE players ADD COLUMN {column_name} {column_type}")
-    
+
+    # Per-player story-arc progress columns (added after the table shipped).
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='player_story_arcs'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(player_story_arcs)")
+        arc_cols = {row[1] for row in cursor.fetchall()}
+        for col, coltype in {
+            "current_chapter": "INTEGER DEFAULT 1",
+            "status": "TEXT DEFAULT 'active'",
+        }.items():
+            if col not in arc_cols:
+                conn.execute(f"ALTER TABLE player_story_arcs ADD COLUMN {col} {coltype}")
+
     # Clean up duplicate players (keep oldest by player_id)
     _remove_duplicate_players(conn)
     
@@ -259,7 +316,13 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     """Helper function to build a Player object from a database row."""
     data = dict(row)
     data["inventory"] = json.loads(data["inventory_json"])
-    
+    data["equipment"] = json.loads(data.get("equipment_json") or "{}")
+    data["abilities"] = json.loads(data.get("abilities_json") or "[]")
+    data["ability_cooldowns"] = json.loads(data.get("ability_cooldowns_json") or "{}")
+    data["status_effects"] = json.loads(data.get("status_effects_json") or "{}")
+    data["visited_locations"] = json.loads(data.get("visited_locations_json") or "[]")
+    data["discovered_monsters"] = json.loads(data.get("discovered_monsters_json") or "[]")
+
     # Handle quest fields for backwards compatibility
     data["active_quests"] = json.loads(data.get("active_quests_json", "{}"))
     data["completed_quests"] = json.loads(data.get("completed_quests_json", "{}"))
@@ -326,6 +389,12 @@ def upsert_player(p: Player) -> None:
               hp,
               max_hp,
               inventory_json,
+              equipment_json,
+              abilities_json,
+              ability_cooldowns_json,
+              status_effects_json,
+              visited_locations_json,
+              discovered_monsters_json,
               active_quests_json,
               completed_quests_json,
               archived_quests_json,
@@ -333,7 +402,7 @@ def upsert_player(p: Player) -> None:
               last_attacked_target,
               last_attacked_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -342,6 +411,12 @@ def upsert_player(p: Player) -> None:
               hp=excluded.hp,
               max_hp=excluded.max_hp,
               inventory_json=excluded.inventory_json,
+              equipment_json=excluded.equipment_json,
+              abilities_json=excluded.abilities_json,
+              ability_cooldowns_json=excluded.ability_cooldowns_json,
+              status_effects_json=excluded.status_effects_json,
+              visited_locations_json=excluded.visited_locations_json,
+              discovered_monsters_json=excluded.discovered_monsters_json,
               active_quests_json=excluded.active_quests_json,
               completed_quests_json=excluded.completed_quests_json,
               archived_quests_json=excluded.archived_quests_json,
@@ -358,6 +433,12 @@ def upsert_player(p: Player) -> None:
                 p.hp,
                 p.max_hp,
                 json.dumps(p.inventory),
+                json.dumps(p.equipment),
+                json.dumps(p.abilities),
+                json.dumps(p.ability_cooldowns),
+                json.dumps(p.status_effects),
+                json.dumps(p.visited_locations),
+                json.dumps(p.discovered_monsters),
                 json.dumps({k: v.model_dump() for k, v in p.active_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.completed_quests.items()}),
                 json.dumps({k: v.model_dump() for k, v in p.archived_quests.items()}),
@@ -865,14 +946,55 @@ def get_party_invite(invite_id: str) -> Optional[Dict[str, Any]]:
         conn.close()
 
 
+PARTY_INVITE_TTL_MS = 24 * 3600 * 1000  # invites expire after a day
+
+
 def get_player_party_invites(player_id: str) -> List[Dict[str, Any]]:
-    """Get all party invites for a player."""
+    """Get a player's pending invites, deleting any that have expired."""
     conn = get_conn()
     try:
         rows = conn.execute(
             "SELECT * FROM party_invites WHERE to_player_id = ?", (player_id,)
         ).fetchall()
-        return [dict(row) for row in rows]
+        now = int(time.time() * 1000)
+        fresh, expired = [], []
+        for row in rows:
+            d = dict(row)
+            if now - (d.get("created_at") or 0) > PARTY_INVITE_TTL_MS:
+                expired.append(d["invite_id"])
+            else:
+                fresh.append(d)
+        for inv_id in expired:
+            conn.execute("DELETE FROM party_invites WHERE invite_id = ?", (inv_id,))
+        if expired:
+            conn.commit()
+        return fresh
+    finally:
+        conn.close()
+
+
+def touch_last_seen(player_id: str, ts: int) -> None:
+    """Record that a player was active just now (for presence)."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE players SET last_seen = ? WHERE player_id = ?", (ts, player_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_last_seen_map(player_ids: List[str]) -> Dict[str, int]:
+    """Map of player_id -> last_seen ms for the given players."""
+    if not player_ids:
+        return {}
+    conn = get_conn()
+    try:
+        placeholders = ",".join("?" for _ in player_ids)
+        rows = conn.execute(
+            f"SELECT player_id, last_seen FROM players WHERE player_id IN ({placeholders})",
+            tuple(player_ids),
+        ).fetchall()
+        return {r["player_id"]: (r["last_seen"] or 0) for r in rows}
     finally:
         conn.close()
 
@@ -940,6 +1062,75 @@ def create_story_arc(
                 now,
                 json.dumps(metadata or {}),
             ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_player_arc(player_id: str, arc_id: str) -> Optional[Dict[str, Any]]:
+    """Per-player progress on a single story arc, or None if not started."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM player_story_arcs WHERE player_id = ? AND arc_id = ?",
+            (player_id, arc_id),
+        ).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def get_player_arcs(player_id: str) -> List[Dict[str, Any]]:
+    """All story arcs this player has started (any status)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM player_story_arcs WHERE player_id = ?",
+            (player_id,),
+        ).fetchall()
+        return [dict(row) for row in rows]
+    finally:
+        conn.close()
+
+
+def start_player_arc(player_id: str, arc_id: str) -> None:
+    """Begin an arc for a player at chapter 1 (no-op if already started)."""
+    conn = get_conn()
+    try:
+        now = int(time.time() * 1000)
+        turn = get_world_turn()
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO player_story_arcs
+              (player_id, arc_id, joined_at, joined_turn, choices_json, current_chapter, status)
+            VALUES (?, ?, ?, ?, '[]', 1, 'active')
+            """,
+            (player_id, arc_id, now, turn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def update_player_arc(
+    player_id: str,
+    arc_id: str,
+    *,
+    current_chapter: int,
+    status: str,
+    choices: List[Dict[str, Any]],
+) -> None:
+    """Persist a player's arc progress (chapter, status, recorded choices)."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            UPDATE player_story_arcs
+            SET current_chapter = ?, status = ?, choices_json = ?
+            WHERE player_id = ? AND arc_id = ?
+            """,
+            (current_chapter, status, json.dumps(choices), player_id, arc_id),
         )
         conn.commit()
     finally:
@@ -1040,6 +1231,190 @@ def get_cached_miriel_content(cache_key: str) -> Optional[str]:
             (cache_key, now),
         ).fetchone()
         return row["content_json"] if row else None
+    finally:
+        conn.close()
+
+
+# ===== Scene image cache (persistent, shared across players) =====
+
+def get_cached_scene_image(cache_key: str) -> Optional[str]:
+    """Return a cached scene image (data URI) for a prompt hash, or None."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT image_data FROM scene_images WHERE cache_key = ?", (cache_key,)
+        ).fetchone()
+        return row["image_data"] if row else None
+    finally:
+        conn.close()
+
+
+def cache_scene_image(cache_key: str, prompt: str, image_data: str, model: Optional[str]) -> None:
+    """Persist a rendered scene image so the same place reuses it everywhere."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO scene_images (cache_key, prompt, image_data, model, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (cache_key, prompt, image_data, model, int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# ===== Monsters (persistent, shared world entities) =====
+
+def spawn_monster(
+    instance_id: str,
+    location_id: str,
+    name: str,
+    hp: int,
+    max_hp: int,
+    attack: int = 1,
+    xp_reward: int = 0,
+    loot: Optional[Dict[str, int]] = None,
+    spawned_turn: Optional[int] = None,
+) -> None:
+    """Create (or replace) a monster instance in the world."""
+    conn = get_conn()
+    try:
+        if spawned_turn is None:
+            spawned_turn = get_world_turn()
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO monsters
+              (instance_id, location_id, name, hp, max_hp, attack, xp_reward, loot_json, spawned_turn)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (instance_id, location_id, name, hp, max_hp, attack, xp_reward,
+             json.dumps(loot or {}), spawned_turn),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_monsters_at(location_id: str) -> List[Dict[str, Any]]:
+    """All live monsters at a location (loot decoded)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM monsters WHERE location_id = ? ORDER BY instance_id", (location_id,)
+        ).fetchall()
+        result = []
+        for row in rows:
+            data = dict(row)
+            data["loot"] = json.loads(data.get("loot_json") or "{}")
+            result.append(data)
+        return result
+    finally:
+        conn.close()
+
+
+def monster_exists(instance_id: str) -> bool:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT 1 FROM monsters WHERE instance_id = ?", (instance_id,)
+        ).fetchone()
+        return row is not None
+    finally:
+        conn.close()
+
+
+def count_monsters_at(location_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS c FROM monsters WHERE location_id = ?", (location_id,)
+        ).fetchone()
+        return row["c"] if row else 0
+    finally:
+        conn.close()
+
+
+def damage_monster(instance_id: str, damage: int) -> Optional[Dict[str, Any]]:
+    """
+    Atomically apply damage to a monster. Returns:
+      - None if the monster no longer exists (e.g. another player just killed it)
+      - {'killed': True, 'name', 'hp': 0, 'location_id', 'xp_reward', 'loot'} on kill
+      - {'killed': False, 'name', 'hp', 'location_id'} otherwise
+
+    Uses BEGIN IMMEDIATE so concurrent attackers can't double-kill or lose
+    damage to a read-modify-write race.
+    """
+    conn = get_conn()
+    try:
+        conn.isolation_level = None  # manual transaction control
+        cur = conn.cursor()
+        cur.execute("BEGIN IMMEDIATE")
+        row = cur.execute(
+            "SELECT hp, max_hp, name, attack, xp_reward, loot_json, location_id FROM monsters WHERE instance_id = ?",
+            (instance_id,),
+        ).fetchone()
+        if row is None:
+            cur.execute("COMMIT")
+            return None
+
+        new_hp = row["hp"] - damage
+        if new_hp <= 0:
+            cur.execute("DELETE FROM monsters WHERE instance_id = ?", (instance_id,))
+            cur.execute("COMMIT")
+            return {
+                "killed": True,
+                "name": row["name"],
+                "hp": 0,
+                "attack": row["attack"],
+                "location_id": row["location_id"],
+                "xp_reward": row["xp_reward"],
+                "loot": json.loads(row["loot_json"] or "{}"),
+            }
+
+        cur.execute("UPDATE monsters SET hp = ? WHERE instance_id = ?", (new_hp, instance_id))
+        cur.execute("COMMIT")
+        return {
+            "killed": False,
+            "name": row["name"],
+            "hp": new_hp,
+            "max_hp": row["max_hp"],
+            "attack": row["attack"],
+            "location_id": row["location_id"],
+        }
+    finally:
+        conn.close()
+
+
+def set_monster_attack(instance_id: str, attack: int) -> None:
+    """Update a live monster's attack value (e.g. when a boss enrages)."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE monsters SET attack = ? WHERE instance_id = ?", (attack, instance_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def set_monster_hp(instance_id: str, hp: int) -> None:
+    """Set a live monster's HP (e.g. boss regeneration / phase heal). Clamped to max_hp."""
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE monsters SET hp = MIN(?, max_hp) WHERE instance_id = ?",
+            (hp, instance_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def remove_monster(instance_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute("DELETE FROM monsters WHERE instance_id = ?", (instance_id,))
+        conn.commit()
     finally:
         conn.close()
 

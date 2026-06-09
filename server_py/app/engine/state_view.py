@@ -12,6 +12,23 @@ from ..db import (
     get_player_party_invites,
 )
 from .entities import get_entities_at, filter_current_player
+from ..db import count_monsters_at
+
+
+def effective_description(loc) -> str:
+    """Use the 'cleared' description when no monsters remain at the location."""
+    if loc.cleared_description and count_monsters_at(loc.id) == 0:
+        return loc.cleared_description
+    return loc.description
+
+
+def _exits_view(loc) -> List[Dict[str, Any]]:
+    """Exits with raw label (for map direction) plus the destination's name (for display)."""
+    out = []
+    for e in loc.exits:
+        dest = get_location(e.to)
+        out.append({"to": e.to, "label": e.label, "name": dest.name})
+    return out
 
 
 def build_location_view_for_player(player: Player) -> Dict[str, Any]:
@@ -33,8 +50,8 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         "location": {
             "id": loc.id,
             "name": loc.name,
-            "description": loc.description,
-            "exits": [{"to": e.to, "label": e.label} for e in loc.exits],
+            "description": effective_description(loc),
+            "exits": _exits_view(loc),
         },
         "entities": entities,
         "adjacent_scenes": get_adjacent_scenes_for_prefetch(loc.id),
@@ -56,8 +73,8 @@ def get_adjacent_scenes_for_prefetch(location_id: str) -> List[Dict[str, Any]]:
                 "location": {
                     "id": next_loc.id,
                     "name": next_loc.name,
-                    "description": next_loc.description,
-                    "exits": [{"to": e.to, "label": e.label} for e in next_loc.exits],
+                    "description": effective_description(next_loc),
+                    "exits": _exits_view(next_loc),
                 },
                 "entities": get_entities_at(next_loc.id),
             }
@@ -141,15 +158,21 @@ def get_party_info(player: Player) -> Optional[Dict[str, Any]]:
     if not party:
         return None
 
-    # Get member names and details
+    # Get member names and details, annotated with presence.
+    from ..db import get_last_seen_map
+    from ..presence import is_online, ago
+    seen = get_last_seen_map(party["members"])
     members = []
     for member_id in party["members"]:
         member = get_player(member_id)
         if member:
+            ls = seen.get(member_id, 0)
             members.append({
                 "player_id": member_id,
                 "name": member.name,
                 "is_leader": member_id == party["leader_id"],
+                "online": is_online(ls),
+                "last_seen_text": ago(ls),
             })
 
     return {
@@ -183,6 +206,64 @@ def get_party_invites_info(player: Player) -> List[Dict[str, Any]]:
     return result
 
 
+def get_abilities_info(player: Player) -> List[Dict[str, Any]]:
+    """Detailed ability info for the UI: name, description, kind, cooldown."""
+    import time
+    from ..abilities import get_ability
+
+    now = int(time.time() * 1000)
+    out: List[Dict[str, Any]] = []
+    for aid in player.abilities:
+        ab = get_ability(aid)
+        if not ab:
+            continue
+        ready_at = player.ability_cooldowns.get(aid, 0)
+        remaining = int(max(0, (ready_at - now) // 1000)) if ready_at > now else 0
+        out.append({
+            "id": aid,
+            "name": ab.name,
+            "description": ab.description,
+            "kind": ab.kind,            # "attack" needs a target; "heal" is self
+            "cooldown_s": ab.cooldown_s,
+            "ready": remaining == 0,
+            "remaining": remaining,
+        })
+    return out
+
+
+def get_item_info(player: Player) -> Dict[str, Any]:
+    """
+    Per-item details for the UI: a short stat string, and (for gear) the delta
+    versus what's currently equipped in that slot, so better/worse is obvious.
+    """
+    from ..items import get_item
+
+    eq = player.equipment or {}
+
+    def equipped_stat(slot: str, attr: str) -> int:
+        it = get_item(eq.get(slot, ""))
+        return int(getattr(it, attr, 0) or 0) if it else 0
+
+    info: Dict[str, Any] = {}
+    for iid in set(player.inventory or {}) | set(eq.values()):
+        it = get_item(iid)
+        if not it:
+            continue
+        d: Dict[str, Any] = {"name": it.name, "type": it.type, "slot": it.slot, "value": it.value}
+        if it.type == "weapon":
+            d["stat"] = f"+{it.damage} dmg"
+            d["delta"] = (it.damage or 0) - equipped_stat("weapon", "damage")
+        elif it.type == "armor":
+            d["stat"] = f"+{it.defense} def"
+            d["delta"] = (it.defense or 0) - equipped_stat("armor", "defense")
+        elif it.heal:
+            d["stat"] = f"+{it.heal} HP"
+        elif it.type == "material":
+            d["stat"] = "material"
+        info[iid] = d
+    return info
+
+
 def build_action_state(
     player: Player,
     *,
@@ -195,6 +276,8 @@ def build_action_state(
     state: Dict[str, Any] = {
         "player": player.model_dump(),
         **build_location_view_for_player(player),
+        "abilities": get_abilities_info(player),
+        "item_info": get_item_info(player),
         "pending_trade_offers": get_pending_trade_offers(player),
         "pending_trade_offers_sent": get_pending_trade_offers_sent(player),
         "party": get_party_info(player),

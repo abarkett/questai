@@ -30,6 +30,12 @@ class Player(BaseModel):
     hp: int
     max_hp: int
     inventory: dict[str, int] = {}
+    equipment: dict[str, str] = {}   # slot -> item_id (e.g. {"weapon": "iron_sword"})
+    abilities: list[str] = []        # learned ability ids
+    ability_cooldowns: dict[str, int] = {}   # ability_id -> ready-at epoch ms
+    status_effects: dict[str, dict] = {}     # effect_id -> {"turns", "magnitude"}
+    visited_locations: list[str] = []        # location ids the player has discovered
+    discovered_monsters: list[str] = []      # monster names recorded in the bestiary
     active_quests: dict[str, Quest] = {}
     completed_quests: dict[str, Quest] = {}
     archived_quests: dict[str, Quest] = {}
@@ -182,6 +188,101 @@ class ReputationReq(BaseModel):
     args: Optional[dict] = None
 
 
+class EquipArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class EquipReq(BaseModel):
+    action: Literal["equip"]
+    args: EquipArgs
+
+
+class UnequipArgs(BaseModel):
+    slot: str = Field(min_length=1, max_length=32)
+
+
+class UnequipReq(BaseModel):
+    action: Literal["unequip"]
+    args: UnequipArgs
+
+
+class SellArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class SellReq(BaseModel):
+    action: Literal["sell"]
+    args: SellArgs
+
+
+class CraftArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+
+
+class CraftReq(BaseModel):
+    action: Literal["craft"]
+    args: CraftArgs
+
+
+class GatherReq(BaseModel):
+    action: Literal["gather"]
+    args: Optional[dict] = None
+
+
+class UseAbilityArgs(BaseModel):
+    ability: str = Field(min_length=1, max_length=48)
+    target: Optional[str] = Field(default=None, max_length=64)
+
+
+class UseAbilityReq(BaseModel):
+    action: Literal["use_ability"]
+    args: UseAbilityArgs
+
+
+class HealReq(BaseModel):
+    action: Literal["heal"]
+    args: Optional[dict] = None
+
+
+class MapReq(BaseModel):
+    action: Literal["map"]
+    args: Optional[dict] = None
+
+
+class BestiaryReq(BaseModel):
+    action: Literal["bestiary"]
+    args: Optional[dict] = None
+
+
+class JournalReq(BaseModel):
+    action: Literal["journal"]
+    args: Optional[dict] = None
+
+
+class StoryReq(BaseModel):
+    action: Literal["story"]
+    args: Optional[dict] = None
+
+
+class BeginArcArgs(BaseModel):
+    arc_id: str = Field(min_length=1, max_length=48)
+
+
+class BeginArcReq(BaseModel):
+    action: Literal["begin_arc"]
+    args: BeginArcArgs
+
+
+class ChooseArgs(BaseModel):
+    choice: str = Field(min_length=1, max_length=48)
+    arc_id: Optional[str] = Field(default=None, max_length=48)
+
+
+class ChooseReq(BaseModel):
+    action: Literal["choose"]
+    args: ChooseArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -202,7 +303,20 @@ ActionRequest = Union[
     AcceptPartyInviteReq,
     LeavePartyReq,
     PartyStatusReq,
-    ReputationReq
+    ReputationReq,
+    EquipReq,
+    UnequipReq,
+    SellReq,
+    CraftReq,
+    GatherReq,
+    UseAbilityReq,
+    HealReq,
+    MapReq,
+    BestiaryReq,
+    JournalReq,
+    StoryReq,
+    BeginArcReq,
+    ChooseReq,
 ]
 
 

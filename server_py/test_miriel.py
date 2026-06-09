@@ -7,7 +7,7 @@ Run this after setting up MIRIEL_API_KEY in .env
 from dotenv import load_dotenv
 load_dotenv()
 
-from app.services.miriel_client import get_miriel_client, is_miriel_enabled
+from app.services.miriel_client import get_miriel_client, is_miriel_enabled, PROJECT_NAMESPACE
 from app.db import init_db
 
 def test_miriel_setup():
@@ -22,7 +22,7 @@ def test_miriel_setup():
     print(f"  ✓ Client created: {client is not None}")
     print(f"  ✓ Enabled: {client.enabled}")
     print(f"  ✓ Auto-learning: {client.auto_learning_enabled}")
-    print(f"  ✓ Project namespace: {client._instance.PROJECT_NAMESPACE if client._instance else 'N/A'}")
+    print(f"  ✓ Project namespace: {PROJECT_NAMESPACE}")
 
     if not client.enabled:
         print("\n⚠️  WARNING: Miriel is DISABLED")

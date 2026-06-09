@@ -8,6 +8,8 @@ from ..state_view import build_action_state
 
 
 def buy(player: Player, item_name: str) -> ActionResponse:
+    item_name = item_name.strip().lower().replace(" ", "_")
+
     # Find a shop NPC at this location
     shop = None
     for e in get_entities_at(player.location):

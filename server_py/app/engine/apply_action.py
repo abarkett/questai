@@ -27,6 +27,16 @@ from .actions.accept_party_invite import accept_party_invite
 from .actions.leave_party import leave_party
 from .actions.party_status import party_status
 from .actions.reputation import reputation
+from .actions.equip import equip, unequip
+from .actions.sell import sell
+from .actions.craft import craft
+from .actions.gather import gather
+from .actions.use_ability import use_ability
+from .actions.heal import heal
+from .actions.world_map import world_map
+from .actions.bestiary import bestiary
+from .actions.journal import journal
+from .actions.story import story_status, begin_arc, choose
 
 
 _action_adapter = TypeAdapter(ActionRequest)
@@ -61,6 +71,22 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     player = get_player(player_id)
     if not player:
         return ActionResponse(ok=False, error="Unknown player_id.")
+
+    # Presence: record that this player is active right now.
+    from ..db import touch_last_seen, get_world_state, set_world_state
+    from ..presence import now_ms
+    touch_last_seen(player.player_id, now_ms())
+
+    # Track the world's threat level (highest player level) so respawns scale.
+    try:
+        if player.level > int(get_world_state("world_level") or 1):
+            set_world_state("world_level", str(player.level))
+    except (TypeError, ValueError):
+        set_world_state("world_level", str(player.level))
+
+    # Bring back any monsters whose respawn timer has elapsed.
+    from .entities import respawn_due_monsters
+    respawn_due_monsters()
 
     if req.action == "look":
         result = look(player)
@@ -105,11 +131,54 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = party_status(player)
     elif req.action == "reputation":
         result = reputation(player)
+    elif req.action == "equip":
+        result = equip(player, req.args.item)
+    elif req.action == "unequip":
+        result = unequip(player, req.args.slot)
+    elif req.action == "sell":
+        result = sell(player, req.args.item)
+    elif req.action == "craft":
+        result = craft(player, req.args.item)
+    elif req.action == "gather":
+        result = gather(player)
+    elif req.action == "use_ability":
+        result = use_ability(player, req.args.ability, req.args.target)
+    elif req.action == "heal":
+        result = heal(player)
+    elif req.action == "map":
+        result = world_map(player)
+    elif req.action == "bestiary":
+        result = bestiary(player)
+    elif req.action == "journal":
+        result = journal(player)
+    elif req.action == "story":
+        result = story_status(player)
+    elif req.action == "begin_arc":
+        result = begin_arc(player, req.args.arc_id)
+    elif req.action == "choose":
+        result = choose(player, req.args.choice, req.args.arc_id)
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
+    # Refresh collect/visit quest objectives from current state (kills are
+    # progressed at the moment of the kill). Persist progress (even partial,
+    # e.g. counting items you already had) and reflect it in the response.
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status",
+                                        "reputation", "list_trades", "story", "map",
+                                        "bestiary", "journal"]:
+        from .quest_progress import refresh_quests
+        from ..db import upsert_player as _upsert
+        quest_msgs = refresh_quests(player)
+        _upsert(player)
+        if quest_msgs:
+            result.messages.extend(quest_msgs)
+        # Rebuild the state so the UI shows the refreshed quest progress now.
+        if result.state is not None:
+            from .state_view import build_action_state
+            result.state = build_action_state(player, scene_dirty=bool(result.state.get("scene_dirty")))
+
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades"]:
+    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map", "bestiary", "journal"]:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
 
@@ -128,8 +197,8 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
                     data={"error": str(e)}
                 )
                 triggered_rules = []
-            if triggered_rules and result.messages:
-                result.messages.append(f"[World changed: {', '.join(triggered_rules)}]")
+            # (World-change notices were debug-only and are intentionally not
+            # surfaced to the player.)
 
     log_action(
         player_id=player.player_id,
