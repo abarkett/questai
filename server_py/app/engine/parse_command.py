@@ -257,6 +257,31 @@ def parse_command(text: str) -> Dict[str, Any]:
             "args": {"invite_id": rest[0]}
         }
     
+    # ---- NOTES (noticeboard) ----
+    if verb in ("note", "write", "scratch"):
+        if not rest:
+            raise ParseError("Write what? (note <text>)")
+        return {"action": "post_note", "args": {"text": " ".join(rest)}}
+
+    # ---- BOUNTIES ----
+    if verb in ("bounties", "board"):
+        return {"action": "bounties"}
+
+    if verb == "bounty":
+        # bounty <coins> <monster name...>
+        if len(rest) >= 2 and rest[0].isdigit():
+            return {
+                "action": "post_bounty",
+                "args": {"coins": int(rest[0]), "target": " ".join(rest[1:])},
+            }
+        if not rest:
+            return {"action": "bounties"}
+        raise ParseError("Use: bounty <coins> <monster> (e.g. bounty 10 Wolf)")
+
+    # ---- COMMUNITY GOALS ----
+    if verb in ("goals", "goal", "season", "events"):
+        return {"action": "goals"}
+
     # ---- REPUTATION ----
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}

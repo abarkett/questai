@@ -41,6 +41,20 @@ def look(player: Player) -> ActionResponse:
             "You see: " + ", ".join(e["name"] for e in entities)
         )
 
+    # Echoes: what other players did here recently.
+    from ...echoes import echo_lines
+    echoes = echo_lines(player)
+    if echoes:
+        messages.append("Echoes: " + " ".join(echoes))
+
+    # Notes left on the spot by other adventurers.
+    from ...db import get_location_notes
+    notes = get_location_notes(player.location)
+    if notes:
+        messages.append("Notes left here:")
+        for n in notes:
+            messages.append(f"  “{n['text']}” — {n['player_name']}")
+
     from ...world import get_location as _gl
     exits = ", ".join(_gl(e.to).name for e in loc.exits) if loc.exits else "none"
     messages.append(f"Exits: {exits}")

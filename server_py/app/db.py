@@ -251,6 +251,63 @@ def init_db() -> None:
               data_json TEXT NOT NULL
             );
 
+            -- Async multiplayer: notes players leave at locations.
+            CREATE TABLE IF NOT EXISTS location_notes (
+              note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              location_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              text TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+
+            -- Async multiplayer: player-posted bounties on monsters.
+            CREATE TABLE IF NOT EXISTS bounties (
+              bounty_id TEXT PRIMARY KEY,
+              poster_id TEXT NOT NULL,
+              poster_name TEXT NOT NULL,
+              target_name TEXT NOT NULL,
+              reward_coins INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'open',
+              created_at INTEGER NOT NULL,
+              claimed_by TEXT,
+              claimed_by_name TEXT,
+              claimed_at INTEGER
+            );
+
+            -- Community goals: server-wide objectives everyone chips away at.
+            CREATE TABLE IF NOT EXISTS world_goals (
+              goal_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              target_name TEXT,
+              required INTEGER NOT NULL,
+              progress INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'active',
+              reward_coins INTEGER NOT NULL DEFAULT 0,
+              expires_at INTEGER,
+              created_at INTEGER NOT NULL,
+              completed_at INTEGER,
+              effect_json TEXT DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS goal_contributions (
+              goal_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              amount INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (goal_id, player_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_world_goals_status ON world_goals(status);
+
+            CREATE INDEX IF NOT EXISTS idx_notes_location
+              ON location_notes(location_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
+            CREATE INDEX IF NOT EXISTS idx_world_events_created
+              ON world_events(created_at);
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
             CREATE INDEX IF NOT EXISTS idx_monsters_location ON monsters(location_id);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
@@ -1802,5 +1859,333 @@ def get_gen_quest(quest_id: str) -> Optional[Dict[str, Any]]:
             "region_id": row["region_id"],
             "data": json.loads(row["data_json"]),
         }
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Async multiplayer: notes, bounties, event queries
+# -------------------------------------------------
+
+MAX_NOTES_PER_LOCATION = 20
+
+
+def add_location_note(*, location_id: str, player_id: str, player_name: str, text: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO location_notes (location_id, player_id, player_name, text, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (location_id, player_id, player_name, text, int(time.time() * 1000)),
+        )
+        # Keep the board from growing without bound.
+        conn.execute(
+            """
+            DELETE FROM location_notes
+            WHERE location_id = ? AND note_id NOT IN (
+              SELECT note_id FROM location_notes
+              WHERE location_id = ?
+              ORDER BY created_at DESC LIMIT ?
+            )
+            """,
+            (location_id, location_id, MAX_NOTES_PER_LOCATION),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_location_notes(location_id: str, limit: int = 3) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM location_notes
+            WHERE location_id = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (location_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_bounty(
+    *, bounty_id: str, poster_id: str, poster_name: str, target_name: str, reward_coins: int
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO bounties
+              (bounty_id, poster_id, poster_name, target_name, reward_coins, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'open', ?)
+            """,
+            (bounty_id, poster_id, poster_name, target_name, reward_coins, int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_open_bounties(limit: int = 20) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM bounties WHERE status = 'open' ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def claim_bounty_for_kill(target_name: str, killer_id: str, killer_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Atomically claim the oldest open bounty on `target_name` not posted by the
+    killer. Returns the claimed bounty (or None). BEGIN IMMEDIATE so two
+    concurrent kills can't both claim the same bounty.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT * FROM bounties
+            WHERE status = 'open' AND LOWER(target_name) = LOWER(?) AND poster_id != ?
+            ORDER BY created_at ASC LIMIT 1
+            """,
+            (target_name, killer_id),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        conn.execute(
+            """
+            UPDATE bounties
+            SET status = 'claimed', claimed_by = ?, claimed_by_name = ?, claimed_at = ?
+            WHERE bounty_id = ?
+            """,
+            (killer_id, killer_name, int(time.time() * 1000), row["bounty_id"]),
+        )
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_recent_deeds_at(location_id: str, exclude_player: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Recent notable deeds by *other* players at a location (for echoes)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM world_events
+            WHERE event_type = 'deed' AND location_id = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (location_id, limit * 4),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            if d["data"].get("player_id") == exclude_player:
+                continue
+            out.append(d)
+            if len(out) >= limit:
+                break
+        return out
+    finally:
+        conn.close()
+
+
+def get_world_events_since(since_ms: int, limit: int = 50) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM world_events
+            WHERE created_at > ?
+            ORDER BY created_at ASC LIMIT ?
+            """,
+            (since_ms, limit),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Community goals (server-wide seasonal objectives)
+# -------------------------------------------------
+
+def create_world_goal(
+    *,
+    goal_id: str,
+    name: str,
+    description: str,
+    kind: str,
+    target_name: Optional[str],
+    required: int,
+    reward_coins: int,
+    expires_at: Optional[int],
+    effect: Optional[Dict[str, str]] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO world_goals
+              (goal_id, name, description, kind, target_name, required,
+               reward_coins, expires_at, created_at, effect_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                goal_id, name, description, kind, target_name, required,
+                reward_coins, expires_at, int(time.time() * 1000),
+                json.dumps(effect or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_active_world_goals() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM world_goals WHERE status = 'active' ORDER BY created_at"
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["effect"] = json.loads(d.pop("effect_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def get_world_goal(goal_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM world_goals WHERE goal_id = ?", (goal_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["effect"] = json.loads(d.pop("effect_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def increment_world_goal(goal_id: str, player_id: str, player_name: str, amount: int = 1) -> Optional[Dict[str, Any]]:
+    """
+    Atomically add progress (and the player's contribution) to an active goal.
+    Returns the updated goal row, or None if the goal wasn't active.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM world_goals WHERE goal_id = ? AND status = 'active'",
+            (goal_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        conn.execute(
+            "UPDATE world_goals SET progress = progress + ? WHERE goal_id = ?",
+            (amount, goal_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO goal_contributions (goal_id, player_id, player_name, amount)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(goal_id, player_id) DO UPDATE SET
+              amount = amount + excluded.amount,
+              player_name = excluded.player_name
+            """,
+            (goal_id, player_id, player_name, amount),
+        )
+        updated = conn.execute(
+            "SELECT * FROM world_goals WHERE goal_id = ?", (goal_id,)
+        ).fetchone()
+        conn.commit()
+        d = dict(updated)
+        d["effect"] = json.loads(d.pop("effect_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def complete_world_goal(goal_id: str) -> bool:
+    """Mark a goal completed. Returns True only for the call that flips it."""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "UPDATE world_goals SET status = 'completed', completed_at = ? "
+            "WHERE goal_id = ? AND status = 'active'",
+            (int(time.time() * 1000), goal_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def expire_world_goal(goal_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE world_goals SET status = 'expired' WHERE goal_id = ? AND status = 'active'",
+            (goal_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_goal_contributions(goal_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM goal_contributions WHERE goal_id = ? ORDER BY amount DESC",
+            (goal_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_goal_contribution(goal_id: str, player_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT amount FROM goal_contributions WHERE goal_id = ? AND player_id = ?",
+            (goal_id, player_id),
+        ).fetchone()
+        return int(row["amount"]) if row else 0
+    finally:
+        conn.close()
+
+
+def count_world_goals() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM world_goals").fetchone()
+        return int(row["c"])
     finally:
         conn.close()

@@ -37,6 +37,9 @@ def _startup() -> None:
     # Seed the persistent monster table from the static catalog (once).
     from .engine.entities import seed_world_monsters
     seed_world_monsters()
+    # The shared world always has a running community goal.
+    from .world_goals import ensure_active_goal
+    ensure_active_goal()
     # Initialize factions
     for faction_id, faction in FACTIONS.items():
         create_faction(

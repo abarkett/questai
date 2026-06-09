@@ -157,6 +157,29 @@ def resolve_monster_kill(player: Player, entity_id: str, result: dict) -> list[s
     # Track monster deaths for world evolution
     from ...world_rules import track_monster_survival
     track_monster_survival(player.location)
+
+    # Leave an echo for other players who pass through here.
+    from ...echoes import record_deed
+    record_deed(player, player.location, f"{player.name} slew a {result['name']} here")
+
+    # Anyone's open bounty on this monster pays out to the killer.
+    from ...db import claim_bounty_for_kill
+    bounty = claim_bounty_for_kill(result["name"], player.player_id, player.name)
+    if bounty:
+        player.inventory["coin"] = player.inventory.get("coin", 0) + bounty["reward_coins"]
+        messages.append(
+            f"Bounty claimed! {bounty['poster_name']}'s contract pays you "
+            f"{bounty['reward_coins']} coins for the {result['name']}."
+        )
+        record_deed(
+            player, player.location,
+            f"{player.name} claimed {bounty['poster_name']}'s bounty on a {result['name']}",
+            kind="bounty",
+        )
+
+    # Community goals advance with every kill (see app/world_goals.py).
+    from ...world_goals import record_kill_progress
+    messages.extend(record_kill_progress(player, result["name"]))
     return messages
 
 

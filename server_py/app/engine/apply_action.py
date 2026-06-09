@@ -46,6 +46,7 @@ _action_adapter = TypeAdapter(ActionRequest)
 PASSIVE_ACTIONS = {
     "look", "stats", "inventory", "party_status", "reputation",
     "list_trades", "story", "map", "bestiary", "journal",
+    "bounties", "goals",
 }
 
 
@@ -79,10 +80,25 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     if not player:
         return ActionResponse(ok=False, error="Unknown player_id.")
 
-    # Presence: record that this player is active right now.
-    from ..db import touch_last_seen, get_world_state, set_world_state
+    # Presence: record that this player is active right now — but first note
+    # when they were last here, so a returning player gets a recap.
+    from ..db import touch_last_seen, get_world_state, set_world_state, get_last_seen_map
     from ..presence import now_ms
-    touch_last_seen(player.player_id, now_ms())
+    now = now_ms()
+    prev_seen = get_last_seen_map([player.player_id]).get(player.player_id, 0)
+    touch_last_seen(player.player_id, now)
+
+    recap_msgs: list[str] = []
+    if prev_seen and (player.last_recap_at or 0) < prev_seen:
+        from ..recap import recap_messages
+        try:
+            recap_msgs = recap_messages(player, prev_seen, now)
+        except Exception as e:
+            print(f"[RECAP] failed: {e}")
+        if recap_msgs:
+            player.last_recap_at = now
+            from ..db import upsert_player as _persist_recap
+            _persist_recap(player)
 
     # Track the world's threat level (highest player level) so respawns scale.
     try:
@@ -182,6 +198,23 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = begin_arc(player, req.args.arc_id)
     elif req.action == "choose":
         result = choose(player, req.args.choice, req.args.arc_id)
+    elif req.action == "post_note":
+        from .actions.post_note import post_note
+        result = post_note(player, req.args.text)
+    elif req.action == "post_bounty":
+        from .actions.bounty import post_bounty
+        result = post_bounty(player, req.args.target, req.args.coins)
+    elif req.action == "bounties":
+        from .actions.bounty import list_bounties
+        result = list_bounties(player)
+    elif req.action == "goals":
+        from ..world_goals import goals_overview
+        from .state_view import build_action_state
+        result = ActionResponse(
+            ok=True,
+            messages=goals_overview(player),
+            state=build_action_state(player, scene_dirty=False),
+        )
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
@@ -227,6 +260,10 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
                 triggered_rules = []
             # (World-change notices were debug-only and are intentionally not
             # surfaced to the player.)
+
+    # A returning player's recap leads their first action's output.
+    if recap_msgs and result.ok:
+        result.messages = recap_msgs + result.messages
 
     log_action(
         player_id=player.player_id,

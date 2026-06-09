@@ -46,6 +46,9 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         player.player_id,
     )
 
+    from ..echoes import echoes_for
+    from ..db import get_location_notes
+
     return {
         "location": {
             "id": loc.id,
@@ -55,6 +58,11 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         },
         "entities": entities,
         "adjacent_scenes": get_adjacent_scenes_for_prefetch(loc.id),
+        "echoes": echoes_for(player),
+        "notes": [
+            {"text": n["text"], "player_name": n["player_name"]}
+            for n in get_location_notes(player.location)
+        ],
     }
 
 

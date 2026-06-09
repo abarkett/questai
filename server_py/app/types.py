@@ -298,6 +298,35 @@ class ChooseReq(BaseModel):
     args: ChooseArgs
 
 
+class PostNoteArgs(BaseModel):
+    text: str = Field(min_length=1, max_length=240)
+
+
+class PostNoteReq(BaseModel):
+    action: Literal["post_note"]
+    args: PostNoteArgs
+
+
+class PostBountyArgs(BaseModel):
+    target: str = Field(min_length=1, max_length=64)
+    coins: int = Field(ge=1, le=100000)
+
+
+class PostBountyReq(BaseModel):
+    action: Literal["post_bounty"]
+    args: PostBountyArgs
+
+
+class BountiesReq(BaseModel):
+    action: Literal["bounties"]
+    args: Optional[dict] = None
+
+
+class GoalsReq(BaseModel):
+    action: Literal["goals"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -333,6 +362,10 @@ ActionRequest = Union[
     StoryReq,
     BeginArcReq,
     ChooseReq,
+    PostNoteReq,
+    PostBountyReq,
+    BountiesReq,
+    GoalsReq,
 ]
 
 
