@@ -131,6 +131,76 @@ def is_player_attackable(target: Player, attacker: Player, current_time_ms: int)
     return True, None
 
 
+def resolve_monster_kill(player: Player, entity_id: str, result: dict) -> list[str]:
+    """Everything that happens when a monster dies: cleanup, loot, XP, quests."""
+    from ...bosses import clear_boss_state
+    from ..entities import record_monster_death
+    from ...dots import clear_bleed
+
+    messages: list[str] = []
+    clear_boss_state(entity_id, result["name"])
+    clear_bleed(entity_id)
+    record_monster_death(entity_id)  # schedule its respawn
+    messages.append(f"The {result['name']} is defeated.")
+
+    # Loot drops go straight into the inventory.
+    for item, qty in (result.get("loot") or {}).items():
+        player.inventory[item] = player.inventory.get(item, 0) + qty
+        messages.append(f"You found: {qty}x {item}")
+
+    # XP and any level-ups from the kill.
+    messages.extend(apply_xp(player, result.get("xp_reward") or 0))
+
+    # Update quest progress
+    messages.extend(update_quest_progress(player, result["name"]))
+
+    # Track monster deaths for world evolution
+    from ...world_rules import track_monster_survival
+    track_monster_survival(player.location)
+    return messages
+
+
+def monster_retaliation(
+    player: Player,
+    entity_id: str,
+    result: dict,
+    *,
+    taken_mult: float = 1.0,
+) -> list[str]:
+    """A surviving monster strikes back (with boss mechanics and afflictions)."""
+    messages: list[str] = []
+    raw = result.get("attack") or 2
+    retaliation = max(1, int(round(raw * taken_mult)) - defense_bonus(player))
+    player.hp -= retaliation
+    messages.append(f"The {result['name']} hits you for {retaliation} damage.")
+
+    # Some monsters afflict a status effect when they land a blow.
+    inflict = monster_inflicts(result["name"])
+    if inflict and player.hp > 0:
+        msg = apply_effect(
+            player,
+            inflict["effect"],
+            inflict.get("magnitude", 1),
+            inflict.get("turns", 1),
+        )
+        if msg:
+            messages.append(msg)
+
+    # Boss mechanics: enrage / summon adds once below the HP threshold.
+    from ...bosses import trigger_boss_on_hit
+    messages.extend(trigger_boss_on_hit(entity_id, result))
+
+    if player.hp <= 0:
+        player.hp = player.max_hp
+        player.location = RESPAWN_LOCATION
+        player.last_defeated_at = int(time.time() * 1000)
+        player.status_effects.clear()
+        messages.append(
+            f"You were defeated by the {result['name']} and wake up back in the Town Square."
+        )
+    return messages
+
+
 def attack(player: Player, target_name: str, ability: str | None = None) -> ActionResponse:
     messages: list[str] = []
     current_time_ms = int(time.time() * 1000)
@@ -188,59 +258,9 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
         messages.append(f"{label}You attack the {result['name']} for {dmg} damage.{crit_suffix}")
 
         if result["killed"]:
-            from ...bosses import clear_boss_state
-            from ..entities import record_monster_death
-            from ...dots import clear_bleed
-            clear_boss_state(entity["id"], result["name"])
-            clear_bleed(entity["id"])
-            record_monster_death(entity["id"])  # schedule its respawn
-            messages.append(f"The {result['name']} is defeated.")
-
-            # Loot drops go straight into the inventory.
-            for item, qty in (result.get("loot") or {}).items():
-                player.inventory[item] = player.inventory.get(item, 0) + qty
-                messages.append(f"You found: {qty}x {item}")
-
-            # XP and any level-ups from the kill.
-            messages.extend(apply_xp(player, result.get("xp_reward") or 0))
-
-            # Update quest progress
-            quest_messages = update_quest_progress(player, result["name"])
-            messages.extend(quest_messages)
-
-            # Phase 8: Track monster deaths for world evolution
-            from ...world_rules import track_monster_survival
-            track_monster_survival(player.location)
+            messages.extend(resolve_monster_kill(player, entity["id"], result))
         else:
-            raw = result.get("attack") or 2
-            retaliation = max(1, raw - defense_bonus(player))
-            player.hp -= retaliation
-            messages.append(f"The {result['name']} hits you for {retaliation} damage.")
-
-            # Some monsters afflict a status effect when they land a blow.
-            inflict = monster_inflicts(result["name"])
-            if inflict and player.hp > 0:
-                msg = apply_effect(
-                    player,
-                    inflict["effect"],
-                    inflict.get("magnitude", 1),
-                    inflict.get("turns", 1),
-                )
-                if msg:
-                    messages.append(msg)
-
-            # Boss mechanics: enrage / summon adds once below the HP threshold.
-            from ...bosses import trigger_boss_on_hit
-            messages.extend(trigger_boss_on_hit(entity["id"], result))
-
-            if player.hp <= 0:
-                player.hp = player.max_hp
-                player.location = RESPAWN_LOCATION
-                player.last_defeated_at = current_time_ms
-                player.status_effects.clear()
-                messages.append(
-                    f"You were defeated by the {result['name']} and wake up back in the Town Square."
-                )
+            messages.extend(monster_retaliation(player, entity["id"], result))
 
         # A second hostile in the area may join the fray.
         if player.hp > 0:

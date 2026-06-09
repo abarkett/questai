@@ -41,6 +41,13 @@ from .actions.story import story_status, begin_arc, choose
 
 _action_adapter = TypeAdapter(ActionRequest)
 
+# Actions that neither advance the world clock nor cost action points:
+# pure reads of your own state or the world.
+PASSIVE_ACTIONS = {
+    "look", "stats", "inventory", "party_status", "reputation",
+    "list_trades", "story", "map", "bestiary", "journal",
+}
+
 
 def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     try:
@@ -88,12 +95,30 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     from .entities import respawn_due_monsters
     respawn_due_monsters()
 
+    # Action points: passive reads are free; anything that changes the world
+    # costs 1 AP (regenerating in real time — see app/action_points.py).
+    from ..action_points import refill, spend, seconds_to_next_ap, ap_enabled, ap_max
+    refill(player)
+    if req.action not in PASSIVE_ACTIONS:
+        if not spend(player, 1):
+            wait = seconds_to_next_ap(player)
+            return ActionResponse(
+                ok=False,
+                error=(
+                    f"You're out of action points — your next one arrives in {wait}s. "
+                    "The world keeps turning while you rest."
+                ),
+            )
+
     if req.action == "look":
         result = look(player)
     elif req.action == "move":
         result = move(player, req.args.to)
     elif req.action == "attack":
         result = attack(player, req.args.target)
+    elif req.action == "fight":
+        from .actions.fight import fight
+        result = fight(player, req.args.target, req.args.stance)
     elif req.action == "stats":
         result = stats(player)
     elif req.action == "inventory":
@@ -163,22 +188,25 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     # Refresh collect/visit quest objectives from current state (kills are
     # progressed at the moment of the kill). Persist progress (even partial,
     # e.g. counting items you already had) and reflect it in the response.
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status",
-                                        "reputation", "list_trades", "story", "map",
-                                        "bestiary", "journal"]:
+    if result.ok and req.action not in PASSIVE_ACTIONS:
         from .quest_progress import refresh_quests
         from ..db import upsert_player as _upsert
         quest_msgs = refresh_quests(player)
         _upsert(player)
         if quest_msgs:
             result.messages.extend(quest_msgs)
+        # Running low on AP is worth a heads-up (but not on every action).
+        if ap_enabled() and player.action_points <= 5:
+            result.messages.append(
+                f"AP: {player.action_points}/{ap_max()} — they regenerate over time."
+            )
         # Rebuild the state so the UI shows the refreshed quest progress now.
         if result.state is not None:
             from .state_view import build_action_state
             result.state = build_action_state(player, scene_dirty=bool(result.state.get("scene_dirty")))
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map", "bestiary", "journal"]:
+    if result.ok and req.action not in PASSIVE_ACTIONS:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
 

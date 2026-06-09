@@ -44,6 +44,11 @@ class Player(BaseModel):
     last_defeated_at: Optional[int] = None
     last_attacked_target: Optional[str] = None
     last_attacked_at: Optional[int] = None
+    # Action-point economy (see app/action_points.py)
+    action_points: int = 30
+    ap_updated_at: Optional[int] = None
+    # Login recap: when we last summarized "while you were gone"
+    last_recap_at: Optional[int] = None
 
 class AttackArgs(BaseModel):
     target: str
@@ -52,6 +57,16 @@ class AttackArgs(BaseModel):
 class AttackReq(BaseModel):
     action: Literal["attack"]
     args: AttackArgs
+
+
+class FightArgs(BaseModel):
+    target: str
+    stance: Literal["bold", "standard", "cautious"] = "standard"
+
+
+class FightReq(BaseModel):
+    action: Literal["fight"]
+    args: FightArgs
 
 class InventoryReq(BaseModel):
     action: Literal["inventory"]
@@ -288,6 +303,7 @@ ActionRequest = Union[
     LookReq,
     MoveReq,
     AttackReq,
+    FightReq,
     StatsReq,
     InventoryReq,
     UseReq,

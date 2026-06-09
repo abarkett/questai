@@ -44,7 +44,10 @@ def init_db() -> None:
               last_defeated_at INTEGER,
               last_attacked_target TEXT,
               last_attacked_at INTEGER,
-              last_seen INTEGER DEFAULT 0
+              last_seen INTEGER DEFAULT 0,
+              action_points INTEGER DEFAULT 30,
+              ap_updated_at INTEGER,
+              last_recap_at INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -334,6 +337,9 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "last_attacked_target": "TEXT",
         "last_attacked_at": "INTEGER",
         "last_seen": "INTEGER DEFAULT 0",
+        "action_points": "INTEGER DEFAULT 30",
+        "ap_updated_at": "INTEGER",
+        "last_recap_at": "INTEGER",
     }
     
     # Add missing columns
@@ -391,6 +397,10 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data.setdefault("last_defeated_at", None)
     data.setdefault("last_attacked_target", None)
     data.setdefault("last_attacked_at", None)
+    if data.get("action_points") is None:
+        data["action_points"] = 30
+    data.setdefault("ap_updated_at", None)
+    data.setdefault("last_recap_at", None)
     return Player(**data)
 
 
@@ -456,9 +466,12 @@ def upsert_player(p: Player) -> None:
               archived_quests_json,
               last_defeated_at,
               last_attacked_target,
-              last_attacked_at
+              last_attacked_at,
+              action_points,
+              ap_updated_at,
+              last_recap_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -478,7 +491,10 @@ def upsert_player(p: Player) -> None:
               archived_quests_json=excluded.archived_quests_json,
               last_defeated_at=excluded.last_defeated_at,
               last_attacked_target=excluded.last_attacked_target,
-              last_attacked_at=excluded.last_attacked_at
+              last_attacked_at=excluded.last_attacked_at,
+              action_points=excluded.action_points,
+              ap_updated_at=excluded.ap_updated_at,
+              last_recap_at=excluded.last_recap_at
             """,
             (
                 p.player_id,
@@ -501,6 +517,9 @@ def upsert_player(p: Player) -> None:
                 p.last_defeated_at,
                 p.last_attacked_target,
                 p.last_attacked_at,
+                p.action_points,
+                p.ap_updated_at,
+                p.last_recap_at,
             ),
         )
         conn.commit()

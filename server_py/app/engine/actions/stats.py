@@ -8,12 +8,20 @@ from ..state_view import build_action_state
 
 
 def stats(player: Player) -> ActionResponse:
+    from ...action_points import ap_enabled, ap_max, seconds_to_next_ap
+
     messages = [
         f"{player.name}",
         f"HP: {player.hp}/{player.max_hp}",
         f"Level: {player.level}",
         f"XP: {player.xp}",
     ]
+    if ap_enabled():
+        ap_line = f"AP: {player.action_points}/{ap_max()}"
+        wait = seconds_to_next_ap(player)
+        if wait:
+            ap_line += f" (next in {wait}s)"
+        messages.insert(2, ap_line)
 
     if player.status_effects:
         from ...status_effects import describe

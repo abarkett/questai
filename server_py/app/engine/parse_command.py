@@ -30,7 +30,7 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {"action": "look"}
     
     # ---- STATS ----
-    if verb in ("stats", "hp", "me", "status", "abilities", "skills"):
+    if verb in ("stats", "hp", "me", "status", "abilities", "skills", "ap"):
         return {"action": "stats"}
 
     # ---- MOVE ----
@@ -77,6 +77,22 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {
             "action": "attack",
             "args": {"target": " ".join(rest)}
+        }
+
+    # ---- FIGHT (whole encounter, with optional stance) ----
+    if verb in ("fight", "f"):
+        stance = "standard"
+        if rest and rest[0].lower() in ("bold", "boldly"):
+            stance = "bold"
+            rest = rest[1:]
+        elif rest and rest[0].lower() in ("cautious", "cautiously", "careful", "carefully"):
+            stance = "cautious"
+            rest = rest[1:]
+        if not rest:
+            raise ParseError("Fight what? (fight [bold|cautious] <target>)")
+        return {
+            "action": "fight",
+            "args": {"target": " ".join(rest), "stance": stance},
         }
 
     # ---- ABILITIES ----
