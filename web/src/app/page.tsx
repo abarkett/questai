@@ -295,6 +295,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
     </div>
   );
 
+  const apMax = 30; // server cap (QUESTAI_AP_MAX); AP fields ship in player state
+  const ap = typeof player.action_points === "number" ? player.action_points : null;
+  const apPct = ap != null ? Math.max(0, Math.min(100, (100 * ap) / apMax)) : 0;
+
   const hpBar = (
     <div>
       <div className="flex items-center gap-2">
@@ -303,6 +307,14 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
         </div>
         <span className="text-xs whitespace-nowrap">{player.hp}/{player.max_hp}</span>
       </div>
+      {ap != null && (
+        <div className="flex items-center gap-2 mt-1" title="Action points — every world-changing action costs 1; they regenerate over time">
+          <div className="flex-1 h-2 bg-green-950 border border-green-800">
+            <div className="h-full bg-amber-500" style={{ width: `${apPct}%` }} />
+          </div>
+          <span className="text-xs whitespace-nowrap">AP {ap}/{apMax}</span>
+        </div>
+      )}
       <div className="text-xs mt-1">Level {player.level} · XP {player.xp}</div>
     </div>
   );
@@ -348,6 +360,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
                         onClick={() => onCommand(`attack ${m.id}`)}>attack</button>
+                      <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                        title="Resolve the whole encounter in one action"
+                        onClick={() => onCommand(`fight ${m.id}`)}>fight</button>
                       {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
                         <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
                           title={a.description} onClick={() => onCommand(`${a.id} ${m.id}`)}>{a.name}</button>
@@ -436,6 +451,21 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                 ))}
               </div>
             </Section>
+
+            {(state.echoes?.length > 0 || state.notes?.length > 0) && (
+              <Section title="Traces of Others">
+                {(state.echoes ?? []).map((e: any, i: number) => (
+                  <div key={`echo-${i}`} className="text-xs text-green-600 italic">
+                    {e.description} ({e.ago})
+                  </div>
+                ))}
+                {(state.notes ?? []).map((n: any, i: number) => (
+                  <div key={`note-${i}`} className="text-xs text-green-500">
+                    “{n.text}” — {n.player_name}
+                  </div>
+                ))}
+              </Section>
+            )}
           </>
         )}
 
