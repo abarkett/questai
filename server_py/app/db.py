@@ -314,6 +314,13 @@ def init_db() -> None:
               enabled INTEGER NOT NULL DEFAULT 1
             );
 
+            -- SMS play: maps a phone number (or any external handle) to a player.
+            CREATE TABLE IF NOT EXISTS sms_identities (
+              handle TEXT PRIMARY KEY,
+              player_id TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_notes_location
               ON location_notes(location_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
@@ -2266,5 +2273,32 @@ def stamp_world_rule_triggered(rule_id: str, turn: int) -> None:
             (turn, rule_id),
         )
         conn.commit()
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# SMS identities
+# -------------------------------------------------
+
+def bind_sms_identity(handle: str, player_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO sms_identities (handle, player_id, created_at) VALUES (?, ?, ?)",
+            (handle, player_id, int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_sms_player_id(handle: str) -> Optional[str]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT player_id FROM sms_identities WHERE handle = ?", (handle,)
+        ).fetchone()
+        return row["player_id"] if row else None
     finally:
         conn.close()

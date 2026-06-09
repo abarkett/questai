@@ -84,6 +84,52 @@ def command(
     return apply_action(player_id=x_player_id, req_json=action_req)
 
 
+@app.post("/sms")
+def sms(
+    text: str = Body(embed=True),
+    sender: str = Body(embed=True, alias="from"),
+):
+    """
+    SMS-shaped gateway: a sender handle (phone number) and a text command in,
+    one compact plain-text message out. New senders are walked through
+    creating a character; after that the full command grammar applies.
+    """
+    from fastapi.responses import PlainTextResponse
+    from .db import get_sms_player_id, bind_sms_identity
+    from .render_text import render_plain
+    from .engine.parse_command import parse_command as _parse, ParseError as _ParseError
+
+    try:
+        action_req = _parse(text)
+    except _ParseError as e:
+        return PlainTextResponse(str(e))
+
+    player_id = get_sms_player_id(sender)
+
+    if action_req.get("action") == "create_player":
+        if player_id:
+            return PlainTextResponse("You already have a hero. Text 'look' to play.")
+        result = apply_action(player_id=None, req_json=action_req)
+        if result.ok and result.state and "player" in result.state:
+            new_id = result.state["player"]["player_id"]
+            bind_sms_identity(sender, new_id)
+            name = result.state["player"]["name"]
+            return PlainTextResponse(
+                f"Welcome, {name}! You stand in the Town Square. "
+                "Try: look, go north, fight rat, quests, help anytime."
+            )
+        return PlainTextResponse(result.error or "Could not create your hero.")
+
+    if not player_id:
+        return PlainTextResponse(
+            "Welcome to QuestAI. Text 'create <name>' to forge your hero."
+        )
+
+    result = apply_action(player_id=player_id, req_json=action_req)
+    from .db import get_player as _get_player
+    return PlainTextResponse(render_plain(result, player=_get_player(player_id)))
+
+
 @app.post("/prefetch")
 def prefetch(x_player_id: str | None = Header(default=None)):
     """
