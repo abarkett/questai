@@ -69,28 +69,29 @@ def respawn_due_monsters() -> int:
     respawned. Cheap to call each action: only dead, timer-stamped monsters do
     any work.
     """
+    from ..content import monster_catalog
+
     now = int(time.time() * 1000)
     respawned = 0
-    for location_id, entity_list in WORLD_ENTITIES.items():
-        for e in entity_list:
-            if e.type != "monster" or e.entity_id.startswith("rat"):
+    for location_id, e in monster_catalog():
+        if e.entity_id.startswith("rat"):
+            continue
+        if monster_exists(e.entity_id):
+            continue
+        died_raw = get_world_state(_death_key(e.entity_id))
+        if died_raw:
+            # Tracked death: respawn once the timer elapses.
+            try:
+                died = int(died_raw)
+            except ValueError:
+                died = 0
+            if died and now - died < MONSTER_RESPAWN_MS:
                 continue
-            if monster_exists(e.entity_id):
-                continue
-            died_raw = get_world_state(_death_key(e.entity_id))
-            if died_raw:
-                # Tracked death: respawn once the timer elapses.
-                try:
-                    died = int(died_raw)
-                except ValueError:
-                    died = 0
-                if died and now - died < MONSTER_RESPAWN_MS:
-                    continue
-            # No death stamp (killed before respawn tracking, or otherwise
-            # untracked): it's been gone a while, so bring it back now.
-            _spawn_scaled(e.entity_id, location_id, e)
-            set_world_state(_death_key(e.entity_id), "")
-            respawned += 1
+        # No death stamp (killed before respawn tracking, or otherwise
+        # untracked): it's been gone a while, so bring it back now.
+        _spawn_scaled(e.entity_id, location_id, e)
+        set_world_state(_death_key(e.entity_id), "")
+        respawned += 1
     return respawned
 
 
@@ -133,8 +134,11 @@ def get_player_entities_at(location_id: str) -> List[Dict[str, Any]]:
 # -------------------------------------------------
 
 def _static_npcs_at(location_id: str) -> List[Entity]:
-    """NPCs are static definitions kept in code (they don't change at runtime)."""
-    return [e for e in WORLD_ENTITIES.get(location_id, []) if e.type == "npc"]
+    """NPC definitions: hand-authored (code) plus minted-region NPCs (DB)."""
+    from ..content import generated_npcs_at
+
+    npcs = [e for e in WORLD_ENTITIES.get(location_id, []) if e.type == "npc"]
+    return npcs + generated_npcs_at(location_id)
 
 
 def _monster_row_to_entity(row: Dict[str, Any]) -> Entity:
@@ -171,6 +175,8 @@ def seed_world_monsters() -> None:
     is never resurrected: a killed instance stays in the seeded set, so it is
     only ever brought back by the respawn rules.
     """
+    from ..content import monster_catalog
+
     seeded_raw = get_world_state("seeded_monster_instances")
     if seeded_raw:
         try:
@@ -184,12 +190,11 @@ def seed_world_monsters() -> None:
         seeded = set()
 
     changed = False
-    for location_id, entity_list in WORLD_ENTITIES.items():
-        for e in entity_list:
-            if e.type == "monster" and e.entity_id not in seeded:
-                _spawn_scaled(e.entity_id, location_id, e)
-                seeded.add(e.entity_id)
-                changed = True
+    for location_id, e in monster_catalog():
+        if e.entity_id not in seeded:
+            _spawn_scaled(e.entity_id, location_id, e)
+            seeded.add(e.entity_id)
+            changed = True
 
     if changed or seeded_raw is None:
         set_world_state("seeded_monster_instances", json.dumps(sorted(seeded)))

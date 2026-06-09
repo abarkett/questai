@@ -4,7 +4,8 @@ import time
 from ...types import Player, ActionResponse
 from ..entities import find_entity, get_entities_at, serialize_entity
 from ...world import get_location
-from ...world_quests import QUEST_TEMPLATES, is_quest_available
+from ...content import get_quest_template
+from ...world_quests import is_quest_available
 from ..state_view import build_action_state
 from ...db import upsert_player
 from copy import deepcopy
@@ -118,7 +119,7 @@ def talk(player: Player, target: str) -> ActionResponse:
 
             for qid in npc.get("quests", []):
                 print(f"[QUEST OFFER] Checking quest: {qid}")
-                quest_template = QUEST_TEMPLATES.get(qid)
+                quest_template = get_quest_template(qid)
                 print(f"[QUEST OFFER] Template found: {quest_template is not None}")
                 if quest_template:
                     print(f"[QUEST OFFER] Template repeatable: {quest_template.repeatable}")
@@ -149,7 +150,7 @@ def talk(player: Player, target: str) -> ActionResponse:
             if available:
                 # Offer the first available template quest
                 qid = available[0]
-                quest = QUEST_TEMPLATES.get(qid)
+                quest = get_quest_template(qid)
 
                 if quest:
                     # Try to generate AI dialogue for quest offer

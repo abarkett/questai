@@ -7,7 +7,8 @@ from __future__ import annotations
 
 from typing import Optional, Tuple
 
-from ..world_quests import QUEST_TEMPLATES, is_quest_available
+from ..content import get_quest_template
+from ..world_quests import is_quest_available
 
 
 def has_active_quest_with_npc(player, npc: dict) -> bool:
@@ -30,7 +31,7 @@ def next_offer(player, npc: dict) -> Optional[Tuple]:
 
     # First available template quest.
     for qid in npc.get("quests") or []:
-        template = QUEST_TEMPLATES.get(qid)
+        template = get_quest_template(qid)
         if qid in player.active_quests or qid in player.completed_quests:
             continue
         if qid in player.archived_quests and not (template and template.repeatable):

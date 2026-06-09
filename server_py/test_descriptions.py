@@ -1,7 +1,7 @@
 """
-Tests for Miriel-authored location descriptions. There is NO fallback: with
-Miriel down, describing a location must raise. The offline suite installs a
-Miriel test responder (a seam, not a gameplay fallback) to exercise the path.
+Tests for location descriptions: Miriel-authored prose when the AI is
+configured, deterministic authored text otherwise (the game must stay playable
+text-first with no AI keys set — web, CLI, and SMS alike).
 
 Run from server_py/:  python3 test_descriptions.py
 """
@@ -38,23 +38,13 @@ def main() -> None:
     upsert_player(p)
     loc = get_location("forest")
 
-    # With Miriel down (no key, no stub): describing MUST raise — no fallback.
+    # With Miriel down (no key, no stub): the authored description is used.
     install_test_responder(None)
     get_miriel_client().enabled = False
-    raised = False
-    try:
-        describe(p, loc, [], "A forest.", 0)
-    except MirielUnavailable:
-        raised = True
-    assert raised, "describe must raise when Miriel is unavailable (no fallback)"
-    # And look() propagates the failure (the game crashes hard).
-    crashed = False
-    try:
-        look(p)
-    except MirielUnavailable:
-        crashed = True
-    assert crashed, "look() must fail hard when Miriel is down"
-    print("PASS  no fallback: describe/look fail hard when Miriel is down")
+    assert describe(p, loc, [], "A forest.", 0) == "A forest."
+    r = look(p)
+    assert r.ok, "look() must keep working when Miriel is down"
+    print("PASS  fallback: describe/look use authored text when Miriel is down")
 
     # With Miriel working (stubbed), the prose comes from Miriel and reaches look.
     get_miriel_client().enabled = True

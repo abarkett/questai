@@ -1,10 +1,10 @@
 """
-Dynamic, Miriel-authored location prose.
+Dynamic, Miriel-authored location prose — with a deterministic fallback.
 
-Demonstrating Miriel is a core aim of the project, so there is NO deterministic
-fallback: if Miriel is unavailable, describing a location raises and the request
-fails hard. The deterministic helpers below only build *context* for the prompt
-(time of day, what's present); the prose itself always comes from Miriel.
+When Miriel is configured, location prose is AI-authored from live context
+(time of day, what's present, world state). When it isn't, the location's
+authored description is used instead: every game surface (web, CLI, SMS) must
+stay playable text-first with no AI configured.
 """
 
 from __future__ import annotations
@@ -26,7 +26,10 @@ from .services.miriel_client import MirielUnavailable  # re-exported for callers
 
 def time_of_day(location_id: str, world_turn: int) -> Optional[str]:
     if location_id not in _OUTDOOR:
-        return None
+        from .content import is_outdoor
+
+        if not is_outdoor(location_id):
+            return None
     return _TIME_OF_DAY[(world_turn // 12) % len(_TIME_OF_DAY)]
 
 
@@ -36,17 +39,14 @@ def present_creatures(entities: List[dict]) -> List[str]:
 
 def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> str:
     """
-    Return a Miriel-authored description of the location as it is right now.
-    Raises MirielUnavailable / propagates Miriel errors if the AI is down — by
-    design, there is no fallback.
+    Return a description of the location as it is right now: Miriel-authored
+    prose when the AI is configured, the authored `base` text otherwise.
     """
     from .services.miriel_client import is_miriel_enabled, get_miriel_client
     from .db import get_cached_miriel_content, cache_miriel_content
 
     if not is_miriel_enabled():
-        raise MirielUnavailable(
-            "Miriel is not configured (set MIRIEL_API_KEY). The game requires Miriel."
-        )
+        return base
 
     creatures = present_creatures(entities)
     tod = time_of_day(loc.id, world_turn)

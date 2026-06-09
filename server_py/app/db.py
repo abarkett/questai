@@ -194,9 +194,65 @@ def init_db() -> None:
               spawned_turn INTEGER NOT NULL DEFAULT 0
             );
 
+            -- Generated content: regions minted at runtime (procedural + AI).
+            -- Static catalogs in code are the seed; these tables extend them.
+            CREATE TABLE IF NOT EXISTS regions (
+              region_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              theme TEXT,
+              tier INTEGER NOT NULL,
+              entry_location TEXT NOT NULL,
+              origin_location TEXT NOT NULL,
+              discovered_by TEXT,
+              created_at INTEGER NOT NULL,
+              data_json TEXT DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_locations (
+              location_id TEXT PRIMARY KEY,
+              region_id TEXT,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL,
+              cleared_description TEXT,
+              exits_json TEXT NOT NULL DEFAULT '[]',
+              outdoor INTEGER NOT NULL DEFAULT 0,
+              resource TEXT
+            );
+
+            -- Exits grafted onto existing locations (e.g. a frontier opening
+            -- into a newly minted region).
+            CREATE TABLE IF NOT EXISTS gen_exits (
+              from_location TEXT NOT NULL,
+              to_location TEXT NOT NULL,
+              label TEXT NOT NULL,
+              PRIMARY KEY (from_location, to_location)
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_entities (
+              entity_id TEXT PRIMARY KEY,
+              location_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL,
+              data_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_items (
+              item_id TEXT PRIMARY KEY,
+              data_json TEXT NOT NULL,
+              recipe_json TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_quests (
+              quest_id TEXT PRIMARY KEY,
+              region_id TEXT,
+              data_json TEXT NOT NULL
+            );
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
             CREATE INDEX IF NOT EXISTS idx_monsters_location ON monsters(location_id);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
+            CREATE INDEX IF NOT EXISTS idx_gen_locations_region ON gen_locations(region_id);
+            CREATE INDEX IF NOT EXISTS idx_gen_entities_location ON gen_entities(location_id);
 
             -- Initialize world clock if not exists
             INSERT OR IGNORE INTO world_clock (id, current_turn) VALUES (1, 0);
@@ -1418,3 +1474,314 @@ def remove_monster(instance_id: str) -> None:
     finally:
         conn.close()
 
+
+
+# -------------------------------------------------
+# Generated content (regions minted at runtime)
+# -------------------------------------------------
+
+def create_region(
+    *,
+    region_id: str,
+    name: str,
+    theme: Optional[str],
+    tier: int,
+    entry_location: str,
+    origin_location: str,
+    discovered_by: Optional[str],
+    data: Optional[Dict[str, Any]] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO regions
+              (region_id, name, theme, tier, entry_location, origin_location,
+               discovered_by, created_at, data_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                region_id, name, theme, tier, entry_location, origin_location,
+                discovered_by, int(time.time() * 1000), json.dumps(data or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_region(region_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM regions WHERE region_id = ?", (region_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["data"] = json.loads(d.pop("data_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def get_region_by_origin(origin_location: str) -> Optional[Dict[str, Any]]:
+    """The region (if any) already minted from this frontier location."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM regions WHERE origin_location = ?", (origin_location,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["data"] = json.loads(d.pop("data_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def count_regions() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM regions").fetchone()
+        return int(row["c"])
+    finally:
+        conn.close()
+
+
+def list_regions() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM regions ORDER BY created_at").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def upsert_gen_location(
+    *,
+    location_id: str,
+    region_id: Optional[str],
+    name: str,
+    description: str,
+    cleared_description: Optional[str],
+    exits: List[Dict[str, str]],
+    outdoor: bool = False,
+    resource: Optional[str] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_locations
+              (location_id, region_id, name, description, cleared_description,
+               exits_json, outdoor, resource)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(location_id) DO UPDATE SET
+              region_id=excluded.region_id,
+              name=excluded.name,
+              description=excluded.description,
+              cleared_description=excluded.cleared_description,
+              exits_json=excluded.exits_json,
+              outdoor=excluded.outdoor,
+              resource=excluded.resource
+            """,
+            (
+                location_id, region_id, name, description, cleared_description,
+                json.dumps(exits), 1 if outdoor else 0, resource,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_location(location_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM gen_locations WHERE location_id = ?", (location_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["exits"] = json.loads(d.pop("exits_json") or "[]")
+        d["outdoor"] = bool(d["outdoor"])
+        return d
+    finally:
+        conn.close()
+
+
+def get_all_gen_locations() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_locations").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["exits"] = json.loads(d.pop("exits_json") or "[]")
+            d["outdoor"] = bool(d["outdoor"])
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def add_gen_exit(from_location: str, to_location: str, label: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO gen_exits (from_location, to_location, label) VALUES (?, ?, ?)",
+            (from_location, to_location, label),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_exits(from_location: str) -> List[Dict[str, str]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT to_location, label FROM gen_exits WHERE from_location = ?",
+            (from_location,),
+        ).fetchall()
+        return [{"to": r["to_location"], "label": r["label"]} for r in rows]
+    finally:
+        conn.close()
+
+
+def upsert_gen_entity(*, entity_id: str, location_id: str, name: str, type: str, data: Dict[str, Any]) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_entities (entity_id, location_id, name, type, data_json)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(entity_id) DO UPDATE SET
+              location_id=excluded.location_id,
+              name=excluded.name,
+              type=excluded.type,
+              data_json=excluded.data_json
+            """,
+            (entity_id, location_id, name, type, json.dumps(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_entities_at(location_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM gen_entities WHERE location_id = ?", (location_id,)
+        ).fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def get_all_gen_entities() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_entities").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def upsert_gen_item(*, item_id: str, data: Dict[str, Any], recipe: Optional[Dict[str, Any]] = None) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_items (item_id, data_json, recipe_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(item_id) DO UPDATE SET
+              data_json=excluded.data_json,
+              recipe_json=excluded.recipe_json
+            """,
+            (item_id, json.dumps(data), json.dumps(recipe) if recipe else None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_item(item_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM gen_items WHERE item_id = ?", (item_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            "item_id": row["item_id"],
+            "data": json.loads(row["data_json"]),
+            "recipe": json.loads(row["recipe_json"]) if row["recipe_json"] else None,
+        }
+    finally:
+        conn.close()
+
+
+def get_all_gen_items() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_items").fetchall()
+        return [
+            {
+                "item_id": r["item_id"],
+                "data": json.loads(r["data_json"]),
+                "recipe": json.loads(r["recipe_json"]) if r["recipe_json"] else None,
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def upsert_gen_quest(*, quest_id: str, region_id: Optional[str], data: Dict[str, Any]) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_quests (quest_id, region_id, data_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(quest_id) DO UPDATE SET
+              region_id=excluded.region_id,
+              data_json=excluded.data_json
+            """,
+            (quest_id, region_id, json.dumps(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_quest(quest_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM gen_quests WHERE quest_id = ?", (quest_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            "quest_id": row["quest_id"],
+            "region_id": row["region_id"],
+            "data": json.loads(row["data_json"]),
+        }
+    finally:
+        conn.close()

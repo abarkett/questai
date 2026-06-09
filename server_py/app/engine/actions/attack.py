@@ -20,7 +20,7 @@ from ...progression import total_attack_damage, defense_bonus, apply_xp
 from ...combat import roll_damage
 from ...abilities import get_ability
 from ...status_effects import tick_effects, damage_modifier, apply_effect
-from ...world_entities import MONSTER_INFLICTS
+from ...content import monster_inflicts
 
 
 # Simple shared combat constants
@@ -218,7 +218,7 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
             messages.append(f"The {result['name']} hits you for {retaliation} damage.")
 
             # Some monsters afflict a status effect when they land a blow.
-            inflict = MONSTER_INFLICTS.get(result["name"])
+            inflict = monster_inflicts(result["name"])
             if inflict and player.hp > 0:
                 msg = apply_effect(
                     player,

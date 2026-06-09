@@ -193,8 +193,18 @@ LOCATION_RESOURCES: Dict[str, str] = {
 
 
 def get_item(item_id: str) -> Item | None:
-    return ITEMS.get(item_id)
+    item = ITEMS.get(item_id)
+    if item:
+        return item
+    from .content import get_generated_item
+
+    return get_generated_item(item_id)
 
 
 def get_recipe(item_id: str) -> Dict[str, Any] | None:
-    return RECIPES.get(item_id)
+    recipe = RECIPES.get(item_id)
+    if recipe:
+        return recipe
+    from .content import get_generated_recipe
+
+    return get_generated_recipe(item_id)

@@ -49,9 +49,11 @@ def get_or_generate_quest(
     Returns:
         Tuple of (Quest object or None, whether it was AI-generated)
     """
-    # Check template first (templates take priority)
-    if quest_id in QUEST_TEMPLATES:
-        template_quest = QUEST_TEMPLATES[quest_id]
+    # Check templates first (hand-authored, then minted-region quests)
+    from .content import get_quest_template
+
+    template_quest = get_quest_template(quest_id)
+    if template_quest:
         # Set the giver NPC if provided
         if npc_id and template_quest.giver_npc_id is None:
             template_quest.giver_npc_id = npc_id

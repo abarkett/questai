@@ -192,7 +192,11 @@ WORLD: Dict[str, Location] = {
 
 
 def get_location(loc_id: str) -> Location:
-    loc = WORLD.get(loc_id)
+    # The content registry merges this static map with generated regions and
+    # any exits grafted onto static locations (e.g. frontiers into new regions).
+    from .content import get_location_or_none
+
+    loc = get_location_or_none(loc_id)
     if not loc:
         raise ValueError(f"Unknown location: {loc_id}")
     return loc
