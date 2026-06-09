@@ -40,6 +40,9 @@ def _startup() -> None:
     # The shared world always has a running community goal.
     from .world_goals import ensure_active_goal
     ensure_active_goal()
+    # Built-in data-driven world rules.
+    from .world_rules import seed_default_db_rules
+    seed_default_db_rules()
     # Initialize factions
     for faction_id, faction in FACTIONS.items():
         create_faction(

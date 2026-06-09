@@ -226,8 +226,142 @@ def evaluate_world_rules() -> List[str]:
         if rule.evaluate():
             print(f"[WORLD RULES] Rule triggered: {rule.name}")
             triggered.append(rule.name)
+    triggered.extend(evaluate_db_rules())
     print(f"[WORLD RULES] Triggered rules: {triggered}")
     return triggered
+
+
+# ---------------------------------------------------------------------------
+# Data-driven rules: rules as content, not code.
+#
+# Stored in the world_rules table as JSON condition/effect lists and run by
+# the interpreter below, so new world behaviors (including ones attached to
+# generated regions) can be added without a deploy.
+#
+# Conditions (all must hold):
+#   {"world_state_eq":  {"key": K, "value": V}}
+#   {"world_state_ne":  {"key": K, "value": V}}
+#   {"monster_count":   {"location": L, "name_contains": S?, "op": "eq|gte|lte", "value": N}}
+#   {"turns_since_state": {"key": K, "gte": N}}   # K holds a turn number
+#
+# Effects (run in order):
+#   {"set_state":      {"key": K, "value": V}}
+#   {"set_state_turn": {"key": K}}                # stamp the current turn
+#   {"spawn_monster":  {"instance_id", "location", "name", "hp", "attack", "xp_reward", "loot"?}}
+#   {"log_event":      {"type"?, "location"?, "description"}}
+# ---------------------------------------------------------------------------
+
+
+def _condition_holds(cond: dict) -> bool:
+    if "world_state_eq" in cond:
+        c = cond["world_state_eq"]
+        return get_world_state(c["key"]) == c["value"]
+    if "world_state_ne" in cond:
+        c = cond["world_state_ne"]
+        return get_world_state(c["key"]) != c["value"]
+    if "monster_count" in cond:
+        c = cond["monster_count"]
+        entities = get_world_entities_at(c["location"])
+        needle = (c.get("name_contains") or "").lower()
+        count = sum(
+            1 for e in entities
+            if e.type == "monster" and (not needle or needle in e.name.lower())
+        )
+        op, value = c.get("op", "gte"), int(c["value"])
+        return {"eq": count == value, "gte": count >= value, "lte": count <= value}[op]
+    if "turns_since_state" in cond:
+        c = cond["turns_since_state"]
+        raw = get_world_state(c["key"])
+        if not raw:
+            return False
+        try:
+            return get_world_turn() - int(raw) >= int(c["gte"])
+        except ValueError:
+            return False
+    return False  # unknown condition: never trigger
+
+
+def _apply_effect(effect: dict) -> None:
+    from .db import spawn_monster, log_world_event as _log
+
+    if "set_state" in effect:
+        e = effect["set_state"]
+        set_world_state(e["key"], e["value"])
+    elif "set_state_turn" in effect:
+        set_world_state(effect["set_state_turn"]["key"], str(get_world_turn()))
+    elif "spawn_monster" in effect:
+        e = effect["spawn_monster"]
+        spawn_monster(
+            instance_id=e["instance_id"],
+            location_id=e["location"],
+            name=e["name"],
+            hp=int(e["hp"]),
+            max_hp=int(e["hp"]),
+            attack=int(e["attack"]),
+            xp_reward=int(e.get("xp_reward", 0)),
+            loot=e.get("loot") or {},
+            spawned_turn=get_world_turn(),
+        )
+    elif "log_event" in effect:
+        e = effect["log_event"]
+        log_world_event(
+            event_type=e.get("type", "world_evolution"),
+            location_id=e.get("location"),
+            data={"description": e["description"]},
+        )
+
+
+def evaluate_db_rules() -> List[str]:
+    """Run every enabled data-driven rule whose cooldown and conditions allow."""
+    from .db import get_enabled_world_rules, stamp_world_rule_triggered
+
+    triggered: List[str] = []
+    turn = get_world_turn()
+    for rule in get_enabled_world_rules():
+        last = rule.get("last_triggered_turn")
+        if last is not None and turn - last < rule.get("cooldown_turns", 0):
+            continue
+        try:
+            if not all(_condition_holds(c) for c in rule["conditions"]):
+                continue
+            for effect in rule["effects"]:
+                _apply_effect(effect)
+            stamp_world_rule_triggered(rule["rule_id"], turn)
+            triggered.append(rule["name"])
+        except Exception as e:
+            print(f"[WORLD RULES] db rule {rule['rule_id']} failed: {e}")
+    return triggered
+
+
+def seed_default_db_rules() -> None:
+    """Built-in data-driven rules (idempotent; runs at startup)."""
+    from .db import upsert_world_rule
+
+    # A wandering beast prowls the North Road every so often — proof that the
+    # world moves on its own, and a recurring community moment.
+    upsert_world_rule(
+        rule_id="wandering_beast",
+        name="A Wandering Beast",
+        description="Every ~40 turns a hulking beast wanders onto the North Road.",
+        conditions=[
+            {"monster_count": {"location": "north_road", "name_contains": "wandering", "op": "eq", "value": 0}},
+        ],
+        effects=[
+            {"spawn_monster": {
+                "instance_id": "wandering_beast",
+                "location": "north_road",
+                "name": "Wandering Beast",
+                "hp": 35, "attack": 6, "xp_reward": 30,
+                "loot": {"coin": 15, "pelt": 2},
+            }},
+            {"log_event": {
+                "type": "world_evolution",
+                "location": "north_road",
+                "description": "A hulking beast has wandered onto the North Road.",
+            }},
+        ],
+        cooldown_turns=40,
+    )
 
 
 def track_monster_survival(location_id: str) -> None:

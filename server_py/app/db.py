@@ -302,6 +302,18 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_world_goals_status ON world_goals(status);
 
+            -- Data-driven world evolution rules (interpreted by world_rules.py)
+            CREATE TABLE IF NOT EXISTS world_rules (
+              rule_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              description TEXT,
+              conditions_json TEXT NOT NULL DEFAULT '[]',
+              effects_json TEXT NOT NULL DEFAULT '[]',
+              cooldown_turns INTEGER NOT NULL DEFAULT 0,
+              last_triggered_turn INTEGER,
+              enabled INTEGER NOT NULL DEFAULT 1
+            );
+
             CREATE INDEX IF NOT EXISTS idx_notes_location
               ON location_notes(location_id, created_at);
             CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
@@ -2187,5 +2199,72 @@ def count_world_goals() -> int:
     try:
         row = conn.execute("SELECT COUNT(*) AS c FROM world_goals").fetchone()
         return int(row["c"])
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Data-driven world rules
+# -------------------------------------------------
+
+def upsert_world_rule(
+    *,
+    rule_id: str,
+    name: str,
+    description: Optional[str],
+    conditions: List[Dict[str, Any]],
+    effects: List[Dict[str, Any]],
+    cooldown_turns: int = 0,
+    enabled: bool = True,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO world_rules
+              (rule_id, name, description, conditions_json, effects_json,
+               cooldown_turns, enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(rule_id) DO UPDATE SET
+              name=excluded.name,
+              description=excluded.description,
+              conditions_json=excluded.conditions_json,
+              effects_json=excluded.effects_json,
+              cooldown_turns=excluded.cooldown_turns,
+              enabled=excluded.enabled
+            """,
+            (
+                rule_id, name, description, json.dumps(conditions),
+                json.dumps(effects), cooldown_turns, 1 if enabled else 0,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_enabled_world_rules() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM world_rules WHERE enabled = 1").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["conditions"] = json.loads(d.pop("conditions_json") or "[]")
+            d["effects"] = json.loads(d.pop("effects_json") or "[]")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def stamp_world_rule_triggered(rule_id: str, turn: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE world_rules SET last_triggered_turn = ? WHERE rule_id = ?",
+            (turn, rule_id),
+        )
+        conn.commit()
     finally:
         conn.close()
