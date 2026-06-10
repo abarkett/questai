@@ -42,10 +42,16 @@ def look(player: Player) -> ActionResponse:
         )
 
     # Echoes: what other players did here recently.
-    from ...echoes import echo_lines
+    from ...echoes import echo_lines, rumor_lines
     echoes = echo_lines(player)
     if echoes:
         messages.append("Echoes: " + " ".join(echoes))
+
+    # Where people gather, the world's news travels.
+    if any(e.get("type") == "npc" for e in entities):
+        rumors = rumor_lines(player)
+        if rumors:
+            messages.append("Word going around: " + " ".join(rumors))
 
     # Notes left on the spot by other adventurers.
     from ...db import get_location_notes

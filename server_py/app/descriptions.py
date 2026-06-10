@@ -20,6 +20,16 @@ _OUTDOOR = {
 
 _TIME_OF_DAY = ["dawn", "midday", "afternoon", "dusk", "night"]
 
+# Deterministic flavor for the no-AI path: even authored prose should change
+# as the world turns.
+_TOD_FLAVOR = {
+    "dawn": "Dawn light lies thin and new over everything.",
+    "midday": "The sun stands high; shadows pool small and dark.",
+    "afternoon": "The light slants long and gold.",
+    "dusk": "Dusk gathers at the edges of things.",
+    "night": "Night has fallen, and shapes lose their names in the dark.",
+}
+
 
 from .services.miriel_client import MirielUnavailable  # re-exported for callers
 
@@ -37,16 +47,25 @@ def present_creatures(entities: List[dict]) -> List[str]:
     return sorted({e["name"] for e in entities if e.get("type") == "monster"})
 
 
+def fallback_description(base: str, location_id: str, world_turn: int) -> str:
+    """Authored text plus deterministic time-of-day flavor (outdoors)."""
+    tod = time_of_day(location_id, world_turn)
+    if tod and _TOD_FLAVOR.get(tod):
+        return f"{base} {_TOD_FLAVOR[tod]}"
+    return base
+
+
 def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> str:
     """
     Return a description of the location as it is right now: Miriel-authored
-    prose when the AI is configured, the authored `base` text otherwise.
+    prose when the AI is configured, the authored `base` text (with
+    deterministic time-of-day flavor) otherwise.
     """
     from .services.miriel_client import is_miriel_enabled, get_miriel_client
     from .db import get_cached_miriel_content, cache_miriel_content
 
     if not is_miriel_enabled():
-        return base
+        return fallback_description(base, loc.id, world_turn)
 
     creatures = present_creatures(entities)
     tod = time_of_day(loc.id, world_turn)
@@ -76,9 +95,12 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
     answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
     answer = (answer or "").strip()
     if not answer:
-        # Miriel reachable but produced nothing for this scene — show the
-        # location's own authored description rather than 500 the request.
-        return base
+        # Miriel reachable but produced no usable prose for this scene. Say so
+        # loudly (a misshapen response would otherwise silently read as
+        # "canned text everywhere") and fall back to the authored description.
+        shape = list(resp.keys()) if isinstance(resp, dict) else type(resp).__name__
+        print(f"[MIRIEL] empty answer for '{loc.id}' description (response shape: {shape})")
+        return fallback_description(base, loc.id, world_turn)
 
     cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=600)
     return answer

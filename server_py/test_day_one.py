@@ -95,6 +95,26 @@ def main() -> None:
     assert "The town talks of one thing" in text and "Blight" in text, r.messages
     print("PASS  the welcome leads with the running season")
 
+    # --- The hub broadcasts the world's motion ---
+    newcomer = db.get_player_by_name("Newcomer")
+    from app.engine.actions.look import look
+    r = look(newcomer)
+    text = " ".join(r.messages)
+    assert "Word going around:" in text, r.messages
+    assert r.state.get("rumors"), "rumors surface in state for the UI"
+    # The full rumor pool reaches back to the premint discoveries.
+    from app.echoes import rumor_lines
+    pool = rumor_lines(newcomer, limit=10)
+    assert any("stands open" in line for line in pool), pool
+    print("PASS  town square gossip carries world news (premint, events)")
+
+    # Even authored prose moves with the clock when Miriel is off.
+    from app.descriptions import fallback_description
+    a = fallback_description("A plaza.", "town_square", 0)
+    b = fallback_description("A plaza.", "town_square", 12 * 3)
+    assert a != b and a.startswith("A plaza."), (a, b)
+    print("PASS  fallback descriptions change with the time of day")
+
     print("\nALL DAY-ONE TESTS PASSED")
 
 

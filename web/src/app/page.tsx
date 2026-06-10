@@ -452,6 +452,14 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </div>
             </Section>
 
+            {state.rumors?.length > 0 && (
+              <Section title="Word Going Around">
+                {state.rumors.map((r: string, i: number) => (
+                  <div key={`rumor-${i}`} className="text-xs text-amber-200/80 italic">{r}</div>
+                ))}
+              </Section>
+            )}
+
             {(state.echoes?.length > 0 || state.notes?.length > 0) && (
               <Section title="Traces of Others">
                 {(state.echoes ?? []).map((e: any, i: number) => (

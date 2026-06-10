@@ -44,3 +44,32 @@ def echoes_for(player: Player, limit: int = 3) -> List[dict]:
 
 def echo_lines(player: Player, limit: int = 3) -> List[str]:
     return [f"{e['description']} ({e['ago']})" for e in echoes_for(player, limit) if e["description"]]
+
+
+# World events worth gossiping about wherever people gather.
+_RUMOR_EVENT_TYPES = {
+    "region_discovered", "world_evolution", "goal_completed",
+    "goal_started", "goal_expired",
+}
+
+
+def rumor_lines(player: Player, limit: int = 2) -> List[str]:
+    """
+    Recent world-scale news, told as talk of the town. Settlements surface
+    these on look, so standing at spawn still shows a universe in motion.
+    """
+    from .db import get_world_events
+
+    lines: List[str] = []
+    for event in get_world_events(25):
+        if event.get("event_type") not in _RUMOR_EVENT_TYPES:
+            continue
+        if (event.get("data") or {}).get("player_id") == player.player_id:
+            continue
+        text = (event.get("data") or {}).get("description")
+        if not text or any(text in line for line in lines):
+            continue
+        lines.append(f"{text} ({ago(event['created_at'])})")
+        if len(lines) >= limit:
+            break
+    return lines

@@ -38,13 +38,17 @@ def main() -> None:
     upsert_player(p)
     loc = get_location("forest")
 
-    # With Miriel down (no key, no stub): the authored description is used.
+    # With Miriel down (no key, no stub): the authored description is used,
+    # with deterministic time-of-day flavor so even canned prose changes.
     install_test_responder(None)
     get_miriel_client().enabled = False
-    assert describe(p, loc, [], "A forest.", 0) == "A forest."
+    fb = describe(p, loc, [], "A forest.", 0)
+    assert fb.startswith("A forest.") and len(fb) > len("A forest."), fb
+    assert describe(p, loc, [], "A forest.", 0) != describe(p, loc, [], "A forest.", 12 * 3), \
+        "fallback prose should vary with the time of day"
     r = look(p)
     assert r.ok, "look() must keep working when Miriel is down"
-    print("PASS  fallback: describe/look use authored text when Miriel is down")
+    print("PASS  fallback: authored text + time-of-day flavor when Miriel is down")
 
     # With Miriel working (stubbed), the prose comes from Miriel and reaches look.
     get_miriel_client().enabled = True
@@ -64,7 +68,7 @@ def main() -> None:
     # Miriel reachable but empty -> show the room's authored text (not a 500).
     install_test_responder(lambda q: "")
     base = "A quiet authored room."
-    assert describe(p, loc, [], base, 0) == base
+    assert describe(p, loc, [], base, 0).startswith(base)
     print("PASS  empty Miriel answer falls through to the authored description")
 
     install_test_responder(None)

@@ -46,10 +46,11 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         player.player_id,
     )
 
-    from ..echoes import echoes_for
+    from ..echoes import echoes_for, rumor_lines
     from ..db import get_location_notes
 
     return {
+        "rumors": rumor_lines(player) if any(e.get("type") == "npc" for e in entities) else [],
         "location": {
             "id": loc.id,
             "name": loc.name,

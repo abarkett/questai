@@ -27,25 +27,30 @@ def _warm_location_text(location_id: str) -> int:
     from .world import get_location
     from .engine.entities import get_entities_at
     from .engine.state_view import effective_description
-    from .descriptions import describe
+    from .descriptions import describe, fallback_description
 
     loc = get_location(location_id)
     entities = get_entities_at(location_id)
     turn = db.get_world_turn()
     warmed = 0
 
+    # Only count prose Miriel actually authored: describe() falls back to the
+    # base text on an empty answer, and counting that would hide a broken
+    # Miriel behind a healthy-looking "warmed N descriptions" log line.
+    base = effective_description(loc)
     try:
-        describe(None, loc, entities, effective_description(loc), turn)
-        warmed += 1
+        if describe(None, loc, entities, base, turn) != fallback_description(base, loc.id, turn):
+            warmed += 1
     except Exception:
         pass
 
     monsters = [e for e in entities if e.get("type") == "monster"]
     if monsters:
+        cleared_base = loc.cleared_description or loc.description
         try:
             cleared = [e for e in entities if e.get("type") != "monster"]
-            describe(None, loc, cleared, loc.cleared_description or loc.description, turn)
-            warmed += 1
+            if describe(None, loc, cleared, cleared_base, turn) != fallback_description(cleared_base, loc.id, turn):
+                warmed += 1
         except Exception:
             pass
     return warmed
