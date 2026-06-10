@@ -681,6 +681,12 @@ export default function Page() {
   useEffect(() => {
     const saved = localStorage.getItem("player_id");
     if (saved) setPlayerId(saved);
+    else {
+      setLog([{
+        id: crypto.randomUUID(),
+        text: "Welcome to QuestAI. Type: create <name> to forge your hero.",
+      }]);
+    }
     thumbsRef.current = loadThumbs();
   }, []);
 
@@ -690,6 +696,17 @@ export default function Page() {
     (async () => {
       try {
         const resp = await sendCommand("look", playerId);
+
+        if (!resp.ok && !resp.state) {
+          // Stale identity (e.g. the world was reset): drop it and start over.
+          localStorage.removeItem("player_id");
+          setPlayerId(null);
+          setLog([{
+            id: crypto.randomUUID(),
+            text: "Your hero is gone — the world has begun anew. Type: create <name> to forge a new one.",
+          }]);
+          return;
+        }
 
         if (resp.state) {
           setLastState(resp.state);
