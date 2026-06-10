@@ -32,8 +32,11 @@ from .types import Player
 
 # location_id -> (tier of the region behind it, flavor of the unexplored way)
 STATIC_FRONTIERS: Dict[str, tuple[int, str]] = {
+    "tavern": (1, "a draft rises from behind the ale casks — the cellar door was never locked"),
     "riverside": (1, "a half-sunken towpath winds downriver into mist"),
+    "deep_forest": (2, "a game trail vanishes into untrodden dark"),
     "spider_hollow": (2, "a silk-shrouded cleft drops away beneath the webs"),
+    "foothills": (3, "a goat track climbs toward an unnamed col"),
     "frozen_cave": (5, "a wind moans from a fissure deep in the glacier"),
     "magma_core": (6, "a crack splits the far wall, breathing strange air"),
 }
@@ -661,11 +664,12 @@ def _install_region_rules(spec: Dict[str, Any]) -> None:
     )
 
 
-def mint_region_from(origin_location: str, player: Player) -> Optional[Dict[str, Any]]:
+def mint_region_from(origin_location: str, player: Optional[Player]) -> Optional[Dict[str, Any]]:
     """
     Mint (or return the already-minted) region behind a frontier. Single-
     flighted and idempotent: concurrent explorers get one region, and the
-    discoverer's name is canonized exactly once.
+    discoverer's name is canonized exactly once. With `player=None` this is a
+    system mint (e.g. startup pre-minting): no discoverer is recorded.
     """
     frontier = frontier_at(origin_location)
     if not frontier:
@@ -681,14 +685,14 @@ def mint_region_from(origin_location: str, player: Player) -> Optional[Dict[str,
             index=index,
             tier=frontier["tier"],
             origin_location=origin_location,
-            discovered_by=player.name,
+            discovered_by=player.name if player else None,
         )
         spec = _enrich_with_miriel(spec)
         validate_region(spec)
 
         # The discoverer enters the canon: their name lives in the entry text.
-        entry = spec["locations"][0]
-        entry["description"] += f" First charted by {player.name}."
+        if player:
+            spec["locations"][0]["description"] += f" First charted by {player.name}."
         _persist_region(spec)
         invalidate_cache()
 
@@ -708,15 +712,46 @@ def mint_region_from(origin_location: str, player: Player) -> Optional[Dict[str,
             location_id=origin_location,
             data={
                 "region_id": spec["region_id"],
-                "player_id": player.player_id,
-                "player_name": player.name,
-                "description": f"{player.name} discovered the {spec['name']}!",
+                "player_id": player.player_id if player else None,
+                "player_name": player.name if player else None,
+                "description": (
+                    f"{player.name} discovered the {spec['name']}!"
+                    if player else f"The way to the {spec['name']} stands open."
+                ),
             },
         )
-        from .echoes import record_deed
-        record_deed(player, origin_location,
-                    f"{player.name} opened the way to the {spec['name']}",
-                    kind="discovery")
+        if player:
+            from .echoes import record_deed
+            record_deed(player, origin_location,
+                        f"{player.name} opened the way to the {spec['name']}",
+                        kind="discovery")
         return db.get_region(spec["region_id"]) or spec
 
     return single_flight.run(f"mint_{origin_location}", _mint)
+
+
+# Frontiers opened by the world itself at first boot, so a brand-new universe
+# already reaches beyond the hand-authored core. The rest stay sealed for
+# players to discover (and be canonized for). Override with QUESTAI_PREMINT
+# (comma-separated frontier location ids; empty string disables).
+DEFAULT_PREMINT = "tavern,riverside"
+
+
+def pre_mint_regions() -> int:
+    """Mint the configured starter regions (idempotent). Returns count minted."""
+    import os
+
+    raw = os.getenv("QUESTAI_PREMINT", DEFAULT_PREMINT)
+    minted = 0
+    for origin in [o.strip() for o in raw.split(",") if o.strip()]:
+        if origin not in STATIC_FRONTIERS:
+            print(f"[REGIONGEN] premint: {origin} is not a frontier, skipping")
+            continue
+        if db.get_region_by_origin(origin):
+            continue
+        try:
+            if mint_region_from(origin, None):
+                minted += 1
+        except Exception as e:  # a failed premint must never block startup
+            print(f"[REGIONGEN] premint from {origin} failed: {e}")
+    return minted

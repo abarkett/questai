@@ -363,6 +363,58 @@ def seed_default_db_rules() -> None:
         cooldown_turns=40,
     )
 
+    # An alpha wolf shadows the forest now and then — the old areas should
+    # surprise veterans too. Uses a known monster name so the bestiary,
+    # bounty board, and ambush logic all recognize it.
+    upsert_world_rule(
+        rule_id="forest_prowler",
+        name="A Prowler in the Pines",
+        description="Every ~25 turns a hardened wolf stalks into the forest.",
+        conditions=[
+            {"monster_count": {"location": "forest", "name_contains": "wolf", "op": "eq", "value": 0}},
+        ],
+        effects=[
+            {"spawn_monster": {
+                "instance_id": "forest_prowler",
+                "location": "forest",
+                "name": "Wolf",
+                "hp": 24, "attack": 5, "xp_reward": 18,
+                "loot": {"coin": 6, "pelt": 2},
+            }},
+            {"log_event": {
+                "type": "world_evolution",
+                "location": "forest",
+                "description": "A lean grey shape has been seen slipping between the pines.",
+            }},
+        ],
+        cooldown_turns=25,
+    )
+
+    # Brigands work the riverside road in waves.
+    upsert_world_rule(
+        rule_id="riverside_brigand",
+        name="Brigands on the Towpath",
+        description="Every ~30 turns a bandit sets up along the riverside.",
+        conditions=[
+            {"monster_count": {"location": "riverside", "name_contains": "bandit", "op": "eq", "value": 0}},
+        ],
+        effects=[
+            {"spawn_monster": {
+                "instance_id": "riverside_brigand",
+                "location": "riverside",
+                "name": "Bandit",
+                "hp": 18, "attack": 5, "xp_reward": 14,
+                "loot": {"coin": 12},
+            }},
+            {"log_event": {
+                "type": "world_evolution",
+                "location": "riverside",
+                "description": "A bandit has taken to waylaying travelers along the riverside.",
+            }},
+        ],
+        cooldown_turns=30,
+    )
+
 
 def track_monster_survival(location_id: str) -> None:
     """Track how long monsters have survived at a location."""

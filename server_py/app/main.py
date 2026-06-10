@@ -38,6 +38,10 @@ def _startup() -> None:
     # Built-in data-driven world rules.
     from .world_rules import seed_default_db_rules
     seed_default_db_rules()
+    # A fresh universe already reaches past the hand-authored core: starter
+    # regions are pre-minted so day one is bigger than the static 22 rooms.
+    from .regiongen import pre_mint_regions
+    pre_mint_regions()
     # Initialize factions
     for faction_id, faction in FACTIONS.items():
         create_faction(

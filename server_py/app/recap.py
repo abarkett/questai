@@ -22,6 +22,9 @@ from .types import Player
 
 # Only recap after a genuine absence, not a coffee break.
 RECAP_GAP_MS = 6 * 60 * 60 * 1000
+# Shorter absences still get a one-line pulse so every session opens with
+# proof the world moved without you.
+PULSE_GAP_MS = 30 * 60 * 1000
 MAX_EVENTS = 8
 
 
@@ -77,16 +80,41 @@ def _narrate(player: Player, lines: List[str]) -> Optional[str]:
     return None
 
 
+def world_pulse(player: Player) -> List[str]:
+    """One line of world heartbeat: the season's progress + the latest event."""
+    from .world_goals import get_active_world_goals
+
+    parts: List[str] = []
+    goals = get_active_world_goals()
+    if goals:
+        g = goals[0]
+        parts.append(f"Season: {g['name']} {min(g['progress'], g['required'])}/{g['required']}")
+    from .db import get_world_events
+    for event in get_world_events(10):
+        if (event.get("data") or {}).get("player_id") == player.player_id:
+            continue
+        line = _event_line(event)
+        if line:
+            parts.append(line)
+            break
+    return [" · ".join(parts)] if parts else []
+
+
 def recap_messages(player: Player, last_seen_ms: int, now_ms: int) -> List[str]:
     """
-    Messages to prepend to a returning player's first action, or [] if they
-    weren't gone long enough (or nothing happened).
+    Messages to prepend to a returning player's first action: a full recap
+    after a real absence, a one-line pulse after a shorter one, [] otherwise.
     """
-    if not last_seen_ms or now_ms - last_seen_ms < RECAP_GAP_MS:
+    if not last_seen_ms:
         return []
+    gap = now_ms - last_seen_ms
+    if gap < PULSE_GAP_MS:
+        return []
+    if gap < RECAP_GAP_MS:
+        return world_pulse(player)
     lines = build_recap_lines(player, last_seen_ms)
     if not lines:
-        return []
+        return world_pulse(player)
     narrated = _narrate(player, lines)
     if narrated:
         return [f"While you were away: {narrated}"]

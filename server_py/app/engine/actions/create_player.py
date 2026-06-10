@@ -39,9 +39,21 @@ def create_player(name: str) -> ActionResponse:
 
     loc = get_location(player.location)
 
+    messages = [f"Welcome, {player.name}.", f"You arrive at {loc.name}."]
+
+    # New arrivals land in a world already in motion: lead with the season.
+    from ...db import get_active_world_goals
+    goals = get_active_world_goals()
+    if goals:
+        g = goals[0]
+        messages.append(
+            f"The town talks of one thing: {g['name']}. {g['description']} "
+            f"({min(g['progress'], g['required'])}/{g['required']} so far — every blow counts.)"
+        )
+
     return ActionResponse(
         ok=True,
-        messages=[f"Welcome, {player.name}.", f"You arrive at {loc.name}."],
+        messages=messages,
         state=build_action_state(player, scene_dirty=True),
     )
 
