@@ -27,32 +27,29 @@ def _warm_location_text(location_id: str) -> int:
     from .world import get_location
     from .engine.entities import get_entities_at
     from .engine.state_view import effective_description
-    from .descriptions import describe, fallback_description
+    from .descriptions import describe
 
     loc = get_location(location_id)
     entities = get_entities_at(location_id)
     turn = db.get_world_turn()
     warmed = 0
 
-    # Only count prose Miriel actually authored: describe() falls back to the
-    # base text on an empty answer, and counting that would hide a broken
-    # Miriel behind a healthy-looking "warmed N descriptions" log line.
-    base = effective_description(loc)
+    # describe() raises on anything short of real Miriel prose, so a success
+    # here genuinely means an authored description landed in the cache.
     try:
-        if describe(None, loc, entities, base, turn) != fallback_description(base, loc.id, turn):
-            warmed += 1
-    except Exception:
-        pass
+        describe(None, loc, entities, effective_description(loc), turn)
+        warmed += 1
+    except Exception as e:
+        print(f"[PREGEN] description warm failed for {location_id}: {e}")
 
     monsters = [e for e in entities if e.get("type") == "monster"]
     if monsters:
-        cleared_base = loc.cleared_description or loc.description
         try:
             cleared = [e for e in entities if e.get("type") != "monster"]
-            if describe(None, loc, cleared, cleared_base, turn) != fallback_description(cleared_base, loc.id, turn):
-                warmed += 1
-        except Exception:
-            pass
+            describe(None, loc, cleared, loc.cleared_description or loc.description, turn)
+            warmed += 1
+        except Exception as e:
+            print(f"[PREGEN] cleared-description warm failed for {location_id}: {e}")
     return warmed
 
 
@@ -60,7 +57,7 @@ def render_scene_to_cache(prompt: str) -> bool:
     """
     Render a scene image for `prompt` into the shared cache (keyed by the hash
     of the *base* prompt, matching /api/ai/image). Returns True if the cache
-    holds an image afterwards. Never raises.
+    holds an image afterwards. Raises if Miriel enrichment is unavailable.
     """
     from .services import image_gen
 
@@ -70,11 +67,9 @@ def render_scene_to_cache(prompt: str) -> bool:
     if not image_gen.image_gen_enabled():
         return False
 
-    render_prompt = prompt
-    try:
-        render_prompt = image_gen.enrich_scene_prompt(prompt)
-    except Exception:
-        pass  # enrichment is garnish; render the base prompt
+    # Enrichment requires Miriel and propagates its failures (no fallback):
+    # a scene rendered without world context would silently cache forever.
+    render_prompt = image_gen.enrich_scene_prompt(prompt)
 
     image = image_gen.generate_scene_image(render_prompt)
     if not image:
@@ -88,7 +83,8 @@ def _warm_location_image(location_id: str) -> bool:
 
     try:
         return render_scene_to_cache(scene_prompt_for_location(location_id))
-    except Exception:
+    except Exception as e:
+        print(f"[PREGEN] scene warm failed for {location_id}: {e}")
         return False
 
 

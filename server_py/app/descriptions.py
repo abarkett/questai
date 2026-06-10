@@ -1,10 +1,13 @@
 """
-Dynamic, Miriel-authored location prose — with a deterministic fallback.
+Dynamic, Miriel-authored location prose.
 
-When Miriel is configured, location prose is AI-authored from live context
-(time of day, what's present, world state). When it isn't, the location's
-authored description is used instead: every game surface (web, CLI, SMS) must
-stay playable text-first with no AI configured.
+Demonstrating Miriel is a core aim of the project, so there is NO deterministic
+fallback: if Miriel is unavailable — or reachable but producing no usable
+prose — describing a location raises and the request fails hard. Silent
+degradation to authored text is worse than a crash: it hides a broken AI
+integration behind a working-looking game. The deterministic helpers below
+only build *context* for the prompt (time of day, what's present); the prose
+itself always comes from Miriel.
 """
 
 from __future__ import annotations
@@ -19,16 +22,6 @@ _OUTDOOR = {
 }
 
 _TIME_OF_DAY = ["dawn", "midday", "afternoon", "dusk", "night"]
-
-# Deterministic flavor for the no-AI path: even authored prose should change
-# as the world turns.
-_TOD_FLAVOR = {
-    "dawn": "Dawn light lies thin and new over everything.",
-    "midday": "The sun stands high; shadows pool small and dark.",
-    "afternoon": "The light slants long and gold.",
-    "dusk": "Dusk gathers at the edges of things.",
-    "night": "Night has fallen, and shapes lose their names in the dark.",
-}
 
 
 from .services.miriel_client import MirielUnavailable  # re-exported for callers
@@ -47,25 +40,19 @@ def present_creatures(entities: List[dict]) -> List[str]:
     return sorted({e["name"] for e in entities if e.get("type") == "monster"})
 
 
-def fallback_description(base: str, location_id: str, world_turn: int) -> str:
-    """Authored text plus deterministic time-of-day flavor (outdoors)."""
-    tod = time_of_day(location_id, world_turn)
-    if tod and _TOD_FLAVOR.get(tod):
-        return f"{base} {_TOD_FLAVOR[tod]}"
-    return base
-
-
 def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> str:
     """
-    Return a description of the location as it is right now: Miriel-authored
-    prose when the AI is configured, the authored `base` text (with
-    deterministic time-of-day flavor) otherwise.
+    Return a Miriel-authored description of the location as it is right now.
+    Raises MirielUnavailable if Miriel is unconfigured OR answers with nothing
+    usable — by design, there is no fallback.
     """
     from .services.miriel_client import is_miriel_enabled, get_miriel_client
     from .db import get_cached_miriel_content, cache_miriel_content
 
     if not is_miriel_enabled():
-        return fallback_description(base, loc.id, world_turn)
+        raise MirielUnavailable(
+            "Miriel is not configured (set MIRIEL_API_KEY). The game requires Miriel."
+        )
 
     creatures = present_creatures(entities)
     tod = time_of_day(loc.id, world_turn)
@@ -95,12 +82,14 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
     answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
     answer = (answer or "").strip()
     if not answer:
-        # Miriel reachable but produced no usable prose for this scene. Say so
-        # loudly (a misshapen response would otherwise silently read as
-        # "canned text everywhere") and fall back to the authored description.
+        # Reachable but no usable prose (empty answer or a response shaped
+        # differently than {"results": {"answer": ...}}). This is the failure
+        # mode that silent fallbacks hide for weeks — fail hard instead.
         shape = list(resp.keys()) if isinstance(resp, dict) else type(resp).__name__
-        print(f"[MIRIEL] empty answer for '{loc.id}' description (response shape: {shape})")
-        return fallback_description(base, loc.id, world_turn)
+        raise MirielUnavailable(
+            f"Miriel returned no prose for '{loc.id}' (response shape: {shape}). "
+            "The game requires Miriel."
+        )
 
     cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=600)
     return answer

@@ -1,7 +1,9 @@
 """
-Tests for location descriptions: Miriel-authored prose when the AI is
-configured, deterministic authored text otherwise (the game must stay playable
-text-first with no AI keys set — web, CLI, and SMS alike).
+Tests for Miriel-authored location descriptions. There is NO fallback: with
+Miriel down — or answering with nothing usable — describing a location must
+raise. Silent degradation to authored text hides a broken AI integration.
+The offline suite installs a Miriel test responder (a seam, not a gameplay
+fallback) to exercise the path.
 
 Run from server_py/:  python3 test_descriptions.py
 """
@@ -38,17 +40,23 @@ def main() -> None:
     upsert_player(p)
     loc = get_location("forest")
 
-    # With Miriel down (no key, no stub): the authored description is used,
-    # with deterministic time-of-day flavor so even canned prose changes.
+    # With Miriel down (no key, no stub): describing MUST raise — no fallback.
     install_test_responder(None)
     get_miriel_client().enabled = False
-    fb = describe(p, loc, [], "A forest.", 0)
-    assert fb.startswith("A forest.") and len(fb) > len("A forest."), fb
-    assert describe(p, loc, [], "A forest.", 0) != describe(p, loc, [], "A forest.", 12 * 3), \
-        "fallback prose should vary with the time of day"
-    r = look(p)
-    assert r.ok, "look() must keep working when Miriel is down"
-    print("PASS  fallback: authored text + time-of-day flavor when Miriel is down")
+    raised = False
+    try:
+        describe(p, loc, [], "A forest.", 0)
+    except MirielUnavailable:
+        raised = True
+    assert raised, "describe must raise when Miriel is unavailable (no fallback)"
+    # And look() propagates the failure (the game crashes hard).
+    crashed = False
+    try:
+        look(p)
+    except MirielUnavailable:
+        crashed = True
+    assert crashed, "look() must fail hard when Miriel is down"
+    print("PASS  no fallback: describe/look fail hard when Miriel is down")
 
     # With Miriel working (stubbed), the prose comes from Miriel and reaches look.
     get_miriel_client().enabled = True
@@ -65,11 +73,17 @@ def main() -> None:
     assert any("Mist curls" in m for m in r.messages), r.messages
     print("PASS  descriptions come from Miriel and surface in look()")
 
-    # Miriel reachable but empty -> show the room's authored text (not a 500).
+    # Miriel reachable but answering with nothing usable MUST also raise:
+    # this is exactly the failure a silent fallback hides for weeks.
     install_test_responder(lambda q: "")
-    base = "A quiet authored room."
-    assert describe(p, loc, [], base, 0).startswith(base)
-    print("PASS  empty Miriel answer falls through to the authored description")
+    raised = False
+    try:
+        describe(p, loc, [], "A quiet authored room.", 0)
+    except MirielUnavailable as e:
+        raised = True
+        assert "no prose" in str(e), e
+    assert raised, "empty Miriel answers must fail hard, not fall back"
+    print("PASS  empty/malformed Miriel answers fail hard too")
 
     install_test_responder(None)
     print("\nALL DESCRIPTION TESTS PASSED")

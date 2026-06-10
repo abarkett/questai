@@ -94,9 +94,15 @@ rule provides a recurring ambient event.
 Every action result renders as one compact plain-text message with an HP/AP
 status suffix. `POST /sms {"from": <handle>, "text": <command>}` gives full
 play from a bare phone number: new senders are onboarded with
-`create <name>`, then the entire command grammar applies. Location prose
-falls back to authored text whenever Miriel is unconfigured, so no surface
-ever depends on an API key to stay playable.
+`create <name>`, then the entire command grammar applies.
+
+**Miriel is required, and its failures are loud by design.** Location prose
+has no fallback: if Miriel is unconfigured — or reachable but returning no
+usable prose — `describe()` raises and the request fails hard, on every
+surface (web, CLI, SMS). Silent degradation to authored text hides a broken
+AI integration behind a working-looking game. (Quests and NPC dialogue keep
+their original template fallbacks; descriptions and scene-prompt enrichment
+do not.)
 
 ## New commands
 

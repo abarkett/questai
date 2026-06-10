@@ -17,6 +17,12 @@ db.init_db()
 
 from fastapi.testclient import TestClient  # noqa: E402
 
+# Miriel is required (no fallback): stub it for the offline suite.
+from app.services.miriel_client import install_test_responder, get_miriel_client  # noqa: E402
+
+get_miriel_client().enabled = True
+install_test_responder(lambda q: "Lantern light spills over the cobbles.")
+
 from app.main import app  # noqa: E402
 from app.render_text import render_plain, MAX_SMS_CHARS  # noqa: E402
 from app.types import ActionResponse, Player  # noqa: E402

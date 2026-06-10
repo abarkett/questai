@@ -24,6 +24,12 @@ from app.engine.entities import seed_world_monsters  # noqa: E402
 
 seed_world_monsters()
 
+# Miriel is required (no fallback): stub it for the offline suite.
+from app.services.miriel_client import install_test_responder, get_miriel_client  # noqa: E402
+
+get_miriel_client().enabled = True
+install_test_responder(lambda q: "The town breathes its evening breath.")
+
 from app.regiongen import pre_mint_regions  # noqa: E402
 from app.world import get_location  # noqa: E402
 from app.world_goals import ensure_active_goal  # noqa: E402
@@ -107,13 +113,6 @@ def main() -> None:
     pool = rumor_lines(newcomer, limit=10)
     assert any("stands open" in line for line in pool), pool
     print("PASS  town square gossip carries world news (premint, events)")
-
-    # Even authored prose moves with the clock when Miriel is off.
-    from app.descriptions import fallback_description
-    a = fallback_description("A plaza.", "town_square", 0)
-    b = fallback_description("A plaza.", "town_square", 12 * 3)
-    assert a != b and a.startswith("A plaza."), (a, b)
-    print("PASS  fallback descriptions change with the time of day")
 
     print("\nALL DAY-ONE TESTS PASSED")
 

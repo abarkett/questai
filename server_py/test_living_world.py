@@ -21,6 +21,14 @@ from app.engine.entities import seed_world_monsters  # noqa: E402
 
 seed_world_monsters()
 
+# Miriel is required (no fallback): stub it for the offline suite. The
+# responder echoes the query tail so narrated output (e.g. recaps) carries
+# the real event content through to assertions.
+from app.services.miriel_client import install_test_responder, get_miriel_client  # noqa: E402
+
+get_miriel_client().enabled = True
+install_test_responder(lambda q: "[stub] " + q[-200:])
+
 from app.types import Player  # noqa: E402
 from app.db import upsert_player, get_player  # noqa: E402
 from app.engine.actions.fight import fight  # noqa: E402

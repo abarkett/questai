@@ -21,6 +21,12 @@ from app.engine.entities import seed_world_monsters  # noqa: E402
 
 seed_world_monsters()
 
+# Miriel is required (no fallback): stub it for the offline suite.
+from app.services.miriel_client import install_test_responder, get_miriel_client  # noqa: E402
+
+get_miriel_client().enabled = True
+install_test_responder(lambda q: "The scene shifts in the telling.")
+
 from app.action_points import refill, spend, seconds_to_next_ap, ap_max, now_ms  # noqa: E402
 from app.engine.apply_action import apply_action  # noqa: E402
 from app.engine.parse_command import parse_command  # noqa: E402
