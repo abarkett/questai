@@ -597,6 +597,70 @@ def _persist_region(spec: Dict[str, Any]) -> None:
     db.add_gen_exit(spec["origin_location"], spec["entry_location"], "unexplored path")
 
 
+def _install_region_rules(spec: Dict[str, Any]) -> None:
+    """
+    Give the region its own world-evolution behavior via data-driven rules
+    (see world_rules.py): clearing every room is a recorded world event, and
+    a region left quiet too long stirs back to life on its own.
+    """
+    from .db import upsert_world_rule
+
+    rid, name = spec["region_id"], spec["name"]
+    interior = [l["location_id"] for l in spec["locations"][1:]]
+    cleared_key = f"{rid}_cleared"
+
+    upsert_world_rule(
+        rule_id=f"{rid}_cleared",
+        name=f"{name} Falls Quiet",
+        description=f"Fires once when every room of the {name} stands empty.",
+        conditions=(
+            [{"monster_count": {"location": lid, "op": "eq", "value": 0}} for lid in interior]
+            + [{"world_state_ne": {"key": cleared_key, "value": "true"}}]
+        ),
+        effects=[
+            {"set_state": {"key": cleared_key, "value": "true"}},
+            {"set_state_turn": {"key": f"{rid}_cleared_turn"}},
+            {"log_event": {
+                "type": "world_evolution",
+                "location": spec["entry_location"],
+                "description": f"The {name} falls quiet — every den and hall stands empty.",
+            }},
+        ],
+        cooldown_turns=0,
+    )
+
+    # The resurgent beast reuses a budget-validated monster from the region.
+    template = next(e for e in spec["entities"] if e["type"] == "monster")
+    mid_loc = spec["locations"][len(spec["locations"]) // 2]["location_id"]
+    upsert_world_rule(
+        rule_id=f"{rid}_resurgence",
+        name=f"The {name} Stirs",
+        description=f"A cleared {name} does not stay quiet forever.",
+        conditions=[
+            {"world_state_eq": {"key": cleared_key, "value": "true"}},
+            {"turns_since_state": {"key": f"{rid}_cleared_turn", "gte": 10}},
+        ],
+        effects=[
+            {"spawn_monster": {
+                "instance_id": f"{rid}_resurgent",
+                "location": mid_loc,
+                "name": template["name"],
+                "hp": template["data"]["hp"],
+                "attack": template["data"]["attack"],
+                "xp_reward": template["data"]["xp_reward"],
+                "loot": template["data"].get("loot") or {},
+            }},
+            {"set_state": {"key": cleared_key, "value": "false"}},
+            {"log_event": {
+                "type": "world_evolution",
+                "location": mid_loc,
+                "description": f"The {name} stirs again — something prowls its depths.",
+            }},
+        ],
+        cooldown_turns=10,
+    )
+
+
 def mint_region_from(origin_location: str, player: Player) -> Optional[Dict[str, Any]]:
     """
     Mint (or return the already-minted) region behind a frontier. Single-
@@ -631,6 +695,13 @@ def mint_region_from(origin_location: str, player: Player) -> Optional[Dict[str,
         # New catalog monsters take the field immediately.
         from .engine.entities import seed_world_monsters
         seed_world_monsters()
+
+        # The region runs itself from here: its own evolution rules, and its
+        # AI assets (prose + scene art) warmed in the background so the first
+        # visitor walks into a finished place.
+        _install_region_rules(spec)
+        from .pregen import pregenerate_region_assets
+        pregenerate_region_assets(spec)
 
         db.log_world_event(
             event_type="region_discovered",

@@ -10,15 +10,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from .engine.parse_command import parse_command, ParseError
 
-from .db import init_db, create_faction, get_cached_scene_image, cache_scene_image
+from .db import init_db, create_faction, get_cached_scene_image
 from .engine.apply_action import apply_action
 from .factions import FACTIONS
-from .services.image_gen import (
-    generate_scene_image,
-    get_image_model,
-    image_gen_enabled,
-    enrich_scene_prompt,
-)
+from .services.image_gen import image_gen_enabled
 
 app = FastAPI(title="RPG World Server", version="0.1.0")
 
@@ -165,12 +160,12 @@ def ai_image(prompt: str = Body(..., embed=True)):
             content={"error": "image generation not configured (set GEMINI_API_KEY)"},
         )
 
-    # Miss: enrich the prompt with Miriel's world context, then render. We cache
-    # under the *base* prompt key so the scene renders once and stays consistent.
-    image = generate_scene_image(enrich_scene_prompt(prompt))
-    if not image:
+    # Miss: render via the shared path (Miriel enrichment when available,
+    # cached under the *base* prompt key) — the same path mint-time
+    # pre-generation uses, so client requests and warmed scenes share keys.
+    from .pregen import render_scene_to_cache
+    if not render_scene_to_cache(prompt):
         return JSONResponse(status_code=502, content={"error": "image generation failed"})
 
-    cache_scene_image(key, prompt, image, get_image_model())
-    return {"image": image, "cached": False}
+    return {"image": get_cached_scene_image(key), "cached": False}
 
