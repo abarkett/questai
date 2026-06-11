@@ -151,6 +151,10 @@ def resolve_monster_kill(player: Player, entity_id: str, result: dict) -> list[s
     # XP and any level-ups from the kill.
     messages.extend(apply_xp(player, result.get("xp_reward") or 0))
 
+    # Rare bonus drops: trinkets, and relics that enter world history.
+    from ...loot import roll_bonus_loot
+    messages.extend(roll_bonus_loot(player, result["name"]))
+
     # Update quest progress
     messages.extend(update_quest_progress(player, result["name"]))
 

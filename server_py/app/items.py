@@ -154,6 +154,17 @@ ITEMS: Dict[str, Item] = {
         item_id="frostguard_plate", name="Frostguard Plate", type="armor", slot="armor",
         defense=8, value=220,
     ),
+    # ----- Trinkets (rare bonus drops; see app/loot.py) -----
+    "bent_locket": Item(item_id="bent_locket", name="Bent Locket", type="material", value=8),
+    "carved_die": Item(item_id="carved_die", name="Carved Bone Die", type="material", value=6),
+    "tin_whistle": Item(item_id="tin_whistle", name="Tin Whistle", type="material", value=7),
+    "moonstone_ring": Item(item_id="moonstone_ring", name="Moonstone Ring", type="material", value=18),
+    "silvered_button": Item(item_id="silvered_button", name="Silvered Button", type="material", value=10),
+    "glass_eye": Item(item_id="glass_eye", name="Glass Eye", type="material", value=12),
+    # ----- Relics (far rarer; finding one enters world history) -----
+    "tarnished_crown": Item(item_id="tarnished_crown", name="Tarnished Crown", type="material", value=90),
+    "dragonbone_idol": Item(item_id="dragonbone_idol", name="Dragonbone Idol", type="material", value=120),
+    "star_metal_shard": Item(item_id="star_metal_shard", name="Star-Metal Shard", type="material", value=75),
 }
 
 
