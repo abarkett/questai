@@ -17,6 +17,7 @@ from .types import Player
 
 TRINKET_CHANCE = 0.06
 RELIC_CHANCE = 0.01
+MAP_CHANCE = 0.03
 
 TRINKETS = [
     "bent_locket", "carved_die", "tin_whistle",
@@ -59,4 +60,48 @@ def roll_bonus_loot(player: Player, monster_name: str,
         player.inventory[trinket_id] = player.inventory.get(trinket_id, 0) + 1
         return [f"Tucked in the {monster_name}'s leavings: a {trinket.name}."]
 
+    if roll < RELIC_CHANCE + TRINKET_CHANCE + MAP_CHANCE:
+        return grant_treasure_map(player, monster_name, rng=r)
+
     return []
+
+
+def grant_treasure_map(player: Player, source: str,
+                       *, rng: Optional[random.Random] = None) -> List[str]:
+    """
+    Hand the player a torn map marking a buried cache somewhere in the world
+    (dig there to claim it). One marked spot at a time: a second map is just
+    soggy paper wrapped around a few coins.
+    """
+    r = rng or random.Random()
+    if player.treasure_target:
+        coins = r.randint(2, 5)
+        player.inventory["coin"] = player.inventory.get("coin", 0) + coins
+        return [f"A water-ruined map among the {source}'s leavings — "
+                f"worthless, but {coins} coins were folded inside."]
+
+    from .content import all_location_ids, get_location_or_none
+
+    candidates = [lid for lid in all_location_ids() if lid != player.location]
+    target = r.choice(candidates)
+    target_loc = get_location_or_none(target)
+    player.treasure_target = target
+    player.inventory["torn_map"] = player.inventory.get("torn_map", 0) + 1
+    return [
+        f"Among the {source}'s leavings: a torn map, hastily drawn.",
+        f"It marks a spot at {target_loc.name if target_loc else target}. (dig there)",
+    ]
+
+
+def dig_payout(player: Player, *, rng: Optional[random.Random] = None) -> List[str]:
+    """Claim a marked cache: coins scaled to level plus a guaranteed trinket."""
+    r = rng or random.Random()
+    coins = 10 + 4 * player.level + r.randint(0, 10)
+    player.inventory["coin"] = player.inventory.get("coin", 0) + coins
+    trinket_id = r.choice(TRINKETS)
+    trinket = get_item(trinket_id)
+    player.inventory[trinket_id] = player.inventory.get(trinket_id, 0) + 1
+    return [
+        "Your spade strikes wood — a buried cache!",
+        f"Inside: {coins} coins and a {trinket.name}.",
+    ]

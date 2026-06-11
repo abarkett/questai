@@ -261,6 +261,10 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("explore", "search", "chart"):
         return {"action": "explore"}
 
+    # ---- DIG (claim a treasure-map cache) ----
+    if verb in ("dig", "excavate", "unearth"):
+        return {"action": "dig"}
+
     # ---- NOTES (noticeboard) ----
     if verb in ("note", "write", "scratch"):
         if not rest:

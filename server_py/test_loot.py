@@ -82,11 +82,49 @@ def main() -> None:
         assert item and item.value and item.value > 0, iid
     print("PASS  every trinket and relic is a defined, sellable item")
 
+    # --- Treasure maps: drop -> journey -> dig ---
+    from app.loot import grant_treasure_map, MAP_CHANCE
+    from app.engine.actions.dig import dig
+
+    p = mk("hunterx", location="town_square")
+    msgs = grant_treasure_map(p, "Bandit", rng=random.Random(3))
+    assert any("It marks a spot at" in m for m in msgs), msgs
+    assert p.treasure_target and p.inventory.get("torn_map") == 1
+    target = p.treasure_target
+
+    # Digging in the wrong place refuses (and names the right one).
+    assert p.location != target
+    r = dig(p)
+    assert not r.ok and "not here" in r.error, r.error
+
+    # A second map while one is pending is just coins.
+    msgs = grant_treasure_map(p, "Wolf", rng=random.Random(4))
+    assert any("water-ruined" in m for m in msgs), msgs
+    assert p.treasure_target == target, "pending target unchanged"
+
+    # Digging at the marked spot pays out and consumes the map.
+    p.location = target
+    coins_before = p.inventory.get("coin", 0)
+    r = dig(p)
+    assert r.ok and any("buried cache" in m for m in r.messages), r.messages
+    assert p.inventory.get("coin", 0) > coins_before
+    assert p.treasure_target is None and "torn_map" not in p.inventory
+    # ...and there's nothing left to dig.
+    assert not dig(p).ok
+    print("PASS  treasure maps: drop, journey, refusal, payout, consumption")
+
+    # Maps occupy their own band in the kill-loot roll.
+    p = mk("mapper")
+    msgs = roll_bonus_loot(p, "Rat", rng=FakeRng(RELIC_CHANCE + TRINKET_CHANCE + 0.001))
+    assert any("torn map" in m for m in msgs), msgs
+    assert p.treasure_target
+    print("PASS  torn maps drop from kills in their own band")
+
     # Statistical sanity with the real RNG: rates land near the constants.
     p = mk("grinder")
     rng = random.Random(7)
     hits = sum(1 for _ in range(8000) if roll_bonus_loot(p, "Rat", rng=rng))
-    expected = 8000 * (TRINKET_CHANCE + RELIC_CHANCE)
+    expected = 8000 * (TRINKET_CHANCE + RELIC_CHANCE + MAP_CHANCE)
     assert 0.5 * expected < hits < 1.6 * expected, (hits, expected)
     print(f"PASS  drop rate sanity ({hits} bonus drops in 8000 kills)")
 

@@ -49,6 +49,8 @@ class Player(BaseModel):
     ap_updated_at: Optional[int] = None
     # Login recap: when we last summarized "while you were gone"
     last_recap_at: Optional[int] = None
+    # Where this player's torn map points (location id), if they hold one
+    treasure_target: Optional[str] = None
 
 class AttackArgs(BaseModel):
     target: str
@@ -332,6 +334,11 @@ class ExploreReq(BaseModel):
     args: Optional[dict] = None
 
 
+class DigReq(BaseModel):
+    action: Literal["dig"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -372,6 +379,7 @@ ActionRequest = Union[
     BountiesReq,
     GoalsReq,
     ExploreReq,
+    DigReq,
 ]
 
 

@@ -161,6 +161,8 @@ ITEMS: Dict[str, Item] = {
     "moonstone_ring": Item(item_id="moonstone_ring", name="Moonstone Ring", type="material", value=18),
     "silvered_button": Item(item_id="silvered_button", name="Silvered Button", type="material", value=10),
     "glass_eye": Item(item_id="glass_eye", name="Glass Eye", type="material", value=12),
+    # A torn map marks a buried cache somewhere in the world (see app/loot.py)
+    "torn_map": Item(item_id="torn_map", name="Torn Map", type="material", value=2),
     # ----- Relics (far rarer; finding one enters world history) -----
     "tarnished_crown": Item(item_id="tarnished_crown", name="Tarnished Crown", type="material", value=90),
     "dragonbone_idol": Item(item_id="dragonbone_idol", name="Dragonbone Idol", type="material", value=120),
