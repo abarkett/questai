@@ -74,6 +74,15 @@ traces rather than presence:
   "while you were away" summary built from the world event log —
   Miriel-narrated when configured, plain bullets otherwise.
 
+## 5b. Travel encounters (`app/encounters.py`)
+
+Movement is the most-repeated action in the game, so it carries surprise:
+roughly one move in five produces a moment — a hidden cache (coins or the
+local gatherable), a wayside shrine (healing or a strength blessing), a
+passing traveler who repeats *real* world news from the rumor pool, an omen
+that points at unopened frontiers, or (in dangerous country) an ambush. The
+table is danger-weighted, deterministic, and RNG-injectable like combat.
+
 ## 6. Community goals (`app/world_goals.py`, `goals`)
 
 Rotating server-wide seasonal objectives (The Blight, Vermin Tide, Embers

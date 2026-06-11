@@ -49,11 +49,18 @@ def move(player: Player, to_label_or_id: str) -> ActionResponse:
     entities = filter_current_player(get_entities_at(player.location), player.player_id)
     arrival = describe(player, to_loc, entities, effective_description(to_loc), get_world_turn())
 
+    # The road itself rolls dice: caches, shrines, travelers, ambushes, omens.
+    from ...encounters import maybe_travel_encounter
+    encounter_msgs = maybe_travel_encounter(player)
+    if encounter_msgs:
+        upsert_player(player)
+
     return ActionResponse(
         ok=True,
         messages=[
             f"You travel to {to_loc.name}.",
             arrival,
+            *encounter_msgs,
         ],
         state=build_action_state(player, scene_dirty=True),
     )
