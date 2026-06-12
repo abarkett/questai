@@ -381,7 +381,9 @@ def extract_answer(resp) -> str:
     # like prose (a length gate keeps status strings like "ok"/"success" from
     # masquerading as an answer).
     tiers = (
-        (("answer", "final_answer", "answer_text", "synthesis"), 1),
+        # llm_result is where the live /api/v2/query (non-streaming) puts the
+        # synthesized answer, beside graph/vector retrieval artifacts.
+        (("llm_result", "answer", "final_answer", "answer_text", "synthesis"), 1),
         (("response", "summary", "completion", "output_text",
           "result", "message", "text", "content", "output"), 20),
     )

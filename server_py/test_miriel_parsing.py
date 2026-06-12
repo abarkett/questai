@@ -14,6 +14,27 @@ def main() -> None:
     assert extract_answer({"results": {"answer": "Prose."}}) == "Prose."
     print("PASS  canonical {results: {answer}} shape")
 
+    # The real live-API shape (captured from production via debug_miriel.py):
+    # the synthesized answer sits at results.llm_result beside retrieval
+    # artifacts. Regression-locked — this exact shape went unparsed for the
+    # project's entire life.
+    live = {
+        "results": {
+            "completed": True,
+            "conversation_history": [],
+            "graph_results": [{"edge": "contains", "node1": "TownSquare",
+                               "node2": "Market", "strength": 0.9999}],
+            "llm_result": "As dusk settles over the cobblestone plaza, the "
+                          "central fountain casts long, soft shadows.",
+            "num_results_vector": 10,
+            "status": "complete",
+            "vector_db_results": [{"distance": 1.46, "document": "{...}"}],
+        },
+        "results_diff": [],
+    }
+    assert extract_answer(live).startswith("As dusk settles"), extract_answer(live)
+    print("PASS  production shape: results.llm_result")
+
     # Live-API variants: the answer nested deeper inside results.
     assert extract_answer(
         {"results": {"query_response": {"answer": "Deep prose."}}, "results_diff": {}}
