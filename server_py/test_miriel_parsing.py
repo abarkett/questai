@@ -27,8 +27,12 @@ def main() -> None:
     assert extract_answer(
         {"results": {"text": "wrong", "inner": {"answer": "right"}}}
     ) == "right"
-    # ...but generic keys are used when no 'answer' exists at all.
-    assert extract_answer({"results": {"response": "fallback prose"}}) == "fallback prose"
+    # ...but generic keys are used when no 'answer' exists at all — gated on
+    # length so status strings can't masquerade as prose.
+    assert extract_answer(
+        {"results": {"response": "A long line of genuine fallback prose."}}
+    ) == "A long line of genuine fallback prose."
+    assert extract_answer({"results": {"message": "success", "status": "ok"}}) == ""
     print("PASS  'answer' outranks generic keys; generic keys still rescue")
 
     # Whitespace-only and missing text yield "" (callers fail hard on it).

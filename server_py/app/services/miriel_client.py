@@ -377,17 +377,26 @@ def extract_answer(resp) -> str:
         return ""
     from collections import deque
 
-    for key_name in ("answer", "final_answer", "response", "text", "content", "output"):
-        queue = deque([resp])
-        while queue:
-            node = queue.popleft()
-            if isinstance(node, dict):
-                value = node.get(key_name)
-                if isinstance(value, str) and value.strip():
-                    return value.strip()
-                queue.extend(node.values())
-            elif isinstance(node, list):
-                queue.extend(node)
+    # Purpose-named keys are trusted outright; generic keys must at least look
+    # like prose (a length gate keeps status strings like "ok"/"success" from
+    # masquerading as an answer).
+    tiers = (
+        (("answer", "final_answer", "answer_text", "synthesis"), 1),
+        (("response", "summary", "completion", "output_text",
+          "result", "message", "text", "content", "output"), 20),
+    )
+    for key_names, min_len in tiers:
+        for key_name in key_names:
+            queue = deque([resp])
+            while queue:
+                node = queue.popleft()
+                if isinstance(node, dict):
+                    value = node.get(key_name)
+                    if isinstance(value, str) and len(value.strip()) >= min_len:
+                        return value.strip()
+                    queue.extend(node.values())
+                elif isinstance(node, list):
+                    queue.extend(node)
     return ""
 
 
