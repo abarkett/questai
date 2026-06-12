@@ -339,6 +339,11 @@ class DigReq(BaseModel):
     args: Optional[dict] = None
 
 
+class RestReq(BaseModel):
+    action: Literal["rest"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -380,6 +385,7 @@ ActionRequest = Union[
     GoalsReq,
     ExploreReq,
     DigReq,
+    RestReq,
 ]
 
 

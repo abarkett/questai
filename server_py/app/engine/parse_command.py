@@ -295,8 +295,12 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {"action": "reputation"}
 
     # ---- HEAL (temple) ----
-    if verb in ("heal", "pray", "rest", "worship"):
+    if verb in ("heal", "pray", "worship"):
         return {"action": "heal"}
+
+    # ---- REST (free recovery anywhere safe) ----
+    if verb in ("rest", "camp", "sleep", "breathe"):
+        return {"action": "rest"}
 
     # ---- MAP ----
     if verb in ("map", "m"):

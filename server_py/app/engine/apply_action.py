@@ -204,6 +204,9 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "dig":
         from .actions.dig import dig
         result = dig(player)
+    elif req.action == "rest":
+        from .actions.rest import rest
+        result = rest(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)
