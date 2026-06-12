@@ -129,7 +129,8 @@ def generate_quest_for_player(
             return None
 
         # Extract text from response
-        response_text = response.get("results", {}).get("answer", "")
+        from .services.miriel_client import extract_answer
+        response_text = extract_answer(response)
         if not response_text:
             print("[MIRIEL] Quest generation returned empty answer")
             return None
@@ -235,7 +236,8 @@ def generate_story_arc(
         if not response:
             return None
 
-        response_text = response.get("results", {}).get("answer", "")
+        from .services.miriel_client import extract_answer
+        response_text = extract_answer(response)
         if not response_text:
             return None
 

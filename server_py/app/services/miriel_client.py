@@ -361,3 +361,49 @@ def is_miriel_enabled() -> bool:
     """Check if Miriel integration is enabled."""
     client = get_miriel_client()
     return client.enabled
+
+
+def extract_answer(resp) -> str:
+    """
+    Pull the model's text answer out of a Miriel query response.
+
+    Canonically this is {"results": {"answer": "..."}}, but live API versions
+    have moved the text around (e.g. nesting it deeper inside `results`).
+    Search breadth-first for the first non-empty string under increasingly
+    generic key names, so shallow/canonical placements always win. Returns ""
+    when no usable text exists anywhere — callers decide how hard to fail.
+    """
+    if not isinstance(resp, (dict, list)):
+        return ""
+    from collections import deque
+
+    for key_name in ("answer", "final_answer", "response", "text", "content", "output"):
+        queue = deque([resp])
+        while queue:
+            node = queue.popleft()
+            if isinstance(node, dict):
+                value = node.get(key_name)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+                queue.extend(node.values())
+            elif isinstance(node, list):
+                queue.extend(node)
+    return ""
+
+
+def describe_shape(resp, depth: int = 3) -> str:
+    """Compact structural summary of a response, for actionable error logs."""
+    def go(node, d):
+        if isinstance(node, dict):
+            if d <= 0:
+                return "{...}"
+            return "{" + ", ".join(f"{k}: {go(v, d - 1)}" for k, v in list(node.items())[:8]) + "}"
+        if isinstance(node, list):
+            if d <= 0 or not node:
+                return f"list[{len(node)}]"
+            return f"list[{len(node)} x {go(node[0], d - 1)}]"
+        if isinstance(node, str):
+            return f"str({len(node)})"
+        return type(node).__name__
+
+    return go(resp, depth)

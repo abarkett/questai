@@ -79,16 +79,15 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
     # look for the same scene share one round-trip. Not wrapped in try/except: a
     # Miriel outage propagates and the request fails hard (by design).
     resp = get_miriel_client().query(query=query, project="questai")
-    answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
-    answer = (answer or "").strip()
+    from .services.miriel_client import extract_answer, describe_shape
+    answer = extract_answer(resp)
     if not answer:
-        # Reachable but no usable prose (empty answer or a response shaped
-        # differently than {"results": {"answer": ...}}). This is the failure
-        # mode that silent fallbacks hide for weeks — fail hard instead.
-        shape = list(resp.keys()) if isinstance(resp, dict) else type(resp).__name__
+        # Reachable but no usable prose anywhere in the response. This is the
+        # failure mode that silent fallbacks hide for weeks — fail hard, and
+        # print the response structure so the fix is one log line away.
         raise MirielUnavailable(
-            f"Miriel returned no prose for '{loc.id}' (response shape: {shape}). "
-            "The game requires Miriel."
+            f"Miriel returned no prose for '{loc.id}' "
+            f"(response shape: {describe_shape(resp)}). The game requires Miriel."
         )
 
     cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=600)

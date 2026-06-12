@@ -71,7 +71,8 @@ def _narrate(player: Player, lines: List[str]) -> Optional[str]:
     )
     try:
         resp = get_miriel_client().query(query=query, project="questai")
-        answer = (((resp or {}).get("results", {}) or {}).get("answer", "") or "").strip()
+        from .services.miriel_client import extract_answer
+        answer = extract_answer(resp)
         if answer:
             cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=3600)
             return answer

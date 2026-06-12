@@ -543,7 +543,8 @@ def _enrich_with_miriel(spec: Dict[str, Any]) -> Dict[str, Any]:
             + ". Reply with ONLY the JSON object."
         )
         resp = get_miriel_client().query(query=query, project="questai")
-        answer = (((resp or {}).get("results", {}) or {}).get("answer", "") or "").strip()
+        from .services.miriel_client import extract_answer
+        answer = extract_answer(resp)
         match = re.search(r"\{.*\}", answer, re.DOTALL)
         if not match:
             return spec
