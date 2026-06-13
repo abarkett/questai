@@ -48,7 +48,8 @@ def init_db() -> None:
               action_points INTEGER DEFAULT 30,
               ap_updated_at INTEGER,
               last_recap_at INTEGER,
-              treasure_target TEXT
+              treasure_target TEXT,
+              companion_json TEXT
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -418,6 +419,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "ap_updated_at": "INTEGER",
         "last_recap_at": "INTEGER",
         "treasure_target": "TEXT",
+        "companion_json": "TEXT",
     }
     
     # Add missing columns
@@ -480,6 +482,8 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data.setdefault("ap_updated_at", None)
     data.setdefault("last_recap_at", None)
     data.setdefault("treasure_target", None)
+    companion_json = data.get("companion_json")
+    data["companion"] = json.loads(companion_json) if companion_json else None
     return Player(**data)
 
 
@@ -549,9 +553,10 @@ def upsert_player(p: Player) -> None:
               action_points,
               ap_updated_at,
               last_recap_at,
-              treasure_target
+              treasure_target,
+              companion_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -575,7 +580,8 @@ def upsert_player(p: Player) -> None:
               action_points=excluded.action_points,
               ap_updated_at=excluded.ap_updated_at,
               last_recap_at=excluded.last_recap_at,
-              treasure_target=excluded.treasure_target
+              treasure_target=excluded.treasure_target,
+              companion_json=excluded.companion_json
             """,
             (
                 p.player_id,
@@ -602,6 +608,7 @@ def upsert_player(p: Player) -> None:
                 p.ap_updated_at,
                 p.last_recap_at,
                 p.treasure_target,
+                json.dumps(p.companion.model_dump()) if p.companion else None,
             ),
         )
         conn.commit()

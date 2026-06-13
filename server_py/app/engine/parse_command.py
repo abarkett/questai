@@ -290,6 +290,16 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("goals", "goal", "season", "events"):
         return {"action": "goals"}
 
+    # ---- COMPANIONS ----
+    if verb in ("recruit", "hire", "enlist") and rest:
+        return {"action": "recruit", "args": {"target": " ".join(rest)}}
+
+    if verb in ("dismiss", "farewell"):
+        return {"action": "dismiss"}
+
+    if verb in ("companion", "ally", "comp"):
+        return {"action": "companion"}
+
     # ---- REPUTATION ----
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}

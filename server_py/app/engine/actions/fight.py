@@ -48,6 +48,12 @@ def fight(player: Player, target_name: str, stance: str = "standard") -> ActionR
     if stance != "standard":
         messages.append(f"You take a {stance} stance.")
 
+    # A companion at your side fights with you and covers some of every blow.
+    from ...companions import guard_mult, companion_combat_turn, reward_after_victory
+    taken_mult *= guard_mult(player.companion)
+    if player.companion:
+        messages.append(f"{player.companion.name} stands with you.")
+
     # Lingering effects tick once as the fight begins.
     messages.extend(tick_effects(player))
     if player.hp <= 0:
@@ -80,8 +86,20 @@ def fight(player: Player, target_name: str, stance: str = "standard") -> ActionR
 
         if result["killed"]:
             messages.extend(resolve_monster_kill(player, entity["id"], result))
+            messages.extend(reward_after_victory(player))
             outcome = "victory"
             break
+
+        # Your companion acts after your strike, while the monster still lives —
+        # and can land the finishing blow themselves.
+        if player.companion:
+            comp_msgs, comp_kill = companion_combat_turn(player, entity["id"])
+            messages.extend(comp_msgs)
+            if comp_kill:
+                messages.extend(resolve_monster_kill(player, entity["id"], comp_kill))
+                messages.extend(reward_after_victory(player))
+                outcome = "victory"
+                break
 
         prev_defeated_at = player.last_defeated_at
         messages.extend(monster_retaliation(player, entity["id"], result, taken_mult=taken_mult))

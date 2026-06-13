@@ -274,6 +274,14 @@ function Modal({
 // Heuristic: which inventory items are equippable gear vs. consumed/used.
 const GEAR_RE = /(sword|blade|dagger|armor|mail|scale|axe|shield|bow|staff)/i;
 
+// Mirrors app/companions.py: these NPCs anchor the world and can't be recruited.
+const NON_RECRUITABLE_ROLES = ["shop", "quest_giver", "arc_giver"];
+const COMPANION_TITLE: Record<string, string> = {
+  vanguard: "Vanguard",
+  mender: "Mender",
+  outrider: "Outrider",
+};
+
 function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
   const [tab, setTab] = useState<string>("summary");
 
@@ -340,6 +348,19 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
           <>
             {hpBar}
 
+            {player.companion && (
+              <Section title="Companion">
+                <div className="text-xs">
+                  <span className="text-green-300">{player.companion.name}</span>
+                  {" — "}{COMPANION_TITLE[player.companion.archetype] ?? player.companion.archetype}
+                  {" · Lv "}{1 + Math.floor(Math.min(player.companion.loyalty, 100) / 25)}
+                  {" · loyalty "}{player.companion.loyalty}/100
+                </div>
+                <button className="text-green-700 hover:underline text-xs mt-0.5"
+                  onClick={() => onCommand("dismiss")}>dismiss</button>
+              </Section>
+            )}
+
             {player.status_effects && Object.keys(player.status_effects).length > 0 && (
               <Section title="Status">
                 {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
@@ -393,11 +414,20 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                 <div className="space-y-1">
                   {people.map((entity: any) => {
                     const isInParty = state.party?.members?.some((mm: any) => mm.player_id === entity.id);
+                    const canRecruit = entity.type === "npc" && !player.companion
+                      && !NON_RECRUITABLE_ROLES.includes(entity.role);
                     return (
-                      <button key={entity.id} className="block text-left hover:underline"
-                        onClick={() => onCommand(`talk ${entity.id}`)}>
-                        {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
-                      </button>
+                      <div key={entity.id} className="flex items-center gap-2">
+                        <button className="text-left hover:underline"
+                          onClick={() => onCommand(`talk ${entity.id}`)}>
+                          {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
+                        </button>
+                        {canRecruit && (
+                          <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                            title="Recruit as a companion (costs a coin signing bonus)"
+                            onClick={() => onCommand(`recruit ${entity.id}`)}>recruit</button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>

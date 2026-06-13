@@ -23,6 +23,14 @@ def stats(player: Player) -> ActionResponse:
             ap_line += f" (next in {wait}s)"
         messages.insert(2, ap_line)
 
+    if player.companion:
+        from ...companions import companion_level, ARCHETYPE_TITLE
+        c = player.companion
+        messages.append(
+            f"Companion: {c.name}, {ARCHETYPE_TITLE.get(c.archetype, c.archetype)} "
+            f"(Lv {companion_level(c)}, loyalty {c.loyalty})"
+        )
+
     if player.status_effects:
         from ...status_effects import describe
         messages.append("Status effects:")

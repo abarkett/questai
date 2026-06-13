@@ -21,6 +21,21 @@ class LocationView(BaseModel):
     exits: List[Exit]
 
 
+class Companion(BaseModel):
+    """An NPC the player recruited to travel and fight alongside them.
+
+    The companion is a personal ally inspired by a world NPC — the original
+    stays put for everyone else. Code is the referee (deterministic combat
+    contribution, loyalty), Miriel is the personality (its spoken lines).
+    """
+    npc_id: str                 # the world NPC this ally came from
+    name: str
+    archetype: str              # "vanguard" | "mender" | "outrider"
+    loyalty: int = 0            # 0..100; grows as you adventure together
+    battles: int = 0           # encounters won at your side
+    recruited_at: int = 0      # epoch ms
+
+
 class Player(BaseModel):
     player_id: PlayerId
     name: str
@@ -51,6 +66,8 @@ class Player(BaseModel):
     last_recap_at: Optional[int] = None
     # Where this player's torn map points (location id), if they hold one
     treasure_target: Optional[str] = None
+    # The ally currently travelling with this player (see app/companions.py)
+    companion: Optional[Companion] = None
 
 class AttackArgs(BaseModel):
     target: str
@@ -344,6 +361,25 @@ class RestReq(BaseModel):
     args: Optional[dict] = None
 
 
+class RecruitArgs(BaseModel):
+    target: str = Field(min_length=1, max_length=64)
+
+
+class RecruitReq(BaseModel):
+    action: Literal["recruit"]
+    args: RecruitArgs
+
+
+class DismissReq(BaseModel):
+    action: Literal["dismiss"]
+    args: Optional[dict] = None
+
+
+class CompanionReq(BaseModel):
+    action: Literal["companion"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -386,6 +422,9 @@ ActionRequest = Union[
     ExploreReq,
     DigReq,
     RestReq,
+    RecruitReq,
+    DismissReq,
+    CompanionReq,
 ]
 
 

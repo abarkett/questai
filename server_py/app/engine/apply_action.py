@@ -46,7 +46,7 @@ _action_adapter = TypeAdapter(ActionRequest)
 PASSIVE_ACTIONS = {
     "look", "stats", "inventory", "party_status", "reputation",
     "list_trades", "story", "map", "bestiary", "journal",
-    "bounties", "goals",
+    "bounties", "goals", "companion",
 }
 
 
@@ -207,6 +207,15 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "rest":
         from .actions.rest import rest
         result = rest(player)
+    elif req.action == "recruit":
+        from .actions.recruit import recruit
+        result = recruit(player, req.args.target)
+    elif req.action == "dismiss":
+        from .actions.dismiss import dismiss
+        result = dismiss(player)
+    elif req.action == "companion":
+        from .actions.companion_status import companion_status
+        result = companion_status(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)

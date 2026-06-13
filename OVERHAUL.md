@@ -113,6 +113,35 @@ AI integration behind a working-looking game. (Quests and NPC dialogue keep
 their original template fallbacks; descriptions and scene-prompt enrichment
 do not.)
 
+## 9. Companions (`app/companions.py`, `recruit`/`dismiss`/`companion`)
+
+You can recruit an NPC you meet in the world to travel and fight at your side.
+A companion is a *personal* ally inspired by that NPC — the original stays put
+for everyone else — and you keep one at a time. Recruiting costs a coin signing
+bonus, giving wealth one more place to go and the choice some weight.
+
+The split mirrors the rest of the overhaul: **code is the referee, Miriel is the
+personality.**
+
+- **Deterministic combat (the referee).** Three archetypes, assigned stably
+  from the source NPC (a healer joins as a **mender**; everyone else is split by
+  id into **vanguard** / **outrider**):
+  - *vanguard* — lands a flat blow on the monster every round you press an
+    attack, and can take the finishing kill;
+  - *mender* — heals you each round instead of swinging (and idles at full HP);
+  - *outrider* — turns aside a fraction of every blow you take, and harries the
+    enemy for a little damage.
+  Loyalty grows one point per won encounter (0–100 → levels 1–5), scaling their
+  contribution. All of it is roll-free and unit-tested.
+- **AI personality (best-effort).** Joining, parting, and growing-closer lines
+  are Miriel-voiced — but unlike location prose they *never* fail hard: if
+  Miriel is unconfigured or returns nothing, a written fallback is used, so
+  recruiting an ally works offline and under test. An ally's banter is flavour,
+  not a hard dependency.
+
+The companion is integrated into `fight` (the collapsed-encounter verb), persists
+on the player (`companion_json`), and surfaces in `stats` and the web client.
+
 ## New commands
 
 | Command | Effect |
@@ -122,6 +151,9 @@ do not.)
 | `note <text>` | Leave a note at your location |
 | `bounty <coins> <monster>` / `bounties` | Post / list monster bounties |
 | `goals` | Show the running community goal and your contribution |
+| `recruit <npc>` | Hire an NPC as a companion (costs a coin signing bonus) |
+| `companion` | Show your current ally, their archetype and loyalty |
+| `dismiss` | Part ways with your companion |
 | `ap` | Show stats including action points |
 
 ## Testing
@@ -129,4 +161,5 @@ do not.)
 All systems have offline script tests in `server_py/` (run each with
 `python3 test_<name>.py`): `test_content_registry.py`,
 `test_action_points.py`, `test_living_world.py`, `test_regiongen.py`,
-`test_world_rules_engine.py`, `test_sms.py`, plus the pre-existing suite.
+`test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`, plus the
+pre-existing suite.

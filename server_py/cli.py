@@ -5,6 +5,7 @@ PLAYER_ID = None
 
 print("QuestAI CLI")
 print("Commands: create <name>, look, go <dir>, attack <target>, stats, inventory, use <item>")
+print("Allies:   recruit <npc>, companion, dismiss")
 print("Ctrl+C to exit\n")
 
 try:
