@@ -244,6 +244,31 @@ characters are told to type `next`; the web client shows the suggestions as a
 "What now?" panel of clickable commands, and they ride along in every action's
 state so they stay live.
 
+## 14. Build identity (`app/archetypes.py`, `path` / `learn`)
+
+The one early choice that makes two characters play differently. At creation
+(`create <name> <path>`, or `path <id>` later) you take one of three archetypes:
+
+- **Warden** — *Stalwart:* +3 defense to every blow taken; a bruiser's kit
+  (power_strike → second_wind → rend → bulwark).
+- **Trickster** — *Deadly:* +3 damage to every blow landed; fast and bloody
+  (quick_strike → rupture → power_strike → rend).
+- **Channeler** — *Attuned:* abilities recharge 30% faster; a caster's kit
+  (firebolt → second_wind → cleave → rupture).
+
+The passives fold into the existing combat maths in one place each
+(`total_attack_damage`, `defense_bonus`, and a single `cooldown_ms` helper
+threaded through every cooldown site), so an archetype's effect is exact.
+
+Abilities are no longer auto-granted by level. Levelling now grants **skill
+points**, which you spend with `learn <ability>` on your path's pool (each
+ability gated by a level). Two characters of different paths therefore field
+different kits *and* different passives. Players from before archetypes
+(`archetype = None`) fall back to a generalist pool of the original abilities,
+so nothing they had breaks. The path is a one-time choice — once walked, it
+can't be unwalked. The guidance engine nudges choosing a path and spending
+skill points; the web client shows a path-picker and `learn` buttons.
+
 ## New commands
 
 | Command | Effect |
@@ -263,6 +288,8 @@ state so they stay live.
 | `stash <item> [n]` / `unstash <item> [n]` | Store / withdraw goods from the stash |
 | `collect` | Claim the coin tribute your stronghold has earned |
 | `next` / `guide` | Contextual "what now?" — your best next steps right now |
+| `create <name> <path>` / `path <id>` | Choose your archetype (warden/trickster/channeler) |
+| `learn <ability>` | Spend a skill point on an ability of your path |
 | `ap` | Show stats including action points |
 
 ## Testing
@@ -273,4 +300,4 @@ All systems have offline script tests in `server_py/` (run each with
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
 `test_raids.py`, `test_defeat.py`, `test_stronghold.py`, `test_guidance.py`,
 `test_cohesion.py` (an integration walk that exercises the Miriel-gated
-move/look path), plus the pre-existing suite.
+move/look path), `test_archetypes.py`, plus the pre-existing suite.

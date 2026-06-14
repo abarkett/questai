@@ -5,7 +5,8 @@ PLAYER_ID = None
 
 print("QuestAI CLI")
 print("Stuck?    type `next` for what to do right now")
-print("Commands: create <name>, look, go <dir>, attack <target>, stats, inventory, use <item>")
+print("Commands: create <name> [path], look, go <dir>, attack <target>, stats, inventory")
+print("Identity: path <warden|trickster|channeler>, learn <ability>")
 print("Allies:   recruit <npc>, companion, dismiss")
 print("World:    raid (status), raid strike, goals, bounties")
 print("Home:     stronghold, build, stash <item>, unstash <item>, collect")

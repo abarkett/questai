@@ -69,6 +69,25 @@ def suggestions(player: Player, limit: int = 4) -> List[Dict[str, Any]]:
     elif player.hp <= max(1, player.max_hp * 0.35):
         tips.append(_tip(6, "You're badly hurt — `rest` to recover before pressing on.", "rest"))
 
+    # --- choose a combat path, then spend skill points on it ---
+    if not player.archetype:
+        try:
+            from .archetypes import ARCHETYPES
+            opts = " | ".join(ARCHETYPES)
+            tips.append(_tip(7, f"Choose how you'll fight — `path <{opts}>` sets your combat identity.", None))
+        except Exception:
+            pass
+    elif player.skill_points > 0:
+        try:
+            from .archetypes import learnable
+            from .abilities import get_ability
+            learn_opts = learnable(player)
+            if learn_opts:
+                first = get_ability(learn_opts[0][0])
+                tips.append(_tip(9, f"You have {player.skill_points} skill point(s) — `learn {learn_opts[0][0]}` ({first.name}) or another of your path.", f"learn {learn_opts[0][0]}"))
+        except Exception:
+            pass
+
     # --- equip a weapon you're carrying but not wielding ---
     if "weapon" not in (player.equipment or {}):
         from .items import get_item

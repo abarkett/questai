@@ -23,6 +23,15 @@ def stats(player: Player) -> ActionResponse:
             ap_line += f" (next in {wait}s)"
         messages.insert(2, ap_line)
 
+    from ...archetypes import get_archetype, learnable
+    arch = get_archetype(player.archetype)
+    if arch:
+        messages.append(f"Path: {arch.name} — {arch.passive}")
+    if player.skill_points > 0:
+        can = ", ".join(get_ability(a).name for a, _ in learnable(player))
+        tail = f" — `learn`: {can}" if can else ""
+        messages.append(f"Skill points: {player.skill_points}{tail}")
+
     if player.companion:
         from ...companions import companion_level, ARCHETYPE_TITLE
         c = player.companion

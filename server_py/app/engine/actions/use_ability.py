@@ -4,6 +4,7 @@ import time
 
 from ...types import Player, ActionResponse
 from ...abilities import get_ability
+from ...archetypes import cooldown_ms
 from ...db import upsert_player
 from ..state_view import build_action_state
 from .attack import attack
@@ -20,9 +21,12 @@ def use_ability(player: Player, ability_name: str, target: str | None = None) ->
         return ActionResponse(ok=False, error="That's not an ability.")
 
     if ability_id not in player.abilities:
+        from ...archetypes import pool_for
+        on_path = ability_id in {pid for pid, _ in pool_for(player)}
+        hint = f"`learn {ability_id}` to train it." if on_path else "It isn't on your path."
         return ActionResponse(
             ok=False,
-            error=f"You haven't learned {ability.name} yet (unlocks at level {ability.learn_level}).",
+            error=f"You haven't learned {ability.name}. {hint}",
         )
 
     now_ms = int(time.time() * 1000)
@@ -42,7 +46,7 @@ def use_ability(player: Player, ability_name: str, target: str | None = None) ->
         before = player.hp
         player.hp = min(player.max_hp, player.hp + amount)
         healed = player.hp - before
-        player.ability_cooldowns[ability_id] = now_ms + ability.cooldown_s * 1000
+        player.ability_cooldowns[ability_id] = now_ms + cooldown_ms(player, ability.cooldown_s)
         upsert_player(player)
         return ActionResponse(
             ok=True,
@@ -70,7 +74,7 @@ def _resolve_dot(player: Player, target: str, ability, now_ms: int) -> ActionRes
         return ActionResponse(ok=False, error="There's nothing like that to wound here.")
 
     apply_bleed(entity["id"], ability.dot_damage or 0, ability.dot_turns or 0)
-    player.ability_cooldowns[ability.ability_id] = now_ms + ability.cooldown_s * 1000
+    player.ability_cooldowns[ability.ability_id] = now_ms + cooldown_ms(player, ability.cooldown_s)
     upsert_player(player)
     return ActionResponse(
         ok=True,
@@ -96,7 +100,7 @@ def _resolve_aoe(player: Player, ability, now_ms: int) -> ActionResponse:
         return ActionResponse(ok=False, error=f"There are no enemies here to {ability.name.lower()}.")
 
     base = int((total_attack_damage(player) + damage_modifier(player)) * (ability.multiplier or 1.0))
-    player.ability_cooldowns[ability.ability_id] = now_ms + ability.cooldown_s * 1000
+    player.ability_cooldowns[ability.ability_id] = now_ms + cooldown_ms(player, ability.cooldown_s)
 
     messages = [f"{ability.name}! You strike every enemy here."]
     for m in monsters:

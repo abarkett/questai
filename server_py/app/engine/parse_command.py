@@ -61,14 +61,27 @@ def parse_command(text: str) -> Dict[str, Any]:
             raise ParseError("Unequip which slot? (weapon or armor)")
         return {"action": "unequip", "args": {"slot": " ".join(rest)}}
 
-    # ---- CREATE PLAYER ----
+    # ---- CREATE PLAYER (optional trailing archetype: "create Aldra trickster") ----
     if verb in ("create", "new"):
         if not rest:
             raise ParseError("Create who?")
+        from ..archetypes import ARCHETYPES
+        archetype = None
+        if len(rest) > 1 and rest[-1].lower() in ARCHETYPES:
+            archetype = rest[-1].lower()
+            rest = rest[:-1]
         return {
             "action": "create_player",
-            "args": {"name": " ".join(rest)}
+            "args": {"name": " ".join(rest), "archetype": archetype},
         }
+
+    # ---- CHOOSE PATH (archetype) ----
+    if verb in ("path", "class", "archetype") and rest:
+        return {"action": "choose_path", "args": {"archetype": rest[0]}}
+
+    # ---- LEARN ABILITY ----
+    if verb in ("learn", "train") and rest:
+        return {"action": "learn", "args": {"ability": " ".join(rest)}}
 
     # ---- ATTACK ----
     if verb in ("attack", "hit", "kill"):

@@ -75,6 +75,34 @@ ABILITIES: Dict[str, Ability] = {
         cooldown_s=50,
         description="Wound a foe so it bleeds 5 damage on each of your next 3 strikes.",
     ),
+    # ----- Archetype-specific abilities (see app/archetypes.py pools) -----
+    "bulwark": Ability(
+        ability_id="bulwark",
+        name="Bulwark",
+        learn_level=8,
+        kind="heal",
+        heal_frac=0.35,
+        cooldown_s=90,
+        description="Set your feet and weather the storm, restoring 35% of max HP.",
+    ),
+    "quick_strike": Ability(
+        ability_id="quick_strike",
+        name="Quick Strike",
+        learn_level=2,
+        kind="attack",
+        multiplier=1.4,
+        cooldown_s=25,
+        description="A fast, low-cooldown jab dealing 1.4x damage.",
+    ),
+    "firebolt": Ability(
+        ability_id="firebolt",
+        name="Firebolt",
+        learn_level=2,
+        kind="attack",
+        multiplier=1.7,
+        cooldown_s=35,
+        description="Hurl a bolt of fire for 1.7x damage.",
+    ),
 }
 
 

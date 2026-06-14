@@ -73,6 +73,10 @@ class Player(BaseModel):
     stronghold_level: int = 0
     stash: dict[str, int] = {}
     stronghold_collected_at: Optional[int] = None
+    # Combat identity (see app/archetypes.py): a chosen path and the points you
+    # spend to learn its abilities.
+    archetype: Optional[str] = None
+    skill_points: int = 0
 
 class AttackArgs(BaseModel):
     target: str
@@ -102,6 +106,7 @@ class InventoryReq(BaseModel):
 
 class CreatePlayerArgs(BaseModel):
     name: str = Field(min_length=1, max_length=32)
+    archetype: Optional[str] = Field(default=None, max_length=16)
 
 
 class CreatePlayerReq(BaseModel):
@@ -430,6 +435,24 @@ class GuideReq(BaseModel):
     args: Optional[dict] = None
 
 
+class ChoosePathArgs(BaseModel):
+    archetype: str = Field(min_length=1, max_length=16)
+
+
+class ChoosePathReq(BaseModel):
+    action: Literal["choose_path"]
+    args: ChoosePathArgs
+
+
+class LearnArgs(BaseModel):
+    ability: str = Field(min_length=1, max_length=32)
+
+
+class LearnReq(BaseModel):
+    action: Literal["learn"]
+    args: LearnArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -483,6 +506,8 @@ ActionRequest = Union[
     UnstashReq,
     CollectTributeReq,
     GuideReq,
+    ChoosePathReq,
+    LearnReq,
 ]
 
 

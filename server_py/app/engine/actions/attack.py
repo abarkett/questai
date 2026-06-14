@@ -250,8 +250,9 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
 
     def _start_cooldown() -> None:
         if ability_obj:
+            from ...archetypes import cooldown_ms
             player.ability_cooldowns[ability_obj.ability_id] = (
-                current_time_ms + ability_obj.cooldown_s * 1000
+                current_time_ms + cooldown_ms(player, ability_obj.cooldown_s)
             )
 
     # -------------------------------------------------

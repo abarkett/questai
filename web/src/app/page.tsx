@@ -363,6 +363,40 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
             {hpBar}
 
+            {state.identity && !state.identity.archetype && Array.isArray(state.identity.paths) && (
+              <Section title="Choose your path">
+                <div className="text-xs text-green-600 mb-1">The one choice that shapes how you fight.</div>
+                <div className="space-y-1">
+                  {state.identity.paths.map((p: any) => (
+                    <button key={p.id} className="block text-left text-xs hover:underline"
+                      title={`${p.description} — ${p.passive}`}
+                      onClick={() => onCommand(`path ${p.id}`)}>
+                      <span className="text-green-300">{p.name}</span> — {p.passive}
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {state.identity && state.identity.archetype && (
+              <Section title="Path">
+                <div className="text-xs">
+                  <span className="text-green-300">{state.identity.archetype_name}</span> · {state.identity.passive}
+                </div>
+                {state.identity.skill_points > 0 && (
+                  <div className="mt-1">
+                    <div className="text-xs text-yellow-300">{state.identity.skill_points} skill point(s) to spend:</div>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(state.identity.learnable || []).map((a: any) => (
+                        <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                          onClick={() => onCommand(`learn ${a.id}`)}>learn {a.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Section>
+            )}
+
             {player.companion && (
               <Section title="Companion">
                 <div className="text-xs">

@@ -312,6 +312,31 @@ def _guidance_safe(player: Player) -> List[Dict[str, Any]]:
         return []
 
 
+def _identity_safe(player: Player) -> Dict[str, Any]:
+    """Combat-identity summary for the web client: path, skill points, and the
+    abilities you could learn or still choose among."""
+    try:
+        from ..archetypes import get_archetype, learnable, ARCHETYPES
+        from ..abilities import get_ability
+        arch = get_archetype(player.archetype)
+        learn = [
+            {"id": aid, "name": (get_ability(aid).name if get_ability(aid) else aid)}
+            for aid, _req in learnable(player)
+        ]
+        return {
+            "archetype": arch.id if arch else None,
+            "archetype_name": arch.name if arch else None,
+            "passive": arch.passive if arch else None,
+            "skill_points": player.skill_points,
+            "learnable": learn,
+            "paths": [{"id": a.id, "name": a.name, "passive": a.passive,
+                       "description": a.description} for a in ARCHETYPES.values()],
+        }
+    except Exception as e:
+        print(f"[IDENTITY] summary failed: {e}")
+        return {}
+
+
 def build_action_state(
     player: Player,
     *,
@@ -333,6 +358,7 @@ def build_action_state(
         "raid": _raid_summary_safe(player),
         "stronghold": _stronghold_summary_safe(player),
         "guidance": _guidance_safe(player),
+        "identity": _identity_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

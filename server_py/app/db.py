@@ -52,7 +52,9 @@ def init_db() -> None:
               companion_json TEXT,
               stronghold_level INTEGER DEFAULT 0,
               stash_json TEXT DEFAULT '{}',
-              stronghold_collected_at INTEGER
+              stronghold_collected_at INTEGER,
+              archetype TEXT,
+              skill_points INTEGER DEFAULT 0
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -456,6 +458,8 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "stronghold_level": "INTEGER DEFAULT 0",
         "stash_json": "TEXT DEFAULT '{}'",
         "stronghold_collected_at": "INTEGER",
+        "archetype": "TEXT",
+        "skill_points": "INTEGER DEFAULT 0",
     }
     
     # Add missing columns
@@ -523,6 +527,8 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data["stronghold_level"] = data.get("stronghold_level") or 0
     data["stash"] = json.loads(data.get("stash_json") or "{}")
     data.setdefault("stronghold_collected_at", None)
+    data.setdefault("archetype", None)
+    data["skill_points"] = data.get("skill_points") or 0
     return Player(**data)
 
 
@@ -596,9 +602,11 @@ def upsert_player(p: Player) -> None:
               companion_json,
               stronghold_level,
               stash_json,
-              stronghold_collected_at
+              stronghold_collected_at,
+              archetype,
+              skill_points
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -626,7 +634,9 @@ def upsert_player(p: Player) -> None:
               companion_json=excluded.companion_json,
               stronghold_level=excluded.stronghold_level,
               stash_json=excluded.stash_json,
-              stronghold_collected_at=excluded.stronghold_collected_at
+              stronghold_collected_at=excluded.stronghold_collected_at,
+              archetype=excluded.archetype,
+              skill_points=excluded.skill_points
             """,
             (
                 p.player_id,
@@ -657,6 +667,8 @@ def upsert_player(p: Player) -> None:
                 p.stronghold_level,
                 json.dumps(p.stash),
                 p.stronghold_collected_at,
+                p.archetype,
+                p.skill_points,
             ),
         )
         conn.commit()
