@@ -7,6 +7,7 @@ print("QuestAI CLI")
 print("Commands: create <name>, look, go <dir>, attack <target>, stats, inventory, use <item>")
 print("Allies:   recruit <npc>, companion, dismiss")
 print("World:    raid (status), raid strike, goals, bounties")
+print("Home:     stronghold, build, stash <item>, unstash <item>, collect")
 print("Ctrl+C to exit\n")
 
 try:

@@ -391,6 +391,51 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
+            {state.stronghold && (
+              <Section title="Stronghold">
+                {state.stronghold.level === 0 ? (
+                  <>
+                    <div className="text-xs">You hold no ground of your own yet.</div>
+                    <button className="px-1 mt-1 border border-green-800 text-xs hover:bg-green-900"
+                      title="Found a Campsite — a stash, a tribute, and a place to grow"
+                      onClick={() => onCommand("build")}>build a Campsite ({state.stronghold.next_cost})</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs">
+                      <span className="text-green-300">{state.stronghold.tier}</span> (tier {state.stronghold.level}/5)
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {state.stronghold.tribute > 0 && (
+                        <button className="px-1 border border-yellow-800 text-yellow-300 text-xs hover:bg-yellow-950"
+                          onClick={() => onCommand("collect")}>collect {state.stronghold.tribute} tribute</button>
+                      )}
+                      {state.stronghold.next_cost && (
+                        <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                          onClick={() => onCommand("build")}>
+                          upgrade to {state.stronghold.next_tier} ({state.stronghold.next_cost})
+                        </button>
+                      )}
+                    </div>
+                    {state.stronghold.stash && Object.keys(state.stronghold.stash).length > 0 && (
+                      <div className="mt-1 text-xs">
+                        <div className="text-green-700">
+                          Stash ({Object.keys(state.stronghold.stash).length}/{state.stronghold.stash_cap}):
+                        </div>
+                        {Object.entries(state.stronghold.stash).map(([item, qty]: [string, any]) => (
+                          <div key={item} className="flex items-center gap-2">
+                            <span>{qty}x {item.replace(/_/g, " ")}</span>
+                            <button className="text-green-700 hover:underline"
+                              onClick={() => onCommand(`unstash ${item}`)}>withdraw</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </Section>
+            )}
+
             {player.status_effects && Object.keys(player.status_effects).length > 0 && (
               <Section title="Status">
                 {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
@@ -571,6 +616,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                         </span>
                         <span className="flex gap-2 shrink-0">
                           <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${isGear ? "equip" : "use"} ${item}`)}>{isGear ? "equip" : "use"}</button>
+                          {state.stronghold?.level > 0 && item !== "coin" && (
+                            <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`stash ${item}`)}>stash</button>
+                          )}
                           <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`sell ${item}`)}>sell</button>
                         </span>
                       </li>

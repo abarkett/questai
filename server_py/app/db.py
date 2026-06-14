@@ -49,7 +49,10 @@ def init_db() -> None:
               ap_updated_at INTEGER,
               last_recap_at INTEGER,
               treasure_target TEXT,
-              companion_json TEXT
+              companion_json TEXT,
+              stronghold_level INTEGER DEFAULT 0,
+              stash_json TEXT DEFAULT '{}',
+              stronghold_collected_at INTEGER
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -450,6 +453,9 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "last_recap_at": "INTEGER",
         "treasure_target": "TEXT",
         "companion_json": "TEXT",
+        "stronghold_level": "INTEGER DEFAULT 0",
+        "stash_json": "TEXT DEFAULT '{}'",
+        "stronghold_collected_at": "INTEGER",
     }
     
     # Add missing columns
@@ -514,6 +520,9 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data.setdefault("treasure_target", None)
     companion_json = data.get("companion_json")
     data["companion"] = json.loads(companion_json) if companion_json else None
+    data["stronghold_level"] = data.get("stronghold_level") or 0
+    data["stash"] = json.loads(data.get("stash_json") or "{}")
+    data.setdefault("stronghold_collected_at", None)
     return Player(**data)
 
 
@@ -584,9 +593,12 @@ def upsert_player(p: Player) -> None:
               ap_updated_at,
               last_recap_at,
               treasure_target,
-              companion_json
+              companion_json,
+              stronghold_level,
+              stash_json,
+              stronghold_collected_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -611,7 +623,10 @@ def upsert_player(p: Player) -> None:
               ap_updated_at=excluded.ap_updated_at,
               last_recap_at=excluded.last_recap_at,
               treasure_target=excluded.treasure_target,
-              companion_json=excluded.companion_json
+              companion_json=excluded.companion_json,
+              stronghold_level=excluded.stronghold_level,
+              stash_json=excluded.stash_json,
+              stronghold_collected_at=excluded.stronghold_collected_at
             """,
             (
                 p.player_id,
@@ -639,6 +654,9 @@ def upsert_player(p: Player) -> None:
                 p.last_recap_at,
                 p.treasure_target,
                 json.dumps(p.companion.model_dump()) if p.companion else None,
+                p.stronghold_level,
+                json.dumps(p.stash),
+                p.stronghold_collected_at,
             ),
         )
         conn.commit()

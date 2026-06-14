@@ -205,6 +205,25 @@ respawn blocks into one function is what makes the stakes consistent — and it'
 the payoff for the two `# stake for a later system` hooks left in the companion
 and raid code.
 
+## 12. The personal stronghold (`app/stronghold.py`)
+
+The first thing in the game that is *yours alone*, and a long-horizon home for
+the coin and loot a casual player piles up:
+
+- **Tiers** — pour coin into it to raise it from a Campsite → Cabin → Cottage →
+  Keep → Citadel (costs escalate 50 → 2500), a visible step forward that's yours;
+- **A stash** — store items out of your pack; each tier holds more *kinds* of
+  goods (6 → 40). The place to keep raid trophies, spare gear, and overflow safe;
+- **Tribute** — a built stronghold earns a trickle of coin per real-time hour
+  (2/hr → 40/hr), capped at 24 hours, so it rewards *returning* rather than
+  idling. Lazily accrued like action points; claimed with `collect`.
+
+It's all personal bookkeeping — no AI, no shared-world effect — so none of it
+costs action points, and it persists on the player (`stronghold_level`,
+`stash_json`, `stronghold_collected_at`). Surfaced in the web client as a panel
+(build / collect / upgrade / per-item withdraw) with a `stash` shortcut on every
+inventory row.
+
 ## New commands
 
 | Command | Effect |
@@ -219,6 +238,10 @@ and raid code.
 | `recruit <npc>` | Hire an NPC as a companion (costs a coin signing bonus) |
 | `companion` | Show your current ally, their archetype and loyalty |
 | `dismiss` | Part ways with your companion |
+| `stronghold` / `home` | Show your stronghold: tier, tribute, and stash |
+| `build` | Found or upgrade your stronghold by one tier |
+| `stash <item> [n]` / `unstash <item> [n]` | Store / withdraw goods from the stash |
+| `collect` | Claim the coin tribute your stronghold has earned |
 | `ap` | Show stats including action points |
 
 ## Testing
@@ -227,4 +250,5 @@ All systems have offline script tests in `server_py/` (run each with
 `python3 test_<name>.py`): `test_content_registry.py`,
 `test_action_points.py`, `test_living_world.py`, `test_regiongen.py`,
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
-`test_raids.py`, plus the pre-existing suite.
+`test_raids.py`, `test_defeat.py`, `test_stronghold.py`, plus the pre-existing
+suite.

@@ -68,6 +68,11 @@ class Player(BaseModel):
     treasure_target: Optional[str] = None
     # The ally currently travelling with this player (see app/companions.py)
     companion: Optional[Companion] = None
+    # Personal stronghold (see app/stronghold.py): a tier you grow, a stash you
+    # fill, and a tribute that accrues while you're away.
+    stronghold_level: int = 0
+    stash: dict[str, int] = {}
+    stronghold_collected_at: Optional[int] = None
 
 class AttackArgs(BaseModel):
     target: str
@@ -390,6 +395,36 @@ class RaidStrikeReq(BaseModel):
     args: Optional[dict] = None
 
 
+class StrongholdReq(BaseModel):
+    action: Literal["stronghold"]
+    args: Optional[dict] = None
+
+
+class BuildStrongholdReq(BaseModel):
+    action: Literal["build_stronghold"]
+    args: Optional[dict] = None
+
+
+class StashArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+    qty: Optional[int] = None
+
+
+class StashReq(BaseModel):
+    action: Literal["stash"]
+    args: StashArgs
+
+
+class UnstashReq(BaseModel):
+    action: Literal["unstash"]
+    args: StashArgs
+
+
+class CollectTributeReq(BaseModel):
+    action: Literal["collect_tribute"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -437,6 +472,11 @@ ActionRequest = Union[
     CompanionReq,
     RaidStatusReq,
     RaidStrikeReq,
+    StrongholdReq,
+    BuildStrongholdReq,
+    StashReq,
+    UnstashReq,
+    CollectTributeReq,
 ]
 
 

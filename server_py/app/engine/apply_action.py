@@ -47,6 +47,9 @@ PASSIVE_ACTIONS = {
     "look", "stats", "inventory", "party_status", "reputation",
     "list_trades", "story", "map", "bestiary", "journal",
     "bounties", "goals", "companion", "raid_status",
+    # Stronghold actions are personal bookkeeping: no AI, no shared-world
+    # effect, so they don't draw on action points.
+    "stronghold", "build_stronghold", "stash", "unstash", "collect_tribute",
 }
 
 
@@ -222,6 +225,21 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "raid_strike":
         from ..raids import strike_raid
         result = strike_raid(player)
+    elif req.action == "stronghold":
+        from ..stronghold import status as stronghold_status
+        result = stronghold_status(player)
+    elif req.action == "build_stronghold":
+        from ..stronghold import build as stronghold_build
+        result = stronghold_build(player)
+    elif req.action == "stash":
+        from ..stronghold import deposit
+        result = deposit(player, req.args.item, req.args.qty)
+    elif req.action == "unstash":
+        from ..stronghold import withdraw
+        result = withdraw(player, req.args.item, req.args.qty)
+    elif req.action == "collect_tribute":
+        from ..stronghold import collect
+        result = collect(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)

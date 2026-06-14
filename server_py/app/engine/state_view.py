@@ -294,6 +294,15 @@ def _raid_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _stronghold_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
+    try:
+        from ..stronghold import summary
+        return summary(player)
+    except Exception as e:
+        print(f"[STRONGHOLD] summary failed: {e}")
+        return None
+
+
 def build_action_state(
     player: Player,
     *,
@@ -313,6 +322,7 @@ def build_action_state(
         "party": get_party_info(player),
         "party_invites": get_party_invites_info(player),
         "raid": _raid_summary_safe(player),
+        "stronghold": _stronghold_summary_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

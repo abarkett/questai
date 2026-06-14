@@ -309,6 +309,27 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("companion", "ally", "comp"):
         return {"action": "companion"}
 
+    # ---- STRONGHOLD ----
+    if verb in ("stronghold", "home", "base", "holding"):
+        return {"action": "stronghold"}
+
+    if verb in ("build", "upgrade"):
+        return {"action": "build_stronghold"}
+
+    if verb in ("collect", "tribute"):
+        return {"action": "collect_tribute"}
+
+    if verb in ("stash", "store", "deposit", "unstash", "withdraw", "retrieve"):
+        if not rest:
+            raise ParseError(f"{verb.capitalize()} what? (e.g. {verb} dragon_heart 2)")
+        # Optional trailing quantity: "stash dragon heart 2".
+        qty = None
+        if len(rest) > 1 and rest[-1].isdigit():
+            qty = int(rest[-1])
+            rest = rest[:-1]
+        action = "unstash" if verb in ("unstash", "withdraw", "retrieve") else "stash"
+        return {"action": action, "args": {"item": " ".join(rest), "qty": qty}}
+
     # ---- REPUTATION ----
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}
