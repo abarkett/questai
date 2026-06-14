@@ -304,6 +304,36 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_world_goals_status ON world_goals(status);
 
+            -- Co-op raid bosses: a world-threat with a huge shared HP pool that
+            -- many players chip down over real time (see app/raids.py).
+            CREATE TABLE IF NOT EXISTS raid_bosses (
+              raid_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              hp INTEGER NOT NULL,
+              max_hp INTEGER NOT NULL,
+              attack INTEGER NOT NULL DEFAULT 1,
+              reward_pool INTEGER NOT NULL DEFAULT 0,
+              trophy TEXT,
+              status TEXT NOT NULL DEFAULT 'active',
+              effect_json TEXT DEFAULT '{}',
+              completion_text TEXT,
+              created_at INTEGER NOT NULL,
+              defeated_at INTEGER,
+              finisher_name TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS raid_contributions (
+              raid_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              damage INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (raid_id, player_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_raid_bosses_status ON raid_bosses(status);
+
             -- Data-driven world evolution rules (interpreted by world_rules.py)
             CREATE TABLE IF NOT EXISTS world_rules (
               rule_id TEXT PRIMARY KEY,
@@ -2219,6 +2249,145 @@ def count_world_goals() -> int:
     try:
         row = conn.execute("SELECT COUNT(*) AS c FROM world_goals").fetchone()
         return int(row["c"])
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Co-op raid bosses
+# -------------------------------------------------
+
+def create_raid_boss(
+    *,
+    raid_id: str,
+    name: str,
+    title: str,
+    description: str,
+    hp: int,
+    attack: int,
+    reward_pool: int,
+    trophy: Optional[str],
+    effect: Optional[Dict[str, str]],
+    completion_text: str,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO raid_bosses
+              (raid_id, name, title, description, hp, max_hp, attack,
+               reward_pool, trophy, effect_json, completion_text, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                raid_id, name, title, description, hp, hp, attack,
+                reward_pool, trophy, json.dumps(effect or {}), completion_text,
+                int(time.time() * 1000),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _raid_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    d = dict(row)
+    d["effect"] = json.loads(d.pop("effect_json") or "{}")
+    return d
+
+
+def get_active_raid_boss() -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM raid_bosses WHERE status = 'active' ORDER BY created_at LIMIT 1"
+        ).fetchone()
+        return _raid_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def count_raid_bosses() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM raid_bosses").fetchone()
+        return int(row["c"])
+    finally:
+        conn.close()
+
+
+def damage_raid_boss(
+    raid_id: str, damage: int, player_id: str, player_name: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Atomically apply damage to the raid boss and credit the striker.
+
+    Returns None if the boss is no longer active, else a dict with the new hp,
+    `killed` (hp reached 0), and `finisher` (True only for the single call that
+    lands the final blow). Concurrent strikers can't double-kill or lose damage.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT hp, max_hp, name FROM raid_bosses WHERE raid_id = ? AND status = 'active'",
+            (raid_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+
+        # Credit the striker for the damage they actually land (never more than
+        # the boss had left, so contribution shares stay honest).
+        landed = min(damage, row["hp"])
+        new_hp = max(0, row["hp"] - damage)
+        conn.execute("UPDATE raid_bosses SET hp = ? WHERE raid_id = ?", (new_hp, raid_id))
+        conn.execute(
+            """
+            INSERT INTO raid_contributions (raid_id, player_id, player_name, damage)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(raid_id, player_id) DO UPDATE SET
+              damage = damage + excluded.damage,
+              player_name = excluded.player_name
+            """,
+            (raid_id, player_id, player_name, max(0, landed)),
+        )
+
+        finisher = False
+        if new_hp <= 0:
+            cur = conn.execute(
+                "UPDATE raid_bosses SET status = 'defeated', defeated_at = ?, finisher_name = ? "
+                "WHERE raid_id = ? AND status = 'active'",
+                (int(time.time() * 1000), player_name, raid_id),
+            )
+            finisher = cur.rowcount > 0
+        conn.commit()
+        return {"killed": new_hp <= 0, "finisher": finisher,
+                "hp": new_hp, "max_hp": row["max_hp"], "name": row["name"]}
+    finally:
+        conn.close()
+
+
+def get_raid_contributions(raid_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM raid_contributions WHERE raid_id = ? ORDER BY damage DESC",
+            (raid_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_raid_contribution(raid_id: str, player_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT damage FROM raid_contributions WHERE raid_id = ? AND player_id = ?",
+            (raid_id, player_id),
+        ).fetchone()
+        return int(row["damage"]) if row else 0
     finally:
         conn.close()
 

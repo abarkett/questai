@@ -273,6 +273,17 @@ def get_item_info(player: Player) -> Dict[str, Any]:
     return info
 
 
+def _raid_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
+    """The active raid boss for the UI. Best-effort: a raid read must never be
+    the thing that breaks an unrelated action's state."""
+    try:
+        from ..raids import raid_summary
+        return raid_summary(player)
+    except Exception as e:
+        print(f"[RAID] summary failed: {e}")
+        return None
+
+
 def build_action_state(
     player: Player,
     *,
@@ -291,6 +302,7 @@ def build_action_state(
         "pending_trade_offers_sent": get_pending_trade_offers_sent(player),
         "party": get_party_info(player),
         "party_invites": get_party_invites_info(player),
+        "raid": _raid_summary_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

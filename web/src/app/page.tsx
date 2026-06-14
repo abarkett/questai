@@ -361,6 +361,30 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
+            {state.raid && (
+              <Section title="World Threat">
+                <div className="text-xs">
+                  <span className="text-red-300 font-bold">{state.raid.name}</span>
+                  {state.raid.title ? ` — ${state.raid.title}` : ""}
+                </div>
+                <div className="mt-1 h-2 bg-red-950 border border-red-900">
+                  <div className="h-full bg-red-600"
+                    style={{ width: `${Math.max(0, Math.min(100, (100 * state.raid.hp) / state.raid.max_hp))}%` }} />
+                </div>
+                <div className="text-xs mt-0.5">
+                  {state.raid.hp}/{state.raid.max_hp} HP · your blows: {state.raid.your_damage}
+                </div>
+                {Array.isArray(state.raid.top) && state.raid.top.length > 0 && (
+                  <div className="text-xs text-green-700">
+                    Top: {state.raid.top.map((t: any) => `${t.name} (${t.damage})`).join(", ")}
+                  </div>
+                )}
+                <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                  title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
+                  onClick={() => onCommand("raid strike")}>strike</button>
+              </Section>
+            )}
+
             {player.status_effects && Object.keys(player.status_effects).length > 0 && (
               <Section title="Status">
                 {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (

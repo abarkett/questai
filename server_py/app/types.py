@@ -380,6 +380,16 @@ class CompanionReq(BaseModel):
     args: Optional[dict] = None
 
 
+class RaidStatusReq(BaseModel):
+    action: Literal["raid_status"]
+    args: Optional[dict] = None
+
+
+class RaidStrikeReq(BaseModel):
+    action: Literal["raid_strike"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -425,6 +435,8 @@ ActionRequest = Union[
     RecruitReq,
     DismissReq,
     CompanionReq,
+    RaidStatusReq,
+    RaidStrikeReq,
 ]
 
 

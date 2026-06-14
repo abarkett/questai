@@ -142,6 +142,33 @@ personality.**
 The companion is integrated into `fight` (the collapsed-encounter verb), persists
 on the player (`companion_json`), and surfaces in `stats` and the web client.
 
+## 10. Co-op raid bosses (`app/raids.py`, `raid` / `raid strike`)
+
+The async social layer made loud. Where a community goal (§6) is chipped down by
+everyone's *ordinary* play, a raid boss is chipped down by everyone's *deliberate*
+blows: one great threat with a huge, world-level-scaled HP pool that no single
+player can fell in a session. You `raid strike` to land a blow; the boss strikes
+back (a single counter-blow is capped at a quarter of your health, so a raid is a
+fight you withdraw from to heal — never one that two-shots you). Your companion
+adds its damage to each strike.
+
+When the boss finally falls:
+
+- **every player who landed a blow is paid** a share of the spoils pool,
+  proportional to the damage they did (with a floor, so even a single hit pays);
+- **the finisher is crowned** — a coin bonus, the boss's trophy item, and their
+  name written into the world's history (a `raid_defeated` world event and a
+  `raid` echo at their location);
+- **the world visibly changes** (a world-state effect flips), and **the next
+  threat immediately rises**, so the realm always has a great beast on the horizon.
+
+It reuses the proven pieces: the community goal's atomic contribute-and-reward,
+the bounty board's pay-out-to-many, and the echo/world-event history. The boss
+lives in its own tables (`raid_bosses`, `raid_contributions`) with a
+`damage_raid_boss` that — like monster combat — uses `BEGIN IMMEDIATE` so
+concurrent strikers can't double-kill or lose damage. The active boss is surfaced
+in every action's state for the web client (an HP bar + strike button).
+
 ## New commands
 
 | Command | Effect |
@@ -151,6 +178,8 @@ on the player (`companion_json`), and surfaces in `stats` and the web client.
 | `note <text>` | Leave a note at your location |
 | `bounty <coins> <monster>` / `bounties` | Post / list monster bounties |
 | `goals` | Show the running community goal and your contribution |
+| `raid` | Show the looming co-op raid boss and your share of the fight |
+| `raid strike` | Land a blow on the realm's raid boss (it strikes back) |
 | `recruit <npc>` | Hire an NPC as a companion (costs a coin signing bonus) |
 | `companion` | Show your current ally, their archetype and loyalty |
 | `dismiss` | Part ways with your companion |
@@ -161,5 +190,5 @@ on the player (`companion_json`), and surfaces in `stats` and the web client.
 All systems have offline script tests in `server_py/` (run each with
 `python3 test_<name>.py`): `test_content_registry.py`,
 `test_action_points.py`, `test_living_world.py`, `test_regiongen.py`,
-`test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`, plus the
-pre-existing suite.
+`test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
+`test_raids.py`, plus the pre-existing suite.

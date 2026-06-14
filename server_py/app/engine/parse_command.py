@@ -290,6 +290,15 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("goals", "goal", "season", "events"):
         return {"action": "goals"}
 
+    # ---- CO-OP RAID BOSS ----
+    if verb in ("raid", "worldboss"):
+        if rest and rest[0].lower() in ("strike", "hit", "attack", "assault", "assail", "fight"):
+            return {"action": "raid_strike"}
+        return {"action": "raid_status"}
+
+    if verb in ("assail",):
+        return {"action": "raid_strike"}
+
     # ---- COMPANIONS ----
     if verb in ("recruit", "hire", "enlist") and rest:
         return {"action": "recruit", "args": {"target": " ".join(rest)}}
