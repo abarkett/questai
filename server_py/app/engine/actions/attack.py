@@ -218,13 +218,8 @@ def monster_retaliation(
     messages.extend(trigger_boss_on_hit(entity_id, result))
 
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = int(time.time() * 1000)
-        player.status_effects.clear()
-        messages.append(
-            f"You were defeated by the {result['name']} and wake up back in the Town Square."
-        )
+        from ...defeat import apply_defeat
+        messages.extend(apply_defeat(player, f"the {result['name']}"))
     return messages
 
 
@@ -235,11 +230,8 @@ def attack(player: Player, target_name: str, ability: str | None = None) -> Acti
     # Status effects tick as time passes in combat; a lingering DoT can be fatal.
     messages.extend(tick_effects(player))
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = current_time_ms
-        player.status_effects.clear()
-        messages.append("Your wounds overcome you. You wake back in the Town Square.")
+        from ...defeat import apply_defeat
+        messages.extend(apply_defeat(player, "your lingering wounds"))
         upsert_player(player)
         return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))
 

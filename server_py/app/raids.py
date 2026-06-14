@@ -305,11 +305,8 @@ def _boss_retaliation(player: Player, boss: dict) -> List[str]:
     hit = min(raw, max(1, int(player.max_hp * RETALIATION_CAP_FRAC)))
     player.hp -= hit
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = now_ms()
-        player.status_effects.clear()
-        return [f"{boss['name']} hurls you down. You wake, battered, back in the Town Square."]
+        from .defeat import apply_defeat
+        return apply_defeat(player, boss["name"])
     return [f"{boss['name']} answers, raking you for {hit} damage."]
 
 

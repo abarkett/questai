@@ -20,6 +20,7 @@ EFFECT_DEFS: Dict[str, Dict] = {
     "poison": {"name": "Poison", "kind": "dot", "negative": True},
     "burn": {"name": "Burn", "kind": "dot", "negative": True},
     "weaken": {"name": "Weaken", "kind": "debuff_damage", "negative": True},
+    "wounded": {"name": "Wounded", "kind": "debuff_damage", "negative": True},
     "regen": {"name": "Regeneration", "kind": "hot", "negative": False},
     "strength": {"name": "Strength", "kind": "buff_damage", "negative": False},
 }

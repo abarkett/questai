@@ -57,11 +57,8 @@ def fight(player: Player, target_name: str, stance: str = "standard") -> ActionR
     # Lingering effects tick once as the fight begins.
     messages.extend(tick_effects(player))
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = int(time.time() * 1000)
-        player.status_effects.clear()
-        messages.append("Your wounds overcome you. You wake back in the Town Square.")
+        from ...defeat import apply_defeat
+        messages.extend(apply_defeat(player, "your lingering wounds"))
         upsert_player(player)
         return ActionResponse(ok=True, messages=messages, state=build_action_state(player, scene_dirty=True))
 

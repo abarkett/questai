@@ -85,7 +85,8 @@ def main() -> None:
     upsert_player(pd)
     r = attack(pd, "Cave Troll")
     assert pd.location == "town_square" and pd.hp == pd.max_hp, (pd.location, pd.hp)
-    assert pd.status_effects == {}, pd.status_effects  # cleared on respawn
+    # Defeat clears the burn but leaves a wound behind (see app/defeat.py).
+    assert "burn" not in pd.status_effects and "wounded" in pd.status_effects, pd.status_effects
     assert any("overcome" in msg.lower() for msg in r.messages), r.messages
     print("PASS  lingering DoT can defeat and respawn the player")
 

@@ -94,7 +94,7 @@ def test_tough_monster_danger():
     r = attack(p, "Cave Troll")  # troll attack 8 vs 5 hp -> defeat + respawn
     assert p.location == "town_square", p.location
     assert p.hp == p.max_hp
-    assert any("defeated" in m.lower() for m in r.messages), r.messages
+    assert any("overcome" in m.lower() for m in r.messages), r.messages
     print("PASS  tough monster retaliates and can defeat/respawn the player")
 
 

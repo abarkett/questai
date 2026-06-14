@@ -180,6 +180,24 @@ lives in its own tables (`raid_bosses`, `raid_contributions`) with a
 concurrent strikers can't double-kill or lose damage. The active boss is surfaced
 in every action's state for the web client (an HP bar + strike button).
 
+## 11. Stakes on defeat (`app/defeat.py`)
+
+Being beaten finally costs something — gently, as befits a casual shared world.
+Every defeat in the game (monster combat, a lingering poison, a travel ambush,
+the raid Warfront) now routes through one `apply_defeat`, so when you fall you:
+
+- **scatter a fifth of the coin** you were carrying where you fell;
+- **carry a `wounded` debuff** out of it that dulls your blows for a few combat
+  actions — the one effect that follows you home (all others are cleared);
+- **shake your companion's loyalty**, and they can **lose heart and desert** if
+  you keep falling with little loyalty left;
+- **leave a "fallen here" echo** at the spot for whoever passes through next.
+
+Then you wake, recovered, back in town. Centralizing the five old copy-pasted
+respawn blocks into one function is what makes the stakes consistent — and it's
+the payoff for the two `# stake for a later system` hooks left in the companion
+and raid code.
+
 ## New commands
 
 | Command | Effect |

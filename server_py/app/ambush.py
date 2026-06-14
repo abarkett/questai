@@ -57,10 +57,7 @@ def maybe_ambush(
             messages.append(msg)
 
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = int(time.time() * 1000)
-        player.status_effects.clear()
-        messages.append("You are overcome and wake back in the Town Square.")
+        from .defeat import apply_defeat
+        messages.extend(apply_defeat(player, f"the {mon['name']}"))
 
     return messages
