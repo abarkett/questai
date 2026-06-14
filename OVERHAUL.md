@@ -152,6 +152,17 @@ back (a single counter-blow is capped at a quarter of your health, so a raid is 
 fight you withdraw from to heal — never one that two-shots you). Your companion
 adds its damage to each strike.
 
+The boss **manifests at the Warfront** — a static location one step from the
+Town Square (`go warfront`). You must be there to strike it: a beat of travel
+and gathering, not a button mashed from a tavern. The Warfront's name and
+description re-skin to whichever threat currently holds it.
+
+As the boss is worn down it fights through **phases** (the same idea as the
+regular boss mechanics in `bosses.py`, each firing once at an HP threshold): it
+**enrages** (hits harder), **self-heals** a slice of its health (a DPS check the
+community must out-damage), and **summons adds** — ordinary monsters that spawn
+at the Warfront for players to cut down with the normal `fight` verb.
+
 When the boss finally falls:
 
 - **every player who landed a blow is paid** a share of the spoils pool,

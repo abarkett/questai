@@ -32,7 +32,22 @@ WORLD: Dict[str, Location] = {
             Exit(to="temple", label="temple"),
             Exit(to="north_road", label="north"),
             Exit(to="riverside", label="east"),
+            Exit(to="warfront", label="warfront"),
         ],
+    ),
+    "warfront": Location(
+        id="warfront",
+        name="The Warfront",
+        description=(
+            "A windswept rise just beyond the town walls where the realm musters "
+            "against its great threats. Banners snap; the ground is churned by the "
+            "feet of everyone who has come to make a stand here."
+        ),
+        cleared_description=(
+            "A quiet, churned rise beyond the walls. Tattered banners mark where "
+            "the realm last made its stand."
+        ),
+        exits=[Exit(to="town_square", label="back")],
     ),
     "riverside": Location(
         id="riverside",

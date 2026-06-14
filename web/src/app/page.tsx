@@ -379,9 +379,15 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     Top: {state.raid.top.map((t: any) => `${t.name} (${t.damage})`).join(", ")}
                   </div>
                 )}
-                <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                  title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
-                  onClick={() => onCommand("raid strike")}>strike</button>
+                {state.raid.at_lair ? (
+                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                    title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
+                    onClick={() => onCommand("raid strike")}>strike</button>
+                ) : (
+                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                    title="Travel to the Warfront to make your stand"
+                    onClick={() => onCommand("go warfront")}>go to the Warfront</button>
+                )}
               </Section>
             )}
 

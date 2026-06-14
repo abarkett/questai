@@ -36,7 +36,7 @@ from app.raids import strike_raid, raid_status, ensure_active_raid, raid_summary
 
 
 def mk(pid: str, **kw) -> Player:
-    base = dict(player_id=pid, name=f"Hero_{pid}", location="forest",
+    base = dict(player_id=pid, name=f"Hero_{pid}", location="warfront",
                 level=5, xp=0, hp=40, max_hp=40, inventory={"coin": 0})
     base.update(kw)
     p = Player(**base)
@@ -62,6 +62,12 @@ def main() -> None:
     assert boss is not None and boss["hp"] == boss["max_hp"]
     assert boss["hp"] > 0 and boss["reward_pool"] > 0
     print(f"PASS  a raid boss is seeded ({boss['name']}, {boss['max_hp']} HP)")
+
+    # ---- you must be at the Warfront to strike it ----
+    away = mk("traveler", location="town_square")
+    res = strike_raid(away, rng=rng)
+    assert not res.ok and "Warfront" in res.error, res
+    print("PASS  striking from elsewhere is refused, pointing you to the Warfront")
 
     # ---- a strike chips its HP and records the striker's contribution ----
     p = mk("striker", hp=40, max_hp=40)
@@ -90,6 +96,28 @@ def main() -> None:
     res = strike_raid(pc, rng=rng)
     assert any("Brann adds" in m for m in res.messages), res.messages
     print("PASS  a companion contributes damage to a raid strike")
+
+    # ---- phases: a wounded boss enrages and summons an add to the Warfront ----
+    boss = get_active_raid_boss()
+    rid = boss["raid_id"]
+    attack_before = boss["attack"]
+    adds_before = len(db.get_monsters_at("warfront"))
+    # Drive it just past the first phase threshold (0.66), then land a blow.
+    db.damage_raid_boss(rid, boss["hp"] - int(boss["max_hp"] * 0.60), "softener", "Softener")
+    phaser = mk("phaser")
+    res = strike_raid(phaser, rng=rng)
+    assert any("Cinder Whelp" in m for m in res.messages), res.messages
+    adds_after = db.get_monsters_at("warfront")
+    assert len(adds_after) == adds_before + 1, (adds_before, len(adds_after))
+    assert any(m["name"] == "Cinder Whelp" for m in adds_after)
+    assert get_active_raid_boss()["attack"] > attack_before  # enraged
+    print("PASS  crossing a threshold enrages the boss and summons an add to the Warfront")
+
+    # A second strike at the same band must NOT re-fire the phase.
+    res2 = strike_raid(mk("phaser2"), rng=rng)
+    assert not any("Cinder Whelp" in m for m in res2.messages), res2.messages
+    assert len(db.get_monsters_at("warfront")) == adds_before + 1
+    print("PASS  a phase fires only once")
 
     # ---- killing blow: everyone paid, finisher crowned & recorded, reseed ----
     boss = get_active_raid_boss()

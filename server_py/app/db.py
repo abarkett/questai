@@ -2368,6 +2368,31 @@ def damage_raid_boss(
         conn.close()
 
 
+def modify_raid_boss(raid_id: str, *, attack_add: int = 0, heal: int = 0) -> Optional[Dict[str, Any]]:
+    """Atomically apply a phase effect (enrage / self-heal) to the active boss.
+    Returns the new {hp, max_hp, attack}, or None if it isn't active."""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT hp, max_hp, attack FROM raid_bosses WHERE raid_id = ? AND status = 'active'",
+            (raid_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        new_hp = min(row["max_hp"], row["hp"] + max(0, heal))
+        new_attack = max(1, row["attack"] + attack_add)
+        conn.execute(
+            "UPDATE raid_bosses SET hp = ?, attack = ? WHERE raid_id = ?",
+            (new_hp, new_attack, raid_id),
+        )
+        conn.commit()
+        return {"hp": new_hp, "max_hp": row["max_hp"], "attack": new_attack}
+    finally:
+        conn.close()
+
+
 def get_raid_contributions(raid_id: str) -> List[Dict[str, Any]]:
     conn = get_conn()
     try:

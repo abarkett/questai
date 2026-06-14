@@ -49,12 +49,22 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
     from ..echoes import echoes_for, rumor_lines
     from ..db import get_location_notes
 
+    # The Warfront reads as whichever great threat now holds it.
+    loc_name, loc_desc = loc.name, effective_description(loc)
+    try:
+        from ..raids import lair_location_view
+        lair = lair_location_view(loc.id)
+        if lair:
+            loc_name, loc_desc = lair
+    except Exception as e:
+        print(f"[RAID] lair view failed: {e}")
+
     return {
         "rumors": rumor_lines(player) if any(e.get("type") == "npc" for e in entities) else [],
         "location": {
             "id": loc.id,
-            "name": loc.name,
-            "description": effective_description(loc),
+            "name": loc_name,
+            "description": loc_desc,
             "exits": _exits_view(loc),
         },
         "entities": entities,
