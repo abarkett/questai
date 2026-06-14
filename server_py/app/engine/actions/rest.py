@@ -24,7 +24,8 @@ _FLAVOR = [
 
 
 def rest(player: Player) -> ActionResponse:
-    if player.hp >= player.max_hp:
+    wounded = "wounded" in player.status_effects
+    if player.hp >= player.max_hp and not wounded:
         return ActionResponse(ok=False, error="You're already rested and whole.")
 
     if has_aggressive(player.location):
@@ -37,7 +38,15 @@ def rest(player: Player) -> ActionResponse:
     player.hp += healed
 
     flavor = _FLAVOR[player.hp % len(_FLAVOR)]
-    messages = [f"{flavor} (+{healed} HP, {player.hp}/{player.max_hp})"]
+    messages = []
+    if healed > 0:
+        messages.append(f"{flavor} (+{healed} HP, {player.hp}/{player.max_hp})")
+    # Resting is also how you shake off the wound a defeat leaves behind.
+    if wounded:
+        del player.status_effects["wounded"]
+        messages.append("You bind your hurts; the wound's ache fades.")
+    elif not messages:
+        messages.append(flavor)
     if player.hp < player.max_hp:
         messages.append("You could rest longer.")
 

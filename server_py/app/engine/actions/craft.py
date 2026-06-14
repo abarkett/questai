@@ -30,7 +30,15 @@ def craft(player: Player, item_name: str) -> ActionResponse:
         if player.inventory.get(mat, 0) < need
     ]
     if missing:
-        return ActionResponse(ok=False, error="You lack materials: " + ", ".join(missing))
+        error = "You lack materials: " + ", ".join(missing)
+        # A common trip-up: the material is safe in the stronghold stash.
+        in_stash = [
+            _display(mat) for mat, need in inputs.items()
+            if player.inventory.get(mat, 0) < need and (player.stash or {}).get(mat, 0) > 0
+        ]
+        if in_stash:
+            error += f". Some sit in your stronghold stash ({', '.join(in_stash)}) — `unstash` them first."
+        return ActionResponse(ok=False, error=error)
 
     for mat, need in inputs.items():
         player.inventory[mat] -= need

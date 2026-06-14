@@ -179,8 +179,12 @@ def _raid_tips(player: Player) -> List[Dict[str, Any]]:
         return out
     if player.location == WARFRONT_LOC:
         out.append(_tip(11, f"{boss['name']} holds the Warfront — `raid strike` to land a blow with the realm.", "raid strike"))
-    else:
+    elif player.location == "town_square":
+        # The Warfront opens off the Town Square, so the command works from here.
         out.append(_tip(24, f"A great threat, {boss['name']}, looms at the Warfront — `go warfront` to join the fight.", "go warfront"))
+    else:
+        # Elsewhere the path runs back through town; don't offer a click that fails.
+        out.append(_tip(24, f"A great threat, {boss['name']}, looms at the Warfront (off the Town Square) — make your way there to join the fight.", None))
     return out
 
 

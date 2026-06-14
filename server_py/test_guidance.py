@@ -89,16 +89,22 @@ def main() -> None:
     assert not any(c == "build" for c in cmds(ps))  # already founded
     print("PASS  stronghold nudges advance from build -> collect")
 
-    # ---- the raid is surfaced for an able player, pointing to the Warfront ----
-    pra = mk("ready", location="forest", level=5)
+    # ---- the raid is surfaced for an able player, context-aware ----
     from app.raids import ensure_active_raid
     ensure_active_raid()
-    assert any(c == "go warfront" for c in cmds(pra)), cmds(pra)
+    # From the Town Square (which the Warfront opens off) the nudge is clickable.
+    ptown = mk("ready", location="town_square", level=5)
+    assert any(c == "go warfront" for c in cmds(ptown)), cmds(ptown)
+    # From elsewhere the raid is still mentioned, but with no command that would
+    # fail (the Warfront isn't reachable in one step) — only text.
+    pfar = mk("faraway", location="forest", level=5)
+    raid_tips = [t for t in suggestions(pfar) if "Warfront" in t["text"]]
+    assert raid_tips and all(t["command"] is None for t in raid_tips), raid_tips
     # ...and at the Warfront it becomes a strike.
-    pra.location = "warfront"
-    assert any(c == "raid strike" for c in cmds(pra)), cmds(pra)
+    pat = mk("atlair", location="warfront", level=5)
+    assert any(c == "raid strike" for c in cmds(pat)), cmds(pat)
     # A low-level player isn't pushed at the raid yet.
-    plow = mk("green", location="forest", level=1)
+    plow = mk("green", location="town_square", level=1)
     assert not any(c in ("go warfront", "raid strike") for c in cmds(plow))
     print("PASS  the raid is surfaced by level and travel state")
 

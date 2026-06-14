@@ -203,7 +203,9 @@ the raid Warfront) now routes through one `apply_defeat`, so when you fall you:
 Then you wake, recovered, back in town. Centralizing the five old copy-pasted
 respawn blocks into one function is what makes the stakes consistent — and it's
 the payoff for the two `# stake for a later system` hooks left in the companion
-and raid code.
+and raid code. The wound is shaken off by `rest` (the free recovery path also
+binds it, even at full HP) or the temple `heal`; otherwise it simply ticks down
+over a few combat actions.
 
 ## 12. The personal stronghold (`app/stronghold.py`)
 
@@ -270,4 +272,5 @@ All systems have offline script tests in `server_py/` (run each with
 `test_action_points.py`, `test_living_world.py`, `test_regiongen.py`,
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
 `test_raids.py`, `test_defeat.py`, `test_stronghold.py`, `test_guidance.py`,
-plus the pre-existing suite.
+`test_cohesion.py` (an integration walk that exercises the Miriel-gated
+move/look path), plus the pre-existing suite.
