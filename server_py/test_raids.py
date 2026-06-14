@@ -153,6 +153,27 @@ def main() -> None:
     assert defeated and defeated[0]["data"].get("finisher") == "Hero_finisher", defeated
     print("PASS  the defeat enters world history, naming the finisher")
 
+    # The fallen boss's leftover adds (summoned in the phase test) disperse.
+    leftover = [m for m in db.get_monsters_at("warfront")
+                if str(m["instance_id"]).startswith(f"{raid_id}_add_")]
+    assert leftover == [], leftover
+    assert any("scatter" in m for m in res.messages), res.messages
+    print("PASS  defeating the boss clears its leftover adds from the Warfront")
+
+    # The trophy forges into best-in-slot relic gear.
+    from app.engine.actions.craft import craft
+    from app.items import get_item
+    f = get_player("finisher")
+    f.inventory["ember_core"] = 3            # the other half of the recipe
+    upsert_player(f)
+    cr = craft(f, "cinderwing_blade")
+    assert cr.ok, cr
+    f = get_player("finisher")
+    assert f.inventory.get("cinderwing_blade", 0) == 1, f.inventory
+    assert f.inventory.get("dragon_heart", 0) == 0      # trophy consumed
+    assert get_item("cinderwing_blade").damage == 18    # best-in-slot
+    print("PASS  a raid trophy forges into a relic weapon")
+
     # ---- status read and web summary ----
     st = raid_status(mk("reader"))
     assert st.ok and any("HP:" in m for m in st.messages), st.messages

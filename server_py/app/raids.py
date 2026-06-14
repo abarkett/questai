@@ -360,9 +360,25 @@ def _resolve_defeat(boss: dict, finisher: Player, rng: random.Random) -> List[st
     from .echoes import record_deed
     record_deed(finisher, finisher.location, f"{finisher.name} struck down {boss['name']}!", kind="raid")
 
+    # With the boss down, its leftover summoned adds disperse from the Warfront.
+    messages.extend(_clear_raid_adds(boss["raid_id"]))
+
     # The horizon is never empty for long.
     ensure_active_raid()
     return messages
+
+
+def _clear_raid_adds(raid_id: str) -> List[str]:
+    """Remove any of this raid's still-living summoned adds from the Warfront."""
+    from .db import get_monsters_at, remove_monster
+    prefix = f"{raid_id}_add_"
+    leftover = [m for m in get_monsters_at(WARFRONT_LOC)
+                if str(m["instance_id"]).startswith(prefix)]
+    for m in leftover:
+        remove_monster(m["instance_id"])
+    if leftover:
+        return [f"With the boss fallen, {len(leftover)} of its remaining minions scatter."]
+    return []
 
 
 def strike_raid(player: Player, *, rng: Optional[random.Random] = None) -> ActionResponse:

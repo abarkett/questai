@@ -154,6 +154,25 @@ ITEMS: Dict[str, Item] = {
         item_id="frostguard_plate", name="Frostguard Plate", type="armor", slot="armor",
         defense=8, value=220,
     ),
+    # ----- Raid trophies (dropped by the finisher of a raid boss; see app/raids.py) -----
+    # On their own they're valuable curios; forged with deep-tier materials they
+    # become best-in-slot relic gear (see the relic recipes below).
+    "dragon_heart": Item(item_id="dragon_heart", name="Dragon Heart", type="material", value=300),
+    "coral_crown": Item(item_id="coral_crown", name="Coral Crown", type="material", value=350),
+    "colossus_core": Item(item_id="colossus_core", name="Colossus Core", type="material", value=400),
+    # ----- Relic gear (forged from raid trophies; the best in each slot) -----
+    "cinderwing_blade": Item(
+        item_id="cinderwing_blade", name="Cinderwing Blade", type="weapon", slot="weapon",
+        damage=18, value=500,
+    ),
+    "tidewarden_plate": Item(
+        item_id="tidewarden_plate", name="Tidewarden Plate", type="armor", slot="armor",
+        defense=12, value=600,
+    ),
+    "colossus_maul": Item(
+        item_id="colossus_maul", name="Colossus Maul", type="weapon", slot="weapon",
+        damage=22, value=700,
+    ),
     # ----- Trinkets (rare bonus drops; see app/loot.py) -----
     "bent_locket": Item(item_id="bent_locket", name="Bent Locket", type="material", value=8),
     "carved_die": Item(item_id="carved_die", name="Carved Bone Die", type="material", value=6),
@@ -186,6 +205,10 @@ RECIPES: Dict[str, Dict[str, Any]] = {
     "dragonscale_armor": {"inputs": {"ember_core": 4, "mythril_ore": 4}, "qty": 1},
     "frost_brand": {"inputs": {"frost_crystal": 4, "mythril_ore": 3}, "qty": 1},
     "frostguard_plate": {"inputs": {"frost_crystal": 5, "mythril_ore": 2}, "qty": 1},
+    # Relic recipes: a raid trophy forged with deep-tier materials into best-in-slot gear.
+    "cinderwing_blade": {"inputs": {"dragon_heart": 1, "ember_core": 3}, "qty": 1},
+    "tidewarden_plate": {"inputs": {"coral_crown": 1, "mythril_ore": 4}, "qty": 1},
+    "colossus_maul": {"inputs": {"colossus_core": 1, "mythril_ore": 6}, "qty": 1},
 }
 
 # What each location yields when gathered.

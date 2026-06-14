@@ -170,8 +170,15 @@ When the boss finally falls:
 - **the finisher is crowned** — a coin bonus, the boss's trophy item, and their
   name written into the world's history (a `raid_defeated` world event and a
   `raid` echo at their location);
+- **the boss's leftover adds disperse** from the Warfront;
 - **the world visibly changes** (a world-state effect flips), and **the next
   threat immediately rises**, so the realm always has a great beast on the horizon.
+
+The trophies (`dragon_heart`, `coral_crown`, `colossus_core`) aren't just curios:
+each forges, with deep-tier materials, into a **best-in-slot relic** — the
+Cinderwing Blade (+18 dmg), Tidewarden Plate (+12 def), and Colossus Maul
+(+22 dmg) — via ordinary `craft` recipes, so raid spoils feed straight back into
+the gear ladder.
 
 It reuses the proven pieces: the community goal's atomic contribute-and-reward,
 the bounty board's pay-out-to-many, and the echo/world-event history. The boss
