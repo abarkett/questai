@@ -51,6 +51,9 @@ def create_player(name: str) -> ActionResponse:
             f"({min(g['progress'], g['required'])}/{g['required']} so far — every blow counts.)"
         )
 
+    # Point a brand-new player at their first steps.
+    messages.append("New here? Type `next` any time for what to do.")
+
     return ActionResponse(
         ok=True,
         messages=messages,

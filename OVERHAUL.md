@@ -224,6 +224,24 @@ costs action points, and it persists on the player (`stronghold_level`,
 (build / collect / upgrade / per-item withdraw) with a `stash` shortcut on every
 inventory row.
 
+## 13. Onboarding & discovery (`app/guidance.py`, `next`)
+
+The game grew a lot of systems; a new player shouldn't have to already know they
+exist. `next` (also `guide`/`hint`) reads the player's current state and the
+world around them and offers a few pointed nudges toward what they can do *now*:
+equip the weapon in your pack, talk to the quest giver in the room, recruit the
+ally standing here, found a stronghold once you can afford it, collect your
+tribute, join the threat at the Warfront, explore the frontier underfoot, forge
+that raid trophy, craft what your materials allow.
+
+Every suggestion is **stateless and self-resolving**: it's derived purely from
+present state, so it appears only while relevant and vanishes once you've done
+the thing — a guide that *reads* the world rather than scripting a tutorial
+sequence, with survival nudges (a wound, low HP) sorted to the top. New
+characters are told to type `next`; the web client shows the suggestions as a
+"What now?" panel of clickable commands, and they ride along in every action's
+state so they stay live.
+
 ## New commands
 
 | Command | Effect |
@@ -242,6 +260,7 @@ inventory row.
 | `build` | Found or upgrade your stronghold by one tier |
 | `stash <item> [n]` / `unstash <item> [n]` | Store / withdraw goods from the stash |
 | `collect` | Claim the coin tribute your stronghold has earned |
+| `next` / `guide` | Contextual "what now?" — your best next steps right now |
 | `ap` | Show stats including action points |
 
 ## Testing
@@ -250,5 +269,5 @@ All systems have offline script tests in `server_py/` (run each with
 `python3 test_<name>.py`): `test_content_registry.py`,
 `test_action_points.py`, `test_living_world.py`, `test_regiongen.py`,
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
-`test_raids.py`, `test_defeat.py`, `test_stronghold.py`, plus the pre-existing
-suite.
+`test_raids.py`, `test_defeat.py`, `test_stronghold.py`, `test_guidance.py`,
+plus the pre-existing suite.

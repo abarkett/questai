@@ -50,6 +50,7 @@ PASSIVE_ACTIONS = {
     # Stronghold actions are personal bookkeeping: no AI, no shared-world
     # effect, so they don't draw on action points.
     "stronghold", "build_stronghold", "stash", "unstash", "collect_tribute",
+    "guide",
 }
 
 
@@ -240,6 +241,9 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "collect_tribute":
         from ..stronghold import collect
         result = collect(player)
+    elif req.action == "guide":
+        from ..guidance import guide
+        result = guide(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)

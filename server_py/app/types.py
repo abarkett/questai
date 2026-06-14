@@ -425,6 +425,11 @@ class CollectTributeReq(BaseModel):
     args: Optional[dict] = None
 
 
+class GuideReq(BaseModel):
+    action: Literal["guide"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -477,6 +482,7 @@ ActionRequest = Union[
     StashReq,
     UnstashReq,
     CollectTributeReq,
+    GuideReq,
 ]
 
 

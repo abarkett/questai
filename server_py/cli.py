@@ -4,6 +4,7 @@ SERVER = "http://localhost:8787"
 PLAYER_ID = None
 
 print("QuestAI CLI")
+print("Stuck?    type `next` for what to do right now")
 print("Commands: create <name>, look, go <dir>, attack <target>, stats, inventory, use <item>")
 print("Allies:   recruit <npc>, companion, dismiss")
 print("World:    raid (status), raid strike, goals, bounties")

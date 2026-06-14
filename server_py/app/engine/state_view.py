@@ -303,6 +303,15 @@ def _stronghold_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _guidance_safe(player: Player) -> List[Dict[str, Any]]:
+    try:
+        from ..guidance import guidance_summary
+        return guidance_summary(player)
+    except Exception as e:
+        print(f"[GUIDANCE] summary failed: {e}")
+        return []
+
+
 def build_action_state(
     player: Player,
     *,
@@ -323,6 +332,7 @@ def build_action_state(
         "party_invites": get_party_invites_info(player),
         "raid": _raid_summary_safe(player),
         "stronghold": _stronghold_summary_safe(player),
+        "guidance": _guidance_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

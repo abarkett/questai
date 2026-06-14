@@ -309,6 +309,10 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("companion", "ally", "comp"):
         return {"action": "companion"}
 
+    # ---- GUIDANCE (what now?) ----
+    if verb in ("next", "guide", "hint", "todo", "advice"):
+        return {"action": "guide"}
+
     # ---- STRONGHOLD ----
     if verb in ("stronghold", "home", "base", "holding"):
         return {"action": "stronghold"}

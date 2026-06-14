@@ -346,6 +346,21 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
       <div className="flex-1 overflow-y-auto pr-1 space-y-3">
         {tab === "summary" && (
           <>
+            {Array.isArray(state.guidance) && state.guidance.length > 0 && (
+              <Section title="What now?">
+                <div className="space-y-1">
+                  {state.guidance.map((g: any, i: number) => (
+                    g.command ? (
+                      <button key={i} className="block text-left text-xs text-green-300 hover:underline"
+                        onClick={() => onCommand(g.command)}>• {g.text}</button>
+                    ) : (
+                      <div key={i} className="text-xs text-green-600">• {g.text}</div>
+                    )
+                  ))}
+                </div>
+              </Section>
+            )}
+
             {hpBar}
 
             {player.companion && (
