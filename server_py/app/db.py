@@ -54,7 +54,8 @@ def init_db() -> None:
               stash_json TEXT DEFAULT '{}',
               stronghold_collected_at INTEGER,
               archetype TEXT,
-              skill_points INTEGER DEFAULT 0
+              skill_points INTEGER DEFAULT 0,
+              titles_json TEXT DEFAULT '[]'
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -339,6 +340,16 @@ def init_db() -> None:
 
             CREATE INDEX IF NOT EXISTS idx_raid_bosses_status ON raid_bosses(status);
 
+            -- The Chronicle: which wrongs of the Restoration campaign have been
+            -- put right, and by whom (see app/restoration.py). First righter wins.
+            CREATE TABLE IF NOT EXISTS restorations (
+              wrong_id TEXT PRIMARY KEY,
+              act INTEGER NOT NULL,
+              righted_by_id TEXT NOT NULL,
+              righted_by_name TEXT NOT NULL,
+              righted_at INTEGER NOT NULL
+            );
+
             -- Data-driven world evolution rules (interpreted by world_rules.py)
             CREATE TABLE IF NOT EXISTS world_rules (
               rule_id TEXT PRIMARY KEY,
@@ -460,6 +471,7 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "stronghold_collected_at": "INTEGER",
         "archetype": "TEXT",
         "skill_points": "INTEGER DEFAULT 0",
+        "titles_json": "TEXT DEFAULT '[]'",
     }
     
     # Add missing columns
@@ -529,6 +541,7 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data.setdefault("stronghold_collected_at", None)
     data.setdefault("archetype", None)
     data["skill_points"] = data.get("skill_points") or 0
+    data["titles"] = json.loads(data.get("titles_json") or "[]")
     return Player(**data)
 
 
@@ -604,9 +617,10 @@ def upsert_player(p: Player) -> None:
               stash_json,
               stronghold_collected_at,
               archetype,
-              skill_points
+              skill_points,
+              titles_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -636,7 +650,8 @@ def upsert_player(p: Player) -> None:
               stash_json=excluded.stash_json,
               stronghold_collected_at=excluded.stronghold_collected_at,
               archetype=excluded.archetype,
-              skill_points=excluded.skill_points
+              skill_points=excluded.skill_points,
+              titles_json=excluded.titles_json
             """,
             (
                 p.player_id,
@@ -669,6 +684,7 @@ def upsert_player(p: Player) -> None:
                 p.stronghold_collected_at,
                 p.archetype,
                 p.skill_points,
+                json.dumps(p.titles or []),
             ),
         )
         conn.commit()
@@ -2299,10 +2315,12 @@ def create_raid_boss(
     trophy: Optional[str],
     effect: Optional[Dict[str, str]],
     completion_text: str,
-) -> None:
+) -> bool:
+    """Create the boss if no row with this raid_id exists (active OR already
+    felled). Returns True only when a new boss was actually created."""
     conn = get_conn()
     try:
-        conn.execute(
+        cur = conn.execute(
             """
             INSERT OR IGNORE INTO raid_bosses
               (raid_id, name, title, description, hp, max_hp, attack,
@@ -2316,6 +2334,17 @@ def create_raid_boss(
             ),
         )
         conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_raid_boss(raid_id: str) -> Optional[Dict[str, Any]]:
+    """A raid boss by id, whatever its status (active or felled)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM raid_bosses WHERE raid_id = ?", (raid_id,)).fetchone()
+        return _raid_row_to_dict(row) if row else None
     finally:
         conn.close()
 
@@ -2443,6 +2472,47 @@ def get_raid_contribution(raid_id: str, player_id: str) -> int:
             (raid_id, player_id),
         ).fetchone()
         return int(row["damage"]) if row else 0
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# The Chronicle (Restoration campaign)
+# -------------------------------------------------
+
+def mark_wrong_righted(wrong_id: str, act: int, player_id: str, player_name: str) -> bool:
+    """Record that a wrong is put right. Atomic and first-wins: returns True
+    only for the single call that rights it; later callers get False."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO restorations
+              (wrong_id, act, righted_by_id, righted_by_name, righted_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (wrong_id, act, player_id, player_name, int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_restorations() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM restorations ORDER BY righted_at").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_restoration(wrong_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM restorations WHERE wrong_id = ?", (wrong_id,)).fetchone()
+        return dict(row) if row else None
     finally:
         conn.close()
 
