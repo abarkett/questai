@@ -163,13 +163,15 @@ def _scaled(base: int, level: int, per_level: float) -> int:
 
 
 def _seed_raid(index: int) -> None:
+    """Create act `index`'s great threat, once. INSERT OR IGNORE means a boss
+    that has already been felled is never re-created: a won act stays won."""
     spec = RAID_BOSSES[index % len(RAID_BOSSES)]
     level = _world_level()
     raid_id = f"raid_{index}"
     hp = _scaled(spec["base_hp"], level, 0.4)
     attack = _scaled(spec["base_attack"], level, 0.25)
     reward = _scaled(spec["base_reward"], level, 0.4)
-    create_raid_boss(
+    created = create_raid_boss(
         raid_id=raid_id,
         name=spec["name"],
         title=spec["title"],
@@ -181,20 +183,32 @@ def _seed_raid(index: int) -> None:
         effect=spec["effect"],
         completion_text=spec["completion_text"],
     )
-    log_world_event(
-        event_type="raid_started",
-        location_id=None,
-        data={
-            "raid_id": raid_id,
-            "description": f"A great threat rises over the realm: {spec['name']} — {spec['title']}.",
-        },
-    )
+    if created:
+        log_world_event(
+            event_type="raid_started",
+            location_id=None,
+            data={
+                "raid_id": raid_id,
+                "description": f"A great threat rises over the realm: {spec['name']} — {spec['title']}.",
+            },
+        )
 
 
 def ensure_active_raid() -> None:
-    """Keep one great threat looming: seed the next boss whenever none is active."""
-    if not get_active_raid_boss():
-        _seed_raid(count_raid_bosses())
+    """The great threat is the *current act's* climax (see app/restoration.py).
+    It rises when the act begins and, once felled, stays felled — no reseeding
+    a treadmill. The next threat rises only when the next act does. When the
+    campaign is won there is no threat at all: the realm is at peace."""
+    if get_active_raid_boss():
+        return
+    try:
+        from .restoration import current_act_index
+        idx = current_act_index()
+    except Exception:
+        idx = 0
+    if idx is None:
+        return  # the realm is restored
+    _seed_raid(idx)
 
 
 def _spec_for(boss: dict) -> dict:
@@ -363,7 +377,16 @@ def _resolve_defeat(boss: dict, finisher: Player, rng: random.Random) -> List[st
     # With the boss down, its leftover summoned adds disperse from the Warfront.
     messages.extend(_clear_raid_adds(boss["raid_id"]))
 
-    # The horizon is never empty for long.
+    # Felling the act's great threat rights its climax wrong in the campaign —
+    # the Chronicle names the finisher, and the act may complete.
+    try:
+        from .restoration import climax_felled
+        messages.extend(climax_felled(boss["name"], finisher))
+    except Exception as e:
+        print(f"[RESTORATION] climax hook failed: {e}")
+
+    # If that completed the act, the next act's threat rises; otherwise the
+    # Warfront stays quiet — a felled boss stays felled.
     ensure_active_raid()
     return messages
 

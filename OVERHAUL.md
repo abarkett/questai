@@ -285,10 +285,53 @@ so nothing they had breaks. The path is a one-time choice — once walked, it
 can't be unwalked. The guidance engine nudges choosing a path and spending
 skill points; the web client shows a path-picker and `learn` buttons.
 
+## 15. The Restoration campaign — the spine (`app/restoration.py`)
+
+Everything above is a toolbox. This is what makes it a game.
+
+The realm starts **fallen**: a finite ledger of **wrongs** — rats in the granary,
+bandits in the mill, a temple with empty shelves, a wolf-pack on the deep road,
+a dragon on the Warfront. The game is about putting them right. Each wrong is
+righted by a **deed** that is deliberately *simple* — a kill / collect / visit
+quest on the ordinary quest machinery (`undertake <wrong>`). What no plain quest
+ever did is what righting it *does*:
+
+1. **The world changes, permanently.** The location's description is replaced
+   for everyone (in the web state *and* in the base Miriel narrates from, with
+   the prose cache keyed to it so the change is immediate); a world-state flag
+   flips, which NPC dialogue sees; and sometimes a *rule* changes — the
+   restocked temple heals for free. A quest that changes nothing is an errand;
+   a quest that changes the world is a deed.
+2. **The Chronicle names who did it**, first-righter-wins, atomically, forever
+   (`restorations` table). Others who finish the same deed are thanked, not
+   credited: the shared world moved on.
+3. **Your Legend grows**: the righter earns a **title** (Keeper of the Mill,
+   Roadwarden, Dragonsbane…), shown in `stats` and the `campaign` ledger.
+
+Wrongs are grouped into **acts** — *The Town Besieged → The Wilds Reclaimed →
+The Deep Restored* — and each act's **climax is a raid boss**. Felling it rights
+the climax wrong (the finisher is named Dragonsbane / Kingsbane / Colossus-
+Feller). Completing an act crowns *every* player who righted something in it
+with the act's title and opens the next act; finishing the last act **wins**:
+the realm is restored, and the final title is *Restorer of the Realm*.
+
+This deliberately reverses the "heartbeat never stops" design of the goals and
+raids: **a felled climax stays felled.** The Warfront falls quiet until the act
+is complete, and the next threat rises only with the next act. Perpetual
+content is the opposite of achievement.
+
+Patron NPCs are the narrative doorway (the Warden speaks of the granary, the
+Priest of her shelves), `next` points at the next open wrong, new characters
+are told the realm is fallen, and the web client carries the ledger as its
+first panel. Restoration is shared — one world; whoever rights a wrong rights
+it for all — and the Legend is personal: what *you* put right.
+
 ## New commands
 
 | Command | Effect |
 | --- | --- |
+| `campaign` / `chronicle` / `legend` | The ledger of wrongs, who righted them, and your Legend |
+| `undertake <wrong>` | Take up a wrong's deed as a quest |
 | `fight [bold\|cautious] <target>` | Resolve a whole encounter in one action |
 | `explore` | Open a frontier into a brand-new region |
 | `note <text>` | Leave a note at your location |
@@ -316,4 +359,5 @@ All systems have offline script tests in `server_py/` (run each with
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
 `test_raids.py`, `test_defeat.py`, `test_stronghold.py`, `test_guidance.py`,
 `test_cohesion.py` (an integration walk that exercises the Miriel-gated
-move/look path), `test_archetypes.py`, plus the pre-existing suite.
+move/look path), `test_archetypes.py`, `test_restoration.py`, plus the
+pre-existing suite.

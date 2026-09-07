@@ -361,6 +361,41 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
+            {state.campaign && (
+              <Section title={state.campaign.complete ? "The Realm Restored" : `Act ${state.campaign.act_index + 1}: ${state.campaign.act_name}`}>
+                <div className="text-xs text-green-600 mb-1">{state.campaign.act_blurb}</div>
+                <div className="space-y-1">
+                  {(state.campaign.wrongs || []).map((w: any) => (
+                    <div key={w.id} className="text-xs flex items-start gap-2" title={w.deed}>
+                      <span className={
+                        w.status === "righted" ? "text-green-800 line-through" :
+                        w.status === "active" ? "text-yellow-300" : "text-green-300"
+                      }>
+                        {w.status === "righted" ? "✓" : w.status === "active" ? "…" : w.climax ? "!" : "•"} {w.title}
+                      </span>
+                      {w.status === "righted" && w.righted_by && (
+                        <span className="text-green-800">— {w.righted_by}</span>
+                      )}
+                      {w.status === "active" && w.progress && (
+                        <span className="text-yellow-600">{w.progress}</span>
+                      )}
+                      {w.status === "open" && w.command && (
+                        <button className="px-1 border border-green-800 hover:bg-green-900"
+                          onClick={() => onCommand(w.command)}>undertake</button>
+                      )}
+                      {w.status === "open" && w.climax && (
+                        <button className="px-1 border border-red-800 text-red-300 hover:bg-red-950"
+                          onClick={() => onCommand("raid")}>the Warfront</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {Array.isArray(state.campaign.titles) && state.campaign.titles.length > 0 && (
+                  <div className="text-xs mt-1 text-yellow-300">Your Legend: {state.campaign.titles.join(", ")}</div>
+                )}
+              </Section>
+            )}
+
             {hpBar}
 
             {state.identity && !state.identity.archetype && Array.isArray(state.identity.paths) && (

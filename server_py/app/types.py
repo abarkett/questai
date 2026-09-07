@@ -77,6 +77,8 @@ class Player(BaseModel):
     # spend to learn its abilities.
     archetype: Optional[str] = None
     skill_points: int = 0
+    # Your Legend (see app/restoration.py): titles earned by putting wrongs right.
+    titles: list[str] = []
 
 class AttackArgs(BaseModel):
     target: str
@@ -453,6 +455,20 @@ class LearnReq(BaseModel):
     args: LearnArgs
 
 
+class CampaignReq(BaseModel):
+    action: Literal["campaign"]
+    args: Optional[dict] = None
+
+
+class UndertakeArgs(BaseModel):
+    wrong_id: str = Field(min_length=1, max_length=64)
+
+
+class UndertakeReq(BaseModel):
+    action: Literal["undertake"]
+    args: UndertakeArgs
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -508,6 +524,8 @@ ActionRequest = Union[
     GuideReq,
     ChoosePathReq,
     LearnReq,
+    CampaignReq,
+    UndertakeReq,
 ]
 
 
