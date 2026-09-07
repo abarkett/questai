@@ -50,7 +50,7 @@ def fight(player: Player, target_name: str, stance: str = "standard") -> ActionR
 
     # A companion at your side fights with you and covers some of every blow.
     from ...companions import guard_mult, companion_combat_turn, reward_after_victory
-    taken_mult *= guard_mult(player.companion)
+    taken_mult *= guard_mult(player.companion, player)
     if player.companion:
         messages.append(f"{player.companion.name} stands with you.")
 

@@ -186,6 +186,35 @@ def main() -> None:
         or companion_level(p.companion) == 2, res.messages
     print("PASS  companion joins the fight and grows loyal on victory")
 
+    # ---- player-archetype synergies colour what the ally can do ----
+    from app.companions import reward_after_victory, synergy_line
+    van = Companion(npc_id="x", name="V", archetype="vanguard", loyalty=0)   # attack 5
+    men = Companion(npc_id="x", name="M", archetype="mender", loyalty=0)     # heal 3
+    out = Companion(npc_id="x", name="O", archetype="outrider", loyalty=0)
+
+    # No path: the plain numbers (backward compatible, player optional).
+    assert companion_attack(van) == 5 and companion_heal(men) == 3
+    # Trickster: the ally's strikes hit +50% harder; healing untouched.
+    tr = mk("tr", archetype="trickster")
+    assert companion_attack(van, tr) == 8 and companion_heal(men, tr) == 3
+    # Warden: the ally's healing is +50% and its guard is firmer; strikes untouched.
+    wa = mk("wa", archetype="warden")
+    assert companion_heal(men, wa) == 5 and companion_attack(van, wa) == 5
+    assert guard_mult(out, wa) < guard_mult(out)
+    assert guard_mult(men, wa) == 1.0               # a mender gives no guard to firm up
+    # Channeler: loyalty grows twice as fast per victory.
+    ch = mk("ch", archetype="channeler")
+    ch.companion = Companion(npc_id="x", name="C", archetype="vanguard", loyalty=0)
+    reward_after_victory(ch)
+    assert ch.companion.loyalty == 2, ch.companion.loyalty
+    plain = mk("pl")
+    plain.companion = Companion(npc_id="x", name="P", archetype="vanguard", loyalty=0)
+    reward_after_victory(plain)
+    assert plain.companion.loyalty == 1
+    assert synergy_line(tr) and "strikes" in synergy_line(tr)
+    assert synergy_line(plain) is None
+    print("PASS  your path bolsters your ally: trickster +atk, warden +heal/guard, channeler +loyalty")
+
     print("\nAll companion tests passed.")
 
 

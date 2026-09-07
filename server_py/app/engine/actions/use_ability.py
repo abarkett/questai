@@ -54,6 +54,19 @@ def use_ability(player: Player, ability_name: str, target: str | None = None) ->
             state=build_action_state(player, scene_dirty=False),
         )
 
+    if ability.kind == "buff":
+        from ...status_effects import apply_effect
+        msg = apply_effect(
+            player, ability.buff_effect or "", ability.buff_magnitude or 0, ability.buff_turns or 0
+        )
+        player.ability_cooldowns[ability_id] = now_ms + cooldown_ms(player, ability.cooldown_s)
+        upsert_player(player)
+        return ActionResponse(
+            ok=True,
+            messages=[f"{ability.name}! {msg}".strip()],
+            state=build_action_state(player, scene_dirty=False),
+        )
+
     if ability.kind == "dot":
         if not target:
             return ActionResponse(ok=False, error=f"Use {ability.name} on what?")

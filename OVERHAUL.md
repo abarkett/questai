@@ -142,6 +142,16 @@ personality.**
 The companion is integrated into `fight` (the collapsed-encounter verb), persists
 on the player (`companion_json`), and surfaces in `stats` and the web client.
 
+**Your own path colours what your ally can do** (§14): one signature synergy
+per archetype, applied in the same deterministic combat functions —
+- a **Warden**'s steadiness bolsters their support: the ally's healing is +50%
+  and its guard is firmer;
+- a **Trickster**'s aggression drives them: the ally's strikes hit +50% harder;
+- a **Channeler**'s attunement quickens the bond: loyalty grows twice as fast.
+
+Percentage bonuses round half-up, so a "+50%" never rounds down to nothing.
+The active synergy is shown in `companion` status.
+
 ## 10. Co-op raid bosses (`app/raids.py`, `raid` / `raid strike`)
 
 The async social layer made loud. Where a community goal (§6) is chipped down by
@@ -250,11 +260,17 @@ The one early choice that makes two characters play differently. At creation
 (`create <name> <path>`, or `path <id>` later) you take one of three archetypes:
 
 - **Warden** — *Stalwart:* +3 defense to every blow taken; a bruiser's kit
-  (power_strike → second_wind → rend → bulwark).
+  (power_strike → second_wind → rend → bulwark → rallying_cry → crushing_blow).
 - **Trickster** — *Deadly:* +3 damage to every blow landed; fast and bloody
-  (quick_strike → rupture → power_strike → rend).
+  (quick_strike → rupture → power_strike → rend → lacerate → eviscerate).
 - **Channeler** — *Attuned:* abilities recharge 30% faster; a caster's kit
-  (firebolt → second_wind → cleave → rupture).
+  (firebolt → second_wind → cleave → rupture → chain_lightning → inferno).
+
+Each path offers six abilities reaching level 12. The mid-tier picks (L10)
+introduce a **buff** ability kind (Rallying Cry applies a self `strength`
+effect) alongside deeper bleeds and wider area damage. The L12 **capstones
+cost 2 skill points** — so with one point earned per level, high-level builds
+can't simply collect everything and must choose which capstone to reach for.
 
 The passives fold into the existing combat maths in one place each
 (`total_attack_damage`, `defense_bonus`, and a single `cooldown_ms` helper

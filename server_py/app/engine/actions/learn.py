@@ -31,20 +31,23 @@ def learn(player: Player, ability_name: str) -> ActionResponse:
     if player.level < req:
         return ActionResponse(ok=False, error=f"{ability.name} unlocks at level {req} (you're {player.level}).")
 
-    if player.skill_points <= 0:
+    cost = ability.cost or 1
+    if player.skill_points < cost:
+        need = f"{cost} skill points" if cost > 1 else "a skill point"
         nxt = ", ".join(get_ability(a).name for a, _ in learnable(player)) or "—"
         return ActionResponse(
             ok=False,
-            error=f"You have no skill points. Earn them by levelling up. (Available to learn: {nxt})",
+            error=f"{ability.name} costs {need}; you have {player.skill_points}. Level up for more. (Available: {nxt})",
         )
 
-    player.skill_points -= 1
+    player.skill_points -= cost
     player.abilities.append(aid)
     upsert_player(player)
+    spent = f" (−{cost} points)" if cost > 1 else ""
     return ActionResponse(
         ok=True,
         messages=[
-            f"You learn {ability.name}! {ability.description}",
+            f"You learn {ability.name}!{spent} {ability.description}",
             f"Skill points left: {player.skill_points}.",
         ],
         state=build_action_state(player, scene_dirty=False),

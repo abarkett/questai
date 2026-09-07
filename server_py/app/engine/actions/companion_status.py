@@ -18,10 +18,12 @@ def companion_status(player: Player) -> ActionResponse:
             "Find someone out in the world and `recruit` them to fight at your side.",
         ]
     else:
+        from ...companions import synergy_line
         messages = [
             f"{c.name} — {ARCHETYPE_TITLE.get(c.archetype, c.archetype)} "
             f"(Level {companion_level(c)})",
             ARCHETYPE_BLURB.get(c.archetype, ""),
+            synergy_line(player) or "",
             f"Loyalty: {c.loyalty}/{MAX_LOYALTY}   Battles won at your side: {c.battles}",
         ]
 

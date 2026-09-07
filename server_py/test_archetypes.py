@@ -100,6 +100,33 @@ def main() -> None:
     assert {"power_strike", "second_wind", "rend", "cleave", "rupture"} == gen
     print("PASS  archetype pools differ; pathless players fall back to generalist")
 
+    # ---- deeper pools: six abilities each, reaching L12 ----
+    for a in ARCHETYPES.values():
+        assert len(a.pool) == 6, (a.id, len(a.pool))
+        assert max(req for _, req in a.pool) == 12
+    print("PASS  every path now offers six abilities up to level 12")
+
+    # ---- capstones cost 2 points, so end-game builds must choose ----
+    from app.abilities import get_ability
+    assert get_ability("crushing_blow").cost == 2
+    cap = mk("capper", level=12, archetype="warden", skill_points=1, abilities=[])
+    r = learn(cap, "crushing_blow")
+    assert not r.ok and "costs 2" in r.error, r.error       # can't afford yet
+    cap.skill_points = 2
+    assert learn(cap, "crushing_blow").ok and cap.skill_points == 0
+    assert "crushing_blow" in cap.abilities
+    print("PASS  a capstone costs 2 skill points; learning it drains them")
+
+    # ---- a buff ability applies its status effect and starts a cooldown ----
+    from app.engine.actions.use_ability import use_ability
+    from app.status_effects import damage_modifier
+    war = mk("crier", level=10, archetype="warden", abilities=["rallying_cry"])
+    r = use_ability(war, "rallying_cry")
+    assert r.ok and "strength" in war.status_effects, (r, war.status_effects)
+    assert damage_modifier(war) == 3                       # +3 damage while it lasts
+    assert war.ability_cooldowns.get("rallying_cry", 0) > 0
+    print("PASS  buff abilities apply a self status effect")
+
     # ---- persistence ----
     p = mk("persist", archetype="channeler", skill_points=3)
     p.abilities = ["firebolt"]

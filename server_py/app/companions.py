@@ -66,32 +66,63 @@ def companion_level(c: Companion) -> int:
     return 1 + min(c.loyalty, MAX_LOYALTY) // 25
 
 
-def companion_attack(c: Companion) -> int:
+# --- Player-archetype synergies (see app/archetypes.py) ---
+# Your own path colours what your ally can do: a Warden's steadiness bolsters
+# their support, a Trickster's aggression drives their blows, a Channeler's
+# attunement quickens the bond. One signature bonus per path, applied here.
+SYNERGY_BLURB = {
+    "warden": "Your steadfastness bolsters them: their healing is +50% and their guard is firmer.",
+    "trickster": "Your aggression drives them: their strikes hit +50% harder.",
+    "channeler": "Your attunement quickens the bond: their loyalty grows twice as fast.",
+}
+
+
+def _path(player: Optional[Player]) -> Optional[str]:
+    return getattr(player, "archetype", None) if player is not None else None
+
+
+def synergy_line(player: Optional[Player]) -> Optional[str]:
+    return SYNERGY_BLURB.get(_path(player) or "")
+
+
+def companion_attack(c: Companion, player: Optional[Player] = None) -> int:
     """Flat damage the ally deals to a monster each round (no crits)."""
     lvl = companion_level(c)
     if c.archetype == "vanguard":
-        return 3 + 2 * lvl
-    if c.archetype == "outrider":
-        return 1 + lvl
-    return 0  # menders don't strike
+        base = 3 + 2 * lvl
+    elif c.archetype == "outrider":
+        base = 1 + lvl
+    else:
+        return 0  # menders don't strike
+    if _path(player) == "trickster":
+        base = int(base * 1.5 + 0.5)  # half-up: a +50% bonus must never round down
+    return base
 
 
-def companion_heal(c: Companion) -> int:
-    if c.archetype == "mender":
-        return 2 + companion_level(c)
-    return 0
+def companion_heal(c: Companion, player: Optional[Player] = None) -> int:
+    if c.archetype != "mender":
+        return 0
+    base = 2 + companion_level(c)
+    if _path(player) == "warden":
+        base = int(base * 1.5 + 0.5)  # half-up: a +50% bonus must never round down
+    return base
 
 
-def guard_mult(c: Optional[Companion]) -> float:
+def guard_mult(c: Optional[Companion], player: Optional[Player] = None) -> float:
     """Multiplier applied to the damage the player takes while this ally is at
-    their side. Outriders soak the most; a vanguard's presence covers a little."""
+    their side. Outriders soak the most; a vanguard's presence covers a little.
+    A Warden's steadiness makes any ally's guard firmer."""
     if not c:
         return 1.0
     if c.archetype == "outrider":
-        return max(0.5, 1.0 - 0.08 * companion_level(c))
-    if c.archetype == "vanguard":
-        return 0.92
-    return 1.0
+        mult = max(0.5, 1.0 - 0.08 * companion_level(c))
+    elif c.archetype == "vanguard":
+        mult = 0.92
+    else:
+        mult = 1.0
+    if _path(player) == "warden" and mult < 1.0:
+        mult = max(0.4, mult - 0.08)
+    return mult
 
 
 def gain_loyalty(c: Companion, amount: int = 1) -> bool:
@@ -114,7 +145,7 @@ def companion_combat_turn(player: Player, entity_id: str) -> Tuple[list[str], Op
         return [], None
 
     # Menders mend instead of swinging — but only when there's a wound to close.
-    heal = companion_heal(c)
+    heal = companion_heal(c, player)
     if heal:
         if player.hp < player.max_hp:
             healed = min(heal, player.max_hp - player.hp)
@@ -122,7 +153,7 @@ def companion_combat_turn(player: Player, entity_id: str) -> Tuple[list[str], Op
             return [f"{c.name} tends your wounds (+{healed} HP)."], None
         return [], None
 
-    atk = companion_attack(c)
+    atk = companion_attack(c, player)
     if atk <= 0:
         return [], None
 
@@ -140,7 +171,9 @@ def reward_after_victory(player: Player) -> list[str]:
     if not c:
         return []
     c.battles += 1
-    if gain_loyalty(c, 1):
+    # A Channeler's bond deepens twice as fast.
+    gain = 2 if _path(player) == "channeler" else 1
+    if gain_loyalty(c, gain):
         from .miriel_companion import companion_line
         line = companion_line(
             player, c, "level_up",

@@ -288,7 +288,7 @@ def _strike_damage(player: Player, rng: random.Random) -> tuple[int, bool, int]:
     comp = 0
     if player.companion:
         from .companions import companion_attack
-        comp = companion_attack(player.companion)
+        comp = companion_attack(player.companion, player)
     return dmg, is_crit, comp
 
 
