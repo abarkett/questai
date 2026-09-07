@@ -38,7 +38,7 @@ def guide(player: Player) -> ActionResponse:
     )
 
 
-def guidance_summary(player: Player, limit: int = 4) -> List[Dict[str, Any]]:
+def guidance_summary(player: Player, limit: int = 5) -> List[Dict[str, Any]]:
     """Suggestions for the web client: just the text and the clickable command."""
     return [{"text": t["text"], "command": t["command"]}
             for t in suggestions(player, limit=limit)]
@@ -48,7 +48,7 @@ def _tip(priority: int, text: str, command: Optional[str] = None) -> Dict[str, A
     return {"priority": priority, "text": text, "command": command}
 
 
-def suggestions(player: Player, limit: int = 4) -> List[Dict[str, Any]]:
+def suggestions(player: Player, limit: int = 5) -> List[Dict[str, Any]]:
     """The top few contextual next-steps for this player, most useful first."""
     tips: List[Dict[str, Any]] = []
     inv = player.inventory or {}
@@ -68,6 +68,24 @@ def suggestions(player: Player, limit: int = 4) -> List[Dict[str, Any]]:
         tips.append(_tip(5, "You're carrying a wound from a defeat — `rest` somewhere safe to shake it off.", "rest"))
     elif player.hp <= max(1, player.max_hp * 0.35):
         tips.append(_tip(6, "You're badly hurt — `rest` to recover before pressing on.", "rest"))
+
+    # --- the campaign: the wrong to put right next (the spine of the game) ---
+    try:
+        from .restoration import next_wrong_for, campaign_complete
+        nxt = next_wrong_for(player)
+        if nxt:
+            w, state = nxt
+            if state == "active":
+                from .restoration import _deed_progress
+                tips.append(_tip(6, f"Deed underway — {w.title} ({_deed_progress(player, w)}). {w.deed}", "journal"))
+            elif w.deed_type == "climax":
+                tips.append(_tip(6, f"The act's great threat remains: {w.title}. Fell it at the Warfront with the realm.", "raid"))
+            else:
+                tips.append(_tip(6, f"The realm needs righting: {w.title} — {w.deed} `undertake {w.id}`.", f"undertake {w.id}"))
+        elif campaign_complete():
+            tips.append(_tip(50, "The realm is restored — your Legend is written. See `campaign`.", "campaign"))
+    except Exception:
+        pass
 
     # --- choose a combat path, then spend skill points on it ---
     if not player.archetype:

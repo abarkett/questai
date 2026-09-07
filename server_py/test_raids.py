@@ -132,11 +132,26 @@ def main() -> None:
     res = strike_raid(finisher, rng=rng)
     assert any("struck the final blow" in m for m in res.messages), res.messages
 
-    # The old boss is defeated and a fresh one has been seeded in its place.
+    # A felled climax STAYS felled: the Warfront is quiet — no treadmill reseed —
+    # until the rest of the act's wrongs are put right and the next act begins.
+    assert get_active_raid_boss() is None, "the felled boss must not reseed mid-act"
+    assert "Dragonsbane" in get_player("finisher").titles      # the climax wrong was righted
+    print("PASS  a felled climax stays felled; the Warfront falls quiet")
+
+    # Right every other wrong of Act I -> the act completes -> Act II's threat rises.
+    from app.restoration import ACTS, right_wrong, is_act_complete
+    fin = get_player("finisher")
+    for w in ACTS[0].wrongs:
+        if w.deed_type != "climax":
+            right_wrong(w.id, fin)
+    upsert_player(fin)
+    assert is_act_complete(0)
+    assert "Defender of the Town" in get_player("finisher").titles
+    ensure_active_raid()
     new_boss = get_active_raid_boss()
     assert new_boss is not None and new_boss["raid_id"] != raid_id
-    assert new_boss["hp"] == new_boss["max_hp"]
-    print("PASS  defeating the boss reseeds the next threat")
+    assert new_boss["name"] == "The Drowned King" and new_boss["hp"] == new_boss["max_hp"]
+    print("PASS  completing the act raises the next act's threat")
 
     # Finisher took the trophy and a bonus; earlier contributors were all paid.
     f = get_player("finisher")

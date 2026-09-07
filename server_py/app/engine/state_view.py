@@ -16,7 +16,17 @@ from ..db import count_monsters_at
 
 
 def effective_description(loc) -> str:
-    """Use the 'cleared' description when no monsters remain at the location."""
+    """The location as it is *now*: a righted wrong's restored description
+    wins (the world changed for good), else the 'cleared' text when no
+    monsters remain, else the authored default. This is also the base Miriel
+    narrates from, so restoration reaches every surface."""
+    try:
+        from ..restoration import restored_description
+        restored = restored_description(loc.id)
+        if restored:
+            return restored
+    except Exception as e:
+        print(f"[RESTORATION] description lookup failed: {e}")
     if loc.cleared_description and count_monsters_at(loc.id) == 0:
         return loc.cleared_description
     return loc.description
@@ -312,6 +322,16 @@ def _guidance_safe(player: Player) -> List[Dict[str, Any]]:
         return []
 
 
+def _campaign_safe(player: Player) -> Optional[Dict[str, Any]]:
+    """The Restoration ledger for the web client — the game's spine."""
+    try:
+        from ..restoration import campaign_summary
+        return campaign_summary(player)
+    except Exception as e:
+        print(f"[RESTORATION] summary failed: {e}")
+        return None
+
+
 def _identity_safe(player: Player) -> Dict[str, Any]:
     """Combat-identity summary for the web client: path, skill points, and the
     abilities you could learn or still choose among."""
@@ -359,6 +379,7 @@ def build_action_state(
         "stronghold": _stronghold_summary_safe(player),
         "guidance": _guidance_safe(player),
         "identity": _identity_safe(player),
+        "campaign": _campaign_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

@@ -206,11 +206,18 @@ def talk(player: Player, target: str) -> ActionResponse:
 
     # Temple healer: offer restoration.
     if npc.get("role") == "healer":
-        from .heal import HEAL_COST
-        messages.append(
-            f'"Rest a moment, traveler. For an offering of {HEAL_COST} coins I will mend '
-            f'your wounds and lift any affliction. Just say `heal`."'
-        )
+        from .heal import heal_cost
+        cost = heal_cost()
+        if cost:
+            messages.append(
+                f'"Rest a moment, traveler. For an offering of {cost} coins I will mend '
+                f'your wounds and lift any affliction. Just say `heal`."'
+            )
+        else:
+            messages.append(
+                '"Rest a moment, traveler. The shelves are full again — I will mend your '
+                'wounds and ask nothing. Just say `heal`."'
+            )
 
     # Generic NPC dialogue (not quest_giver, shop, arc_giver, or healer)
     if npc.get("role") not in ["quest_giver", "shop", "arc_giver", "healer"]:
@@ -228,6 +235,14 @@ def talk(player: Player, target: str) -> ActionResponse:
         else:
             # Fallback to static dialogue
             messages.append('"Hello there."')
+
+    # The campaign's patrons speak of the wrongs they care about — the
+    # narrative doorway into the Restoration (deterministic; no AI needed).
+    try:
+        from ...restoration import patron_lines
+        messages.extend(patron_lines(npc["name"], player))
+    except Exception as e:
+        print(f"[RESTORATION] patron lines failed: {e}")
 
     return ActionResponse(
         ok=True,

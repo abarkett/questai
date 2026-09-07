@@ -51,6 +51,8 @@ PASSIVE_ACTIONS = {
     # effect, so they don't draw on action points.
     "stronghold", "build_stronghold", "stash", "unstash", "collect_tribute",
     "guide", "choose_path", "learn",
+    # The campaign ledger is a read; taking up a deed is personal bookkeeping.
+    "campaign", "undertake",
 }
 
 
@@ -250,6 +252,12 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "learn":
         from .actions.learn import learn
         result = learn(player, req.args.ability)
+    elif req.action == "campaign":
+        from ..restoration import campaign_status
+        result = campaign_status(player)
+    elif req.action == "undertake":
+        from ..restoration import undertake
+        result = undertake(player, req.args.wrong_id)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)
@@ -277,6 +285,13 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         from .quest_progress import refresh_quests
         from ..db import upsert_player as _upsert
         quest_msgs = refresh_quests(player)
+        # A deed just completed rights its wrong in the shared world — the
+        # campaign's spine (see app/restoration.py). Runs after quests settle.
+        try:
+            from ..restoration import settle_deeds
+            quest_msgs.extend(settle_deeds(player))
+        except Exception as e:
+            print(f"[RESTORATION] settle failed: {e}")
         _upsert(player)
         if quest_msgs:
             result.messages.extend(quest_msgs)

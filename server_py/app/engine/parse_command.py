@@ -322,6 +322,13 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("companion", "ally", "comp"):
         return {"action": "companion"}
 
+    # ---- THE CAMPAIGN (the Restoration ledger and your Legend) ----
+    if verb in ("campaign", "chronicle", "legend", "wrongs", "restore"):
+        return {"action": "campaign"}
+
+    if verb in ("undertake", "right", "take") and rest:
+        return {"action": "undertake", "args": {"wrong_id": "_".join(rest)}}
+
     # ---- GUIDANCE (what now?) ----
     if verb in ("next", "guide", "hint", "todo", "advice"):
         return {"action": "guide"}

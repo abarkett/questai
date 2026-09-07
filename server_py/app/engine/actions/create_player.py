@@ -64,6 +64,20 @@ def create_player(name: str, archetype: str | None = None) -> ActionResponse:
         names = " / ".join(a.name for a in ARCHETYPES.values())
         messages.append(f"Choose how you'll fight: `path <{ ' | '.join(ARCHETYPES) }>` ({names}).")
 
+    # The realm's state is the reason to play: say so up front.
+    try:
+        from ...restoration import current_act
+        act = current_act()
+        if act:
+            messages.append(
+                f"The realm lies fallen. {act.blurb} Type `campaign` to see what must be put right — "
+                "each wrong you right changes the world for good, and writes your name in the Chronicle."
+            )
+        else:
+            messages.append("The realm stands restored. Type `campaign` to read the Chronicle.")
+    except Exception:
+        pass
+
     # Point a brand-new player at their first steps.
     messages.append("New here? Type `next` any time for what to do.")
 

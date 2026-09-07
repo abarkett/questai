@@ -40,6 +40,26 @@ def present_creatures(entities: List[dict]) -> List[str]:
     return sorted({e["name"] for e in entities if e.get("type") == "monster"})
 
 
+def cache_key_for(loc, entities: List[dict], world_turn: int, base: str) -> str:
+    """
+    The description cache key for a location *as it is right now*.
+
+    This is the ONE place the key is derived — describe(), the prefetch warmer,
+    and the tests all use it, so the formula can't drift between them. The base
+    text is part of the key on purpose: when a righted wrong re-describes a
+    place (see app/restoration.py), its prose refreshes at once instead of
+    serving the pre-restoration text from the cache.
+    """
+    creatures = present_creatures(entities)
+    tod = time_of_day(loc.id, world_turn)
+    bucket = world_turn // 12  # refresh prose a few times per "day"
+    base_sig = hashlib.sha256(base.encode()).hexdigest()[:8]
+    sig = hashlib.sha256(
+        f"{loc.id}|{','.join(creatures)}|{tod}|{bucket}|{base_sig}".encode()
+    ).hexdigest()[:16]
+    return f"desc_{sig}"
+
+
 def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> str:
     """
     Return a Miriel-authored description of the location as it is right now.
@@ -56,9 +76,7 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
 
     creatures = present_creatures(entities)
     tod = time_of_day(loc.id, world_turn)
-    bucket = world_turn // 12  # refresh prose a few times per "day"
-    sig = hashlib.sha256(f"{loc.id}|{','.join(creatures)}|{tod}|{bucket}".encode()).hexdigest()[:16]
-    cache_key = f"desc_{sig}"
+    cache_key = cache_key_for(loc, entities, world_turn, base)
 
     cached = get_cached_miriel_content(cache_key)
     if cached:

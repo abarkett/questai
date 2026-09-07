@@ -32,6 +32,9 @@ def stats(player: Player) -> ActionResponse:
         tail = f" — `learn`: {can}" if can else ""
         messages.append(f"Skill points: {player.skill_points}{tail}")
 
+    if player.titles:
+        messages.append("Legend: " + ", ".join(player.titles))
+
     if player.companion:
         from ...companions import companion_level, ARCHETYPE_TITLE
         c = player.companion
