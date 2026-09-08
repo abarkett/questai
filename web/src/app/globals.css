@@ -1,26 +1,245 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
+/* ---- Handbook design tokens (see design handoff) ---- */
+@theme {
+  --color-paper: #f6f1e7;
+  --color-paper-deep: #e9e1cf;
+  --color-paper-inset: #efe8d6;
+  --color-paper-inset-deep: #e6dfcc;
+  --color-paper-track: #e0d6bf;
+  --color-paper-plate: #fbf8f0;
+  --color-rule: #cdbf9f;
+  --color-rule-faint: #b9ab8a;
+  --color-rule-soft: #eee6d3;
+  --color-ink: #2a2620;
+  --color-ink-muted: #6b6250;
+  --color-ink-faint: #8a7f66;
+  --color-accent: #2f3a5c;
+  --color-accent-deep: #1f2740;
+  --color-accent-tint: #d6dceb;
+  --color-danger: #8a2f22;
+  --color-danger-deep: #6e2419;
+  --color-danger-tint: #f3d9d4;
+  --color-good: #4a6b3f;
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --shadow-frame: 0 1px 0 #fff inset, 0 8px 24px -12px rgba(42, 38, 32, 0.45);
+  --shadow-dropdown: 0 8px 24px -12px rgba(42, 38, 32, 0.5);
+  --shadow-welcome: 0 20px 40px -24px rgba(42, 38, 32, 0.45);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --animate-blink: blink 1.2s infinite;
+
+  @keyframes blink {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.25; }
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+@theme inline {
+  --font-sans: var(--font-karla), system-ui, sans-serif;
+  --font-serif: var(--font-spectral), Georgia, serif;
+}
+
+@layer base {
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--color-paper-deep);
+  }
+
+  body {
+    color: var(--color-ink);
+    font-family: var(--font-karla), system-ui, sans-serif;
+    font-size: 14px;
+    line-height: 1.45;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    font: inherit;
+    cursor: pointer;
+    background: transparent;
+    color: inherit;
+    border: 0;
+    padding: 0;
+    transition: background-color 150ms ease, color 150ms ease, border-color 150ms ease;
+  }
+
+  button:disabled {
+    cursor: default;
+  }
+
+  input {
+    font: inherit;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+
+  a:hover {
+    color: var(--color-accent-deep);
+  }
+
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-paper);
+  }
+}
+
+/* ---- Recurring handbook pieces ---- */
+@layer components {
+  /* 11px uppercase section label */
+  .hb-label {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-faint);
+  }
+
+  .hb-card {
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    border-radius: 6px;
+  }
+
+  .hb-inset {
+    background: var(--color-paper-inset);
+    border-radius: 4px;
+    padding: 10px 12px;
+  }
+
+  /* A list row separated by a dotted rule */
+  .hb-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 0;
+    border-bottom: 1px dotted var(--color-rule);
+  }
+
+  /* Small buttons: 12px/600, 5px 10px, radius 3 */
+  .hb-btn {
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .hb-btn-danger {
+    background: var(--color-danger);
+    color: var(--color-paper);
+  }
+  .hb-btn-danger:hover:not(:disabled) {
+    background: var(--color-danger-deep);
+  }
+  .hb-btn-accent {
+    background: var(--color-accent);
+    color: var(--color-paper);
+  }
+  .hb-btn-accent:hover:not(:disabled) {
+    background: var(--color-accent-deep);
+  }
+  .hb-btn-outline {
+    border: 1px solid var(--color-rule);
+    color: var(--color-accent);
+  }
+  .hb-btn-outline:hover:not(:disabled) {
+    background: var(--color-paper-inset-deep);
+  }
+  .hb-btn-quiet {
+    border: 1px solid var(--color-rule);
+    color: var(--color-ink-muted);
+  }
+  .hb-btn-quiet:hover:not(:disabled) {
+    background: var(--color-paper-inset-deep);
+  }
+  .hb-btn:disabled {
+    opacity: 0.55;
+  }
+
+  /* Path chips (exits) */
+  .hb-chip {
+    padding: 7px 12px;
+    border-radius: 3px;
+    border: 1px solid var(--color-accent);
+    color: var(--color-accent);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  .hb-chip:hover:not(:disabled) {
+    background: var(--color-accent);
+    color: var(--color-paper);
+  }
+
+  /* Quick-action pills */
+  .hb-pill {
+    padding: 6px 12px;
+    border-radius: 14px;
+    background: var(--color-paper);
+    border: 1px solid var(--color-rule);
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--color-accent);
+    white-space: nowrap;
+  }
+  .hb-pill:hover:not(:disabled) {
+    background: var(--color-accent);
+    color: var(--color-paper);
+    border-color: var(--color-accent);
+  }
+  .hb-pill:disabled {
+    opacity: 0.5;
+  }
+
+  /* Text links inside rows */
+  .hb-link {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-accent);
+    white-space: nowrap;
+  }
+  .hb-link:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+  .hb-link-faint {
+    font-size: 12px;
+    color: var(--color-ink-faint);
+    white-space: nowrap;
+  }
+  .hb-link-faint:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+  .hb-link-danger {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-danger);
+    white-space: nowrap;
+  }
+  .hb-link-danger:hover:not(:disabled) {
+    text-decoration: underline;
+  }
+
+  /* Status / "inflicts" tag */
+  .hb-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    padding: 3px 8px;
+    border-radius: 3px;
+    background: var(--color-danger-tint);
+    color: var(--color-danger);
+    white-space: nowrap;
+  }
+  .hb-tag-good {
+    background: #dfe8d9;
+    color: var(--color-good);
+  }
+  .hb-tag-accent {
+    background: var(--color-accent-tint);
+    color: var(--color-accent);
+  }
 }
