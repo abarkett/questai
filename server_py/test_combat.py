@@ -49,15 +49,15 @@ def main() -> None:
     assert saw_crit, "expected at least one crit across 2000 rolls"
     print("PASS  damage rolls stay in bounds, floor at 1, and crit")
 
-    # Abilities unlock by level via apply_xp.
-    p = mk(player_id="a")
+    # Levelling grants skill points; abilities are then *learned* from your path.
+    from app.engine.actions.learn import learn
+    p = mk(player_id="a", archetype="warden")
     upsert_player(p)
-    assert p.abilities == []
+    assert p.abilities == [] and p.skill_points == 0
     apply_xp(p, total_xp_for_level(2))
-    assert "power_strike" in p.abilities and p.level == 2, p.abilities
-    apply_xp(p, total_xp_for_level(6) - p.xp)
-    assert set(p.abilities) == set(abilities_for_level(6)), p.abilities
-    print(f"PASS  abilities unlock on level up: {p.abilities}")
+    assert p.level == 2 and p.skill_points >= 1 and p.abilities == [], (p.skill_points, p.abilities)
+    assert learn(p, "power_strike").ok and "power_strike" in p.abilities
+    print(f"PASS  level-ups grant skill points; abilities are learned: {p.abilities}")
 
     # Can't use an unknown or unlearned ability.
     lvl1 = mk(player_id="n", location="deep_forest")

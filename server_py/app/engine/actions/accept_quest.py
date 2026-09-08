@@ -1,7 +1,6 @@
 from copy import deepcopy
 import time
 from ...types import Player, ActionResponse
-from ...world_quests import QUEST_TEMPLATES
 from ...miriel_quests import get_or_generate_quest
 from ...db import upsert_player
 from ..entities import get_entities_at, serialize_entity

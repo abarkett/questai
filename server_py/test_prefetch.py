@@ -29,15 +29,13 @@ from app.engine.prefetch import warm_location_caches  # noqa: E402
 
 
 def desc_cache_key(loc_id, turn):
-    # Mirror descriptions.describe()'s key derivation to check it got cached.
-    import hashlib
-    from app.descriptions import time_of_day, present_creatures
+    # Use the ONE shared key derivation (descriptions.cache_key_for) rather
+    # than mirroring the formula here — a mirror drifts (and did, when the
+    # base text became part of the key). The warmer describes each room with
+    # effective_description() as the base, so match that exactly.
+    from app.descriptions import cache_key_for
     loc = get_location(loc_id)
-    creatures = present_creatures(get_entities_at(loc_id))
-    tod = time_of_day(loc_id, turn)
-    bucket = turn // 12
-    sig = hashlib.sha256(f"{loc_id}|{','.join(creatures)}|{tod}|{bucket}".encode()).hexdigest()[:16]
-    return f"desc_{sig}"
+    return cache_key_for(loc, get_entities_at(loc_id), turn, effective_description(loc))
 
 
 def main() -> None:
@@ -74,12 +72,15 @@ def main() -> None:
     pf = Player(player_id="f", name="F", location="forest", level=3, xp=0, hp=20, max_hp=20)
     upsert_player(pf)
     warm_location_caches("f")
-    cleared_key = desc_cache_key("forest", get_world_turn())  # forest with no monsters
-    # forest currently HAS rats, so the 'cleared' (no-monster) key is the warmed one:
-    import hashlib as _h
-    from app.descriptions import time_of_day as _tod
-    sig = _h.sha256(f"forest||{_tod('forest', get_world_turn())}|{get_world_turn()//12}".encode()).hexdigest()[:16]
-    assert db.get_cached_miriel_content(f"desc_{sig}") is not None, "cleared-room description should be warmed"
+    # forest currently HAS rats, so the warmed key is the 'cleared' (no-monster)
+    # one: the warmer describes the room with its non-monster entities and the
+    # cleared_description as the base. Derive that key the same shared way.
+    from app.descriptions import cache_key_for
+    floc = get_location("forest")
+    cleared_ents = [e for e in get_entities_at("forest") if e.get("type") != "monster"]
+    cleared_key = cache_key_for(floc, cleared_ents, get_world_turn(),
+                                floc.cleared_description or floc.description)
+    assert db.get_cached_miriel_content(cleared_key) is not None, "cleared-room description should be warmed"
     print("PASS  cleared-room description pre-generated")
 
     # Best-effort: with Miriel down it must NOT raise (warmer swallows errors).

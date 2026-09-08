@@ -41,6 +41,22 @@ from .actions.story import story_status, begin_arc, choose
 
 _action_adapter = TypeAdapter(ActionRequest)
 
+# Actions that neither advance the world clock nor cost action points:
+# pure reads of your own state or the world.
+PASSIVE_ACTIONS = {
+    "look", "stats", "inventory", "party_status", "reputation",
+    "list_trades", "story", "map", "bestiary", "journal",
+    "bounties", "goals", "companion", "raid_status",
+    # Stronghold actions are personal bookkeeping: no AI, no shared-world
+    # effect, so they don't draw on action points.
+    "stronghold", "build_stronghold", "stash", "unstash", "collect_tribute",
+    "guide", "choose_path", "learn",
+    # The campaign ledger is a read; taking up a deed is personal bookkeeping.
+    "campaign", "undertake",
+    # The realm's news is a read.
+    "incidents",
+}
+
 
 def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     try:
@@ -50,7 +66,7 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
 
     # create_player does not require x-player-id
     if req.action == "create_player":
-        result = create_player(req.args.name)
+        result = create_player(req.args.name, getattr(req.args, "archetype", None))
         pid = (
             result.state["player"]["player_id"]
             if result.state and "player" in result.state
@@ -72,10 +88,25 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     if not player:
         return ActionResponse(ok=False, error="Unknown player_id.")
 
-    # Presence: record that this player is active right now.
-    from ..db import touch_last_seen, get_world_state, set_world_state
+    # Presence: record that this player is active right now — but first note
+    # when they were last here, so a returning player gets a recap.
+    from ..db import touch_last_seen, get_world_state, set_world_state, get_last_seen_map
     from ..presence import now_ms
-    touch_last_seen(player.player_id, now_ms())
+    now = now_ms()
+    prev_seen = get_last_seen_map([player.player_id]).get(player.player_id, 0)
+    touch_last_seen(player.player_id, now)
+
+    recap_msgs: list[str] = []
+    if prev_seen and (player.last_recap_at or 0) < prev_seen:
+        from ..recap import recap_messages
+        try:
+            recap_msgs = recap_messages(player, prev_seen, now)
+        except Exception as e:
+            print(f"[RECAP] failed: {e}")
+        if recap_msgs:
+            player.last_recap_at = now
+            from ..db import upsert_player as _persist_recap
+            _persist_recap(player)
 
     # Track the world's threat level (highest player level) so respawns scale.
     try:
@@ -88,12 +119,30 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     from .entities import respawn_due_monsters
     respawn_due_monsters()
 
+    # Action points: passive reads are free; anything that changes the world
+    # costs 1 AP (regenerating in real time — see app/action_points.py).
+    from ..action_points import refill, spend, seconds_to_next_ap, ap_enabled, ap_max
+    refill(player)
+    if req.action not in PASSIVE_ACTIONS:
+        if not spend(player, 1):
+            wait = seconds_to_next_ap(player)
+            return ActionResponse(
+                ok=False,
+                error=(
+                    f"You're out of action points — your next one arrives in {wait}s. "
+                    "The world keeps turning while you rest."
+                ),
+            )
+
     if req.action == "look":
         result = look(player)
     elif req.action == "move":
         result = move(player, req.args.to)
     elif req.action == "attack":
         result = attack(player, req.args.target)
+    elif req.action == "fight":
+        from .actions.fight import fight
+        result = fight(player, req.args.target, req.args.stance)
     elif req.action == "stats":
         result = stats(player)
     elif req.action == "inventory":
@@ -157,30 +206,127 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
         result = begin_arc(player, req.args.arc_id)
     elif req.action == "choose":
         result = choose(player, req.args.choice, req.args.arc_id)
+    elif req.action == "explore":
+        from .actions.explore import explore
+        result = explore(player)
+    elif req.action == "dig":
+        from .actions.dig import dig
+        result = dig(player)
+    elif req.action == "rest":
+        from .actions.rest import rest
+        result = rest(player)
+    elif req.action == "recruit":
+        from .actions.recruit import recruit
+        result = recruit(player, req.args.target)
+    elif req.action == "dismiss":
+        from .actions.dismiss import dismiss
+        result = dismiss(player)
+    elif req.action == "companion":
+        from .actions.companion_status import companion_status
+        result = companion_status(player)
+    elif req.action == "raid_status":
+        from ..raids import raid_status
+        result = raid_status(player)
+    elif req.action == "raid_strike":
+        from ..raids import strike_raid
+        result = strike_raid(player)
+    elif req.action == "stronghold":
+        from ..stronghold import status as stronghold_status
+        result = stronghold_status(player)
+    elif req.action == "build_stronghold":
+        from ..stronghold import build as stronghold_build
+        result = stronghold_build(player)
+    elif req.action == "stash":
+        from ..stronghold import deposit
+        result = deposit(player, req.args.item, req.args.qty)
+    elif req.action == "unstash":
+        from ..stronghold import withdraw
+        result = withdraw(player, req.args.item, req.args.qty)
+    elif req.action == "collect_tribute":
+        from ..stronghold import collect
+        result = collect(player)
+    elif req.action == "guide":
+        from ..guidance import guide
+        result = guide(player)
+    elif req.action == "choose_path":
+        from .actions.choose_path import choose_path
+        result = choose_path(player, req.args.archetype)
+    elif req.action == "learn":
+        from .actions.learn import learn
+        result = learn(player, req.args.ability)
+    elif req.action == "campaign":
+        from ..restoration import campaign_status
+        result = campaign_status(player)
+    elif req.action == "undertake":
+        from ..restoration import undertake
+        result = undertake(player, req.args.wrong_id)
+    elif req.action == "incidents":
+        from ..incidents import incidents_status
+        result = incidents_status(player)
+    elif req.action == "post_note":
+        from .actions.post_note import post_note
+        result = post_note(player, req.args.text)
+    elif req.action == "post_bounty":
+        from .actions.bounty import post_bounty
+        result = post_bounty(player, req.args.target, req.args.coins)
+    elif req.action == "bounties":
+        from .actions.bounty import list_bounties
+        result = list_bounties(player)
+    elif req.action == "goals":
+        from ..world_goals import goals_overview
+        from .state_view import build_action_state
+        result = ActionResponse(
+            ok=True,
+            messages=goals_overview(player),
+            state=build_action_state(player, scene_dirty=False),
+        )
     else:
         result = ActionResponse(ok=False, error="Unhandled action.")
 
     # Refresh collect/visit quest objectives from current state (kills are
     # progressed at the moment of the kill). Persist progress (even partial,
     # e.g. counting items you already had) and reflect it in the response.
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status",
-                                        "reputation", "list_trades", "story", "map",
-                                        "bestiary", "journal"]:
+    if result.ok and req.action not in PASSIVE_ACTIONS:
         from .quest_progress import refresh_quests
         from ..db import upsert_player as _upsert
         quest_msgs = refresh_quests(player)
+        # A deed just completed rights its wrong in the shared world — the
+        # campaign's spine (see app/restoration.py). Runs after quests settle.
+        try:
+            from ..restoration import settle_deeds
+            quest_msgs.extend(settle_deeds(player))
+        except Exception as e:
+            print(f"[RESTORATION] settle failed: {e}")
         _upsert(player)
         if quest_msgs:
             result.messages.extend(quest_msgs)
+        # Running low on AP is worth a heads-up (but not on every action).
+        if ap_enabled() and player.action_points <= 5:
+            result.messages.append(
+                f"AP: {player.action_points}/{ap_max()} — they regenerate over time."
+            )
         # Rebuild the state so the UI shows the refreshed quest progress now.
         if result.state is not None:
             from .state_view import build_action_state
             result.state = build_action_state(player, scene_dirty=bool(result.state.get("scene_dirty")))
 
     # Phase 8: Increment world turn on successful actions (except passive ones like look, stats, inventory)
-    if result.ok and req.action not in ["look", "stats", "inventory", "party_status", "reputation", "list_trades", "story", "map", "bestiary", "journal"]:
+    if result.ok and req.action not in PASSIVE_ACTIONS:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
+
+        # World events with teeth (see app/incidents.py): what has run its
+        # course expires (an unanswered incursion digs in), and when the
+        # cadence allows, Miriel authors the next incident from the world.
+        try:
+            from ..incidents import tick_incidents, maybe_author_incident
+            for note in tick_incidents():
+                result.messages.append(f"Word spreads: {note}")
+            fresh = maybe_author_incident()
+            if fresh:
+                result.messages.append(f"Word spreads: {fresh['data']['announce_text']}")
+        except Exception as e:
+            print(f"[INCIDENTS] turn hook failed: {e}")
 
         # Evaluate world evolution rules periodically (every 5 turns)
         if new_turn % 5 == 0:
@@ -199,6 +345,10 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
                 triggered_rules = []
             # (World-change notices were debug-only and are intentionally not
             # surfaced to the player.)
+
+    # A returning player's recap leads their first action's output.
+    if recap_msgs and result.ok:
+        result.messages = recap_msgs + result.messages
 
     log_action(
         player_id=player.player_id,

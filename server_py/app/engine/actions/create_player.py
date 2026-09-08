@@ -9,7 +9,7 @@ from ..entities import get_entities_at, get_adjacent_scenes, filter_current_play
 from ..state_view import build_action_state
 
 
-def create_player(name: str) -> ActionResponse:
+def create_player(name: str, archetype: str | None = None) -> ActionResponse:
     # Check if player with this name already exists
     existing_player = get_player_by_name(name)
     
@@ -24,7 +24,11 @@ def create_player(name: str) -> ActionResponse:
             state=build_action_state(player, scene_dirty=True),
         )
     
-    # Create new player
+    # A valid archetype chosen up front sets the player's path; otherwise it's
+    # left open for them to pick with `path` (the guidance nudges this).
+    from ...archetypes import get_archetype
+    chosen = get_archetype((archetype or "").strip().lower())
+
     player = Player(
         player_id=str(uuid.uuid4()),
         name=name,
@@ -34,14 +38,52 @@ def create_player(name: str) -> ActionResponse:
         hp=10,
         max_hp=10,
         visited_locations=["town_square"],
+        archetype=chosen.id if chosen else None,
     )
     upsert_player(player)
 
     loc = get_location(player.location)
 
+    messages = [f"Welcome, {player.name}.", f"You arrive at {loc.name}."]
+
+    # New arrivals land in a world already in motion: lead with the season.
+    from ...db import get_active_world_goals
+    goals = get_active_world_goals()
+    if goals:
+        g = goals[0]
+        messages.append(
+            f"The town talks of one thing: {g['name']}. {g['description']} "
+            f"({min(g['progress'], g['required'])}/{g['required']} so far — every blow counts.)"
+        )
+
+    # Surface the path choice — the one early decision that shapes how you fight.
+    if chosen:
+        messages.append(f"You walk the path of the {chosen.name}. {chosen.passive}")
+    else:
+        from ...archetypes import ARCHETYPES
+        names = " / ".join(a.name for a in ARCHETYPES.values())
+        messages.append(f"Choose how you'll fight: `path <{ ' | '.join(ARCHETYPES) }>` ({names}).")
+
+    # The realm's state is the reason to play: say so up front.
+    try:
+        from ...restoration import current_act
+        act = current_act()
+        if act:
+            messages.append(
+                f"The realm lies fallen. {act.blurb} Type `campaign` to see what must be put right — "
+                "each wrong you right changes the world for good, and writes your name in the Chronicle."
+            )
+        else:
+            messages.append("The realm stands restored. Type `campaign` to read the Chronicle.")
+    except Exception:
+        pass
+
+    # Point a brand-new player at their first steps.
+    messages.append("New here? Type `next` any time for what to do.")
+
     return ActionResponse(
         ok=True,
-        messages=[f"Welcome, {player.name}.", f"You arrive at {loc.name}."],
+        messages=messages,
         state=build_action_state(player, scene_dirty=True),
     )
 

@@ -1,7 +1,9 @@
 """
 Tests for Miriel-authored location descriptions. There is NO fallback: with
-Miriel down, describing a location must raise. The offline suite installs a
-Miriel test responder (a seam, not a gameplay fallback) to exercise the path.
+Miriel down — or answering with nothing usable — describing a location must
+raise. Silent degradation to authored text hides a broken AI integration.
+The offline suite installs a Miriel test responder (a seam, not a gameplay
+fallback) to exercise the path.
 
 Run from server_py/:  python3 test_descriptions.py
 """
@@ -71,11 +73,17 @@ def main() -> None:
     assert any("Mist curls" in m for m in r.messages), r.messages
     print("PASS  descriptions come from Miriel and surface in look()")
 
-    # Miriel reachable but empty -> show the room's authored text (not a 500).
+    # Miriel reachable but answering with nothing usable MUST also raise:
+    # this is exactly the failure a silent fallback hides for weeks.
     install_test_responder(lambda q: "")
-    base = "A quiet authored room."
-    assert describe(p, loc, [], base, 0) == base
-    print("PASS  empty Miriel answer falls through to the authored description")
+    raised = False
+    try:
+        describe(p, loc, [], "A quiet authored room.", 0)
+    except MirielUnavailable as e:
+        raised = True
+        assert "no prose" in str(e), e
+    assert raised, "empty Miriel answers must fail hard, not fall back"
+    print("PASS  empty/malformed Miriel answers fail hard too")
 
     install_test_responder(None)
     print("\nALL DESCRIPTION TESTS PASSED")

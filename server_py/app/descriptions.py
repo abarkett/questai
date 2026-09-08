@@ -2,9 +2,12 @@
 Dynamic, Miriel-authored location prose.
 
 Demonstrating Miriel is a core aim of the project, so there is NO deterministic
-fallback: if Miriel is unavailable, describing a location raises and the request
-fails hard. The deterministic helpers below only build *context* for the prompt
-(time of day, what's present); the prose itself always comes from Miriel.
+fallback: if Miriel is unavailable — or reachable but producing no usable
+prose — describing a location raises and the request fails hard. Silent
+degradation to authored text is worse than a crash: it hides a broken AI
+integration behind a working-looking game. The deterministic helpers below
+only build *context* for the prompt (time of day, what's present); the prose
+itself always comes from Miriel.
 """
 
 from __future__ import annotations
@@ -26,7 +29,10 @@ from .services.miriel_client import MirielUnavailable  # re-exported for callers
 
 def time_of_day(location_id: str, world_turn: int) -> Optional[str]:
     if location_id not in _OUTDOOR:
-        return None
+        from .content import is_outdoor
+
+        if not is_outdoor(location_id):
+            return None
     return _TIME_OF_DAY[(world_turn // 12) % len(_TIME_OF_DAY)]
 
 
@@ -34,11 +40,31 @@ def present_creatures(entities: List[dict]) -> List[str]:
     return sorted({e["name"] for e in entities if e.get("type") == "monster"})
 
 
+def cache_key_for(loc, entities: List[dict], world_turn: int, base: str) -> str:
+    """
+    The description cache key for a location *as it is right now*.
+
+    This is the ONE place the key is derived — describe(), the prefetch warmer,
+    and the tests all use it, so the formula can't drift between them. The base
+    text is part of the key on purpose: when a righted wrong re-describes a
+    place (see app/restoration.py), its prose refreshes at once instead of
+    serving the pre-restoration text from the cache.
+    """
+    creatures = present_creatures(entities)
+    tod = time_of_day(loc.id, world_turn)
+    bucket = world_turn // 12  # refresh prose a few times per "day"
+    base_sig = hashlib.sha256(base.encode()).hexdigest()[:8]
+    sig = hashlib.sha256(
+        f"{loc.id}|{','.join(creatures)}|{tod}|{bucket}|{base_sig}".encode()
+    ).hexdigest()[:16]
+    return f"desc_{sig}"
+
+
 def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> str:
     """
     Return a Miriel-authored description of the location as it is right now.
-    Raises MirielUnavailable / propagates Miriel errors if the AI is down — by
-    design, there is no fallback.
+    Raises MirielUnavailable if Miriel is unconfigured OR answers with nothing
+    usable — by design, there is no fallback.
     """
     from .services.miriel_client import is_miriel_enabled, get_miriel_client
     from .db import get_cached_miriel_content, cache_miriel_content
@@ -50,9 +76,7 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
 
     creatures = present_creatures(entities)
     tod = time_of_day(loc.id, world_turn)
-    bucket = world_turn // 12  # refresh prose a few times per "day"
-    sig = hashlib.sha256(f"{loc.id}|{','.join(creatures)}|{tod}|{bucket}".encode()).hexdigest()[:16]
-    cache_key = f"desc_{sig}"
+    cache_key = cache_key_for(loc, entities, world_turn, base)
 
     cached = get_cached_miriel_content(cache_key)
     if cached:
@@ -73,12 +97,16 @@ def describe(player, loc, entities: List[dict], base: str, world_turn: int) -> s
     # look for the same scene share one round-trip. Not wrapped in try/except: a
     # Miriel outage propagates and the request fails hard (by design).
     resp = get_miriel_client().query(query=query, project="questai")
-    answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
-    answer = (answer or "").strip()
+    from .services.miriel_client import extract_answer, describe_shape
+    answer = extract_answer(resp)
     if not answer:
-        # Miriel reachable but produced nothing for this scene — show the
-        # location's own authored description rather than 500 the request.
-        return base
+        # Reachable but no usable prose anywhere in the response. This is the
+        # failure mode that silent fallbacks hide for weeks — fail hard, and
+        # print the response structure so the fix is one log line away.
+        raise MirielUnavailable(
+            f"Miriel returned no prose for '{loc.id}' "
+            f"(response shape: {describe_shape(resp)}). The game requires Miriel."
+        )
 
     cache_miriel_content(cache_key, "dialogue", answer, ttl_seconds=600)
     return answer

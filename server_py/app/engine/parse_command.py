@@ -30,7 +30,7 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {"action": "look"}
     
     # ---- STATS ----
-    if verb in ("stats", "hp", "me", "status", "abilities", "skills"):
+    if verb in ("stats", "hp", "me", "status", "abilities", "skills", "ap"):
         return {"action": "stats"}
 
     # ---- MOVE ----
@@ -61,14 +61,27 @@ def parse_command(text: str) -> Dict[str, Any]:
             raise ParseError("Unequip which slot? (weapon or armor)")
         return {"action": "unequip", "args": {"slot": " ".join(rest)}}
 
-    # ---- CREATE PLAYER ----
+    # ---- CREATE PLAYER (optional trailing archetype: "create Aldra trickster") ----
     if verb in ("create", "new"):
         if not rest:
             raise ParseError("Create who?")
+        from ..archetypes import ARCHETYPES
+        archetype = None
+        if len(rest) > 1 and rest[-1].lower() in ARCHETYPES:
+            archetype = rest[-1].lower()
+            rest = rest[:-1]
         return {
             "action": "create_player",
-            "args": {"name": " ".join(rest)}
+            "args": {"name": " ".join(rest), "archetype": archetype},
         }
+
+    # ---- CHOOSE PATH (archetype) ----
+    if verb in ("path", "class", "archetype") and rest:
+        return {"action": "choose_path", "args": {"archetype": rest[0]}}
+
+    # ---- LEARN ABILITY ----
+    if verb in ("learn", "train") and rest:
+        return {"action": "learn", "args": {"ability": " ".join(rest)}}
 
     # ---- ATTACK ----
     if verb in ("attack", "hit", "kill"):
@@ -77,6 +90,22 @@ def parse_command(text: str) -> Dict[str, Any]:
         return {
             "action": "attack",
             "args": {"target": " ".join(rest)}
+        }
+
+    # ---- FIGHT (whole encounter, with optional stance) ----
+    if verb in ("fight", "f"):
+        stance = "standard"
+        if rest and rest[0].lower() in ("bold", "boldly"):
+            stance = "bold"
+            rest = rest[1:]
+        elif rest and rest[0].lower() in ("cautious", "cautiously", "careful", "carefully"):
+            stance = "cautious"
+            rest = rest[1:]
+        if not rest:
+            raise ParseError("Fight what? (fight [bold|cautious] <target>)")
+        return {
+            "action": "fight",
+            "args": {"target": " ".join(rest), "stance": stance},
         }
 
     # ---- ABILITIES ----
@@ -241,13 +270,105 @@ def parse_command(text: str) -> Dict[str, Any]:
             "args": {"invite_id": rest[0]}
         }
     
+    # ---- EXPLORE (open a frontier) ----
+    if verb in ("explore", "search", "chart"):
+        return {"action": "explore"}
+
+    # ---- DIG (claim a treasure-map cache) ----
+    if verb in ("dig", "excavate", "unearth"):
+        return {"action": "dig"}
+
+    # ---- NOTES (noticeboard) ----
+    if verb in ("note", "write", "scratch"):
+        if not rest:
+            raise ParseError("Write what? (note <text>)")
+        return {"action": "post_note", "args": {"text": " ".join(rest)}}
+
+    # ---- BOUNTIES ----
+    if verb in ("bounties", "board"):
+        return {"action": "bounties"}
+
+    if verb == "bounty":
+        # bounty <coins> <monster name...>
+        if len(rest) >= 2 and rest[0].isdigit():
+            return {
+                "action": "post_bounty",
+                "args": {"coins": int(rest[0]), "target": " ".join(rest[1:])},
+            }
+        if not rest:
+            return {"action": "bounties"}
+        raise ParseError("Use: bounty <coins> <monster> (e.g. bounty 10 Wolf)")
+
+    # ---- COMMUNITY GOALS ----
+    if verb in ("goals", "goal", "season", "events"):
+        return {"action": "goals"}
+
+    # ---- CO-OP RAID BOSS ----
+    if verb in ("raid", "worldboss"):
+        if rest and rest[0].lower() in ("strike", "hit", "attack", "assault", "assail", "fight"):
+            return {"action": "raid_strike"}
+        return {"action": "raid_status"}
+
+    if verb in ("assail",):
+        return {"action": "raid_strike"}
+
+    # ---- COMPANIONS ----
+    if verb in ("recruit", "hire", "enlist") and rest:
+        return {"action": "recruit", "args": {"target": " ".join(rest)}}
+
+    if verb in ("dismiss", "farewell"):
+        return {"action": "dismiss"}
+
+    if verb in ("companion", "ally", "comp"):
+        return {"action": "companion"}
+
+    # ---- THE CAMPAIGN (the Restoration ledger and your Legend) ----
+    if verb in ("campaign", "chronicle", "legend", "wrongs", "restore"):
+        return {"action": "campaign"}
+
+    if verb in ("undertake", "right", "take") and rest:
+        return {"action": "undertake", "args": {"wrong_id": "_".join(rest)}}
+
+    # ---- THE REALM'S NEWS (incidents underway) ----
+    if verb in ("news", "incidents", "tidings", "happenings"):
+        return {"action": "incidents"}
+
+    # ---- GUIDANCE (what now?) ----
+    if verb in ("next", "guide", "hint", "todo", "advice"):
+        return {"action": "guide"}
+
+    # ---- STRONGHOLD ----
+    if verb in ("stronghold", "home", "base", "holding"):
+        return {"action": "stronghold"}
+
+    if verb in ("build", "upgrade"):
+        return {"action": "build_stronghold"}
+
+    if verb in ("collect", "tribute"):
+        return {"action": "collect_tribute"}
+
+    if verb in ("stash", "store", "deposit", "unstash", "withdraw", "retrieve"):
+        if not rest:
+            raise ParseError(f"{verb.capitalize()} what? (e.g. {verb} dragon_heart 2)")
+        # Optional trailing quantity: "stash dragon heart 2".
+        qty = None
+        if len(rest) > 1 and rest[-1].isdigit():
+            qty = int(rest[-1])
+            rest = rest[:-1]
+        action = "unstash" if verb in ("unstash", "withdraw", "retrieve") else "stash"
+        return {"action": action, "args": {"item": " ".join(rest), "qty": qty}}
+
     # ---- REPUTATION ----
     if verb in ("reputation", "rep", "factions"):
         return {"action": "reputation"}
 
     # ---- HEAL (temple) ----
-    if verb in ("heal", "pray", "rest", "worship"):
+    if verb in ("heal", "pray", "worship"):
         return {"action": "heal"}
+
+    # ---- REST (free recovery anywhere safe) ----
+    if verb in ("rest", "camp", "sleep", "breathe"):
+        return {"action": "rest"}
 
     # ---- MAP ----
     if verb in ("map", "m"):

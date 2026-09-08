@@ -10,7 +10,7 @@ import time
 from typing import List, Optional
 
 from .db import get_monsters_at, get_world_state
-from .world_entities import MONSTER_AGGRO, MONSTER_INFLICTS
+from .content import monster_aggro, monster_inflicts
 from .progression import defense_bonus
 from .status_effects import apply_effect
 from .types import Player
@@ -20,7 +20,7 @@ RESPAWN_LOCATION = "town_square"
 
 
 def aggressive_monsters_at(location_id: str) -> list:
-    return [m for m in get_monsters_at(location_id) if MONSTER_AGGRO.get(m["name"])]
+    return [m for m in get_monsters_at(location_id) if monster_aggro(m["name"])]
 
 
 def has_aggressive(location_id: str) -> bool:
@@ -50,17 +50,14 @@ def maybe_ambush(
     player.hp -= dmg
     messages = [f"The {mon['name']} catches you off guard for {dmg} damage!"]
 
-    inflict = MONSTER_INFLICTS.get(mon["name"])
+    inflict = monster_inflicts(mon["name"])
     if inflict and player.hp > 0:
         msg = apply_effect(player, inflict["effect"], inflict.get("magnitude", 1), inflict.get("turns", 1))
         if msg:
             messages.append(msg)
 
     if player.hp <= 0:
-        player.hp = player.max_hp
-        player.location = RESPAWN_LOCATION
-        player.last_defeated_at = int(time.time() * 1000)
-        player.status_effects.clear()
-        messages.append("You are overcome and wake back in the Town Square.")
+        from .defeat import apply_defeat
+        messages.extend(apply_defeat(player, f"the {mon['name']}"))
 
     return messages

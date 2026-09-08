@@ -122,8 +122,8 @@ def enrich_scene_prompt(base_prompt: str) -> str:
     )
     # NOT wrapped in try/except: a Miriel outage propagates and fails the render.
     resp = client.query(query=query, project="questai", force_exhaustive=False)
-    answer = ((resp or {}).get("results", {}) or {}).get("answer", "")
-    answer = (answer or "").strip()
+    from .miriel_client import extract_answer
+    answer = extract_answer(resp)
     if answer:
         return f"{base_prompt}\n\nAtmosphere & current details: {answer}"
     return base_prompt

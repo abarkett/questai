@@ -52,16 +52,19 @@ def weapon_bonus(player: Player) -> int:
 
 
 def defense_bonus(player: Player) -> int:
-    """Flat damage reduction from the equipped armor."""
+    """Flat damage reduction from equipped armor plus any archetype passive."""
     from .items import get_item
+    from .archetypes import archetype_defense_bonus
 
     item = get_item(player.equipment.get("armor", "")) if player.equipment else None
-    return (item.defense or 0) if item else 0
+    armor = (item.defense or 0) if item else 0
+    return armor + archetype_defense_bonus(player)
 
 
 def total_attack_damage(player: Player) -> int:
-    """Full per-hit damage: level scaling plus equipped weapon."""
-    return attack_damage(player.level) + weapon_bonus(player)
+    """Full per-hit damage: level scaling, equipped weapon, archetype passive."""
+    from .archetypes import archetype_attack_bonus
+    return attack_damage(player.level) + weapon_bonus(player) + archetype_attack_bonus(player)
 
 
 def xp_to_next_level(player: Player) -> int:
@@ -83,11 +86,25 @@ def apply_xp(player: Player, amount: int) -> List[str]:
 
     new_level = level_for_xp(player.xp)
     if new_level > player.level:
+        gained = new_level - player.level
         player.level = new_level
         player.max_hp = max_hp_for_level(new_level)
         player.hp = player.max_hp  # full heal on level up
         messages.append(f"You reached level {new_level}! Max HP is now {player.max_hp}.")
-        messages.extend(_learn_new_abilities(player))
+        # Abilities are now *chosen*: each level grants a skill point to spend on
+        # your archetype's abilities via `learn` (see app/archetypes.py).
+        player.skill_points += gained
+        learnable = []
+        try:
+            from .archetypes import learnable as _learnable
+            learnable = _learnable(player)
+        except Exception:
+            pass
+        pts = "point" if player.skill_points == 1 else "points"
+        if learnable:
+            messages.append(f"You have {player.skill_points} skill {pts} — `learn` a new ability.")
+        else:
+            messages.append(f"You have {player.skill_points} skill {pts} to spend as new abilities unlock.")
 
     return messages
 

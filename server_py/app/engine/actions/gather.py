@@ -3,7 +3,8 @@ from __future__ import annotations
 import time
 
 from ...types import Player, ActionResponse
-from ...items import LOCATION_RESOURCES, get_item
+from ...content import resource_at
+from ...items import get_item
 from ...db import upsert_player, get_world_state, set_world_state
 from ...ambush import has_aggressive, maybe_ambush
 from ..state_view import build_action_state
@@ -14,7 +15,7 @@ GATHER_COOLDOWN_MS = 12 * 1000
 
 
 def gather(player: Player) -> ActionResponse:
-    resource = LOCATION_RESOURCES.get(player.location)
+    resource = resource_at(player.location)
     if not resource:
         return ActionResponse(ok=False, error="There's nothing to gather here.")
 

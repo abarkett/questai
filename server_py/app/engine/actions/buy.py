@@ -24,6 +24,14 @@ def buy(player: Player, item_name: str) -> ActionResponse:
         return ActionResponse(ok=False, error="That item is not for sale.")
 
     price = shop["inventory"][item_name]["price"]
+    discounted = False
+    try:
+        from ...incidents import boon_active, SHOP_DISCOUNT
+        if boon_active("shop_discount"):
+            price = max(1, int(price * SHOP_DISCOUNT))
+            discounted = True
+    except Exception:
+        pass
 
     coins = player.inventory.get("coin", 0)
     if coins < price:
@@ -37,6 +45,6 @@ def buy(player: Player, item_name: str) -> ActionResponse:
 
     return ActionResponse(
         ok=True,
-        messages=[f"You buy a {item_name} for {price} coins."],
+        messages=[f"You buy a {item_name} for {price} coins." + (" (a glut at market — cheap while it lasts)" if discounted else "")],
         state=build_action_state(player, scene_dirty=False),
     )

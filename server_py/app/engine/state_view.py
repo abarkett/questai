@@ -16,7 +16,17 @@ from ..db import count_monsters_at
 
 
 def effective_description(loc) -> str:
-    """Use the 'cleared' description when no monsters remain at the location."""
+    """The location as it is *now*: a righted wrong's restored description
+    wins (the world changed for good), else the 'cleared' text when no
+    monsters remain, else the authored default. This is also the base Miriel
+    narrates from, so restoration reaches every surface."""
+    try:
+        from ..restoration import restored_description
+        restored = restored_description(loc.id)
+        if restored:
+            return restored
+    except Exception as e:
+        print(f"[RESTORATION] description lookup failed: {e}")
     if loc.cleared_description and count_monsters_at(loc.id) == 0:
         return loc.cleared_description
     return loc.description
@@ -46,15 +56,34 @@ def build_location_view_for_player(player: Player) -> Dict[str, Any]:
         player.player_id,
     )
 
+    from ..echoes import echoes_for, rumor_lines
+    from ..db import get_location_notes
+
+    # The Warfront reads as whichever great threat now holds it.
+    loc_name, loc_desc = loc.name, effective_description(loc)
+    try:
+        from ..raids import lair_location_view
+        lair = lair_location_view(loc.id)
+        if lair:
+            loc_name, loc_desc = lair
+    except Exception as e:
+        print(f"[RAID] lair view failed: {e}")
+
     return {
+        "rumors": rumor_lines(player) if any(e.get("type") == "npc" for e in entities) else [],
         "location": {
             "id": loc.id,
-            "name": loc.name,
-            "description": effective_description(loc),
+            "name": loc_name,
+            "description": loc_desc,
             "exits": _exits_view(loc),
         },
         "entities": entities,
         "adjacent_scenes": get_adjacent_scenes_for_prefetch(loc.id),
+        "echoes": echoes_for(player),
+        "notes": [
+            {"text": n["text"], "player_name": n["player_name"]}
+            for n in get_location_notes(player.location)
+        ],
     }
 
 
@@ -264,6 +293,79 @@ def get_item_info(player: Player) -> Dict[str, Any]:
     return info
 
 
+def _raid_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
+    """The active raid boss for the UI. Best-effort: a raid read must never be
+    the thing that breaks an unrelated action's state."""
+    try:
+        from ..raids import raid_summary
+        return raid_summary(player)
+    except Exception as e:
+        print(f"[RAID] summary failed: {e}")
+        return None
+
+
+def _stronghold_summary_safe(player: Player) -> Optional[Dict[str, Any]]:
+    try:
+        from ..stronghold import summary
+        return summary(player)
+    except Exception as e:
+        print(f"[STRONGHOLD] summary failed: {e}")
+        return None
+
+
+def _guidance_safe(player: Player) -> List[Dict[str, Any]]:
+    try:
+        from ..guidance import guidance_summary
+        return guidance_summary(player)
+    except Exception as e:
+        print(f"[GUIDANCE] summary failed: {e}")
+        return []
+
+
+def _campaign_safe(player: Player) -> Optional[Dict[str, Any]]:
+    """The Restoration ledger for the web client — the game's spine."""
+    try:
+        from ..restoration import campaign_summary
+        return campaign_summary(player)
+    except Exception as e:
+        print(f"[RESTORATION] summary failed: {e}")
+        return None
+
+
+def _incidents_safe(player: Player) -> List[Dict[str, Any]]:
+    try:
+        from ..incidents import incident_summary
+        return incident_summary(player)
+    except Exception as e:
+        print(f"[INCIDENTS] summary failed: {e}")
+        return []
+
+
+def _identity_safe(player: Player) -> Dict[str, Any]:
+    """Combat-identity summary for the web client: path, skill points, and the
+    abilities you could learn or still choose among."""
+    try:
+        from ..archetypes import get_archetype, learnable, ARCHETYPES
+        from ..abilities import get_ability
+        arch = get_archetype(player.archetype)
+        learn = [
+            {"id": aid, "name": (get_ability(aid).name if get_ability(aid) else aid)}
+            for aid, _req in learnable(player)
+        ]
+        return {
+            "archetype": arch.id if arch else None,
+            "archetype_name": arch.name if arch else None,
+            "passive": arch.passive if arch else None,
+            "skill_points": player.skill_points,
+            "learnable": learn,
+            "paths": [{"id": a.id, "name": a.name, "passive": a.passive,
+                       "description": a.description} for a in ARCHETYPES.values()],
+        }
+    except Exception as e:
+        print(f"[IDENTITY] summary failed: {e}")
+        return {}
+
+
 def build_action_state(
     player: Player,
     *,
@@ -282,6 +384,12 @@ def build_action_state(
         "pending_trade_offers_sent": get_pending_trade_offers_sent(player),
         "party": get_party_info(player),
         "party_invites": get_party_invites_info(player),
+        "raid": _raid_summary_safe(player),
+        "stronghold": _stronghold_summary_safe(player),
+        "guidance": _guidance_safe(player),
+        "identity": _identity_safe(player),
+        "campaign": _campaign_safe(player),
+        "incidents": _incidents_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

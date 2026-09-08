@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sendCommand, prefetchCaches } from "./lib/api";
 import { generateSceneImage } from "./lib/gemini";
 import { buildScenePrompt } from "./lib/scene";
+import { Welcome } from "./welcome";
 
 type Line = {
   id: string;
@@ -274,6 +275,14 @@ function Modal({
 // Heuristic: which inventory items are equippable gear vs. consumed/used.
 const GEAR_RE = /(sword|blade|dagger|armor|mail|scale|axe|shield|bow|staff)/i;
 
+// Mirrors app/companions.py: these NPCs anchor the world and can't be recruited.
+const NON_RECRUITABLE_ROLES = ["shop", "quest_giver", "arc_giver"];
+const COMPANION_TITLE: Record<string, string> = {
+  vanguard: "Vanguard",
+  mender: "Mender",
+  outrider: "Outrider",
+};
+
 function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
   const [tab, setTab] = useState<string>("summary");
 
@@ -295,6 +304,10 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
     </div>
   );
 
+  const apMax = 30; // server cap (QUESTAI_AP_MAX); AP fields ship in player state
+  const ap = typeof player.action_points === "number" ? player.action_points : null;
+  const apPct = ap != null ? Math.max(0, Math.min(100, (100 * ap) / apMax)) : 0;
+
   const hpBar = (
     <div>
       <div className="flex items-center gap-2">
@@ -303,6 +316,14 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
         </div>
         <span className="text-xs whitespace-nowrap">{player.hp}/{player.max_hp}</span>
       </div>
+      {ap != null && (
+        <div className="flex items-center gap-2 mt-1" title="Action points — every world-changing action costs 1; they regenerate over time">
+          <div className="flex-1 h-2 bg-green-950 border border-green-800">
+            <div className="h-full bg-amber-500" style={{ width: `${apPct}%` }} />
+          </div>
+          <span className="text-xs whitespace-nowrap">AP {ap}/{apMax}</span>
+        </div>
+      )}
       <div className="text-xs mt-1">Level {player.level} · XP {player.xp}</div>
     </div>
   );
@@ -326,7 +347,207 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
       <div className="flex-1 overflow-y-auto pr-1 space-y-3">
         {tab === "summary" && (
           <>
+            {Array.isArray(state.guidance) && state.guidance.length > 0 && (
+              <Section title="What now?">
+                <div className="space-y-1">
+                  {state.guidance.map((g: any, i: number) => (
+                    g.command ? (
+                      <button key={i} className="block text-left text-xs text-green-300 hover:underline"
+                        onClick={() => onCommand(g.command)}>• {g.text}</button>
+                    ) : (
+                      <div key={i} className="text-xs text-green-600">• {g.text}</div>
+                    )
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {state.campaign && (
+              <Section title={state.campaign.complete ? "The Realm Restored" : `Act ${state.campaign.act_index + 1}${state.campaign.acts_total ? ` of ${state.campaign.acts_total}` : ""}: ${state.campaign.act_name}`}>
+                <div className="text-xs text-green-600 mb-1">{state.campaign.act_blurb}</div>
+                <div className="space-y-1">
+                  {(state.campaign.wrongs || []).map((w: any) => (
+                    <div key={w.id} className="text-xs flex items-start gap-2 flex-wrap" title={w.blurb ? `${w.blurb} ${w.deed}` : w.deed}>
+                      <span className={
+                        w.status === "righted" ? "text-green-800 line-through" :
+                        w.status === "active" ? "text-yellow-300" : "text-green-300"
+                      }>
+                        {w.status === "righted" ? "✓" : w.status === "active" ? "…" : w.climax ? "!" : "•"} {w.title}
+                      </span>
+                      {w.status === "righted" && w.righted_by && (
+                        <span className="text-green-800">— {w.righted_by}</span>
+                      )}
+                      {w.status === "righted" && w.entry && (
+                        <span className="basis-full pl-4 italic text-green-900">“{w.entry}”</span>
+                      )}
+                      {w.status === "active" && w.progress && (
+                        <span className="text-yellow-600">{w.progress}</span>
+                      )}
+                      {w.status === "open" && w.command && (
+                        <button className="px-1 border border-green-800 hover:bg-green-900"
+                          onClick={() => onCommand(w.command)}>undertake</button>
+                      )}
+                      {w.status === "open" && w.climax && (
+                        <button className="px-1 border border-red-800 text-red-300 hover:bg-red-950"
+                          onClick={() => onCommand("raid")}>the Warfront</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+                {Array.isArray(state.campaign.titles) && state.campaign.titles.length > 0 && (
+                  <div className="text-xs mt-1 text-yellow-300">Your Legend: {state.campaign.titles.join(", ")}</div>
+                )}
+              </Section>
+            )}
+
             {hpBar}
+
+            {state.identity && !state.identity.archetype && Array.isArray(state.identity.paths) && (
+              <Section title="Choose your path">
+                <div className="text-xs text-green-600 mb-1">The one choice that shapes how you fight.</div>
+                <div className="space-y-1">
+                  {state.identity.paths.map((p: any) => (
+                    <button key={p.id} className="block text-left text-xs hover:underline"
+                      title={`${p.description} — ${p.passive}`}
+                      onClick={() => onCommand(`path ${p.id}`)}>
+                      <span className="text-green-300">{p.name}</span> — {p.passive}
+                    </button>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {state.identity && state.identity.archetype && (
+              <Section title="Path">
+                <div className="text-xs">
+                  <span className="text-green-300">{state.identity.archetype_name}</span> · {state.identity.passive}
+                </div>
+                {state.identity.skill_points > 0 && (
+                  <div className="mt-1">
+                    <div className="text-xs text-yellow-300">{state.identity.skill_points} skill point(s) to spend:</div>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {(state.identity.learnable || []).map((a: any) => (
+                        <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                          onClick={() => onCommand(`learn ${a.id}`)}>learn {a.name}</button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </Section>
+            )}
+
+            {player.companion && (
+              <Section title="Companion">
+                <div className="text-xs">
+                  <span className="text-green-300">{player.companion.name}</span>
+                  {" — "}{COMPANION_TITLE[player.companion.archetype] ?? player.companion.archetype}
+                  {" · Lv "}{1 + Math.floor(Math.min(player.companion.loyalty, 100) / 25)}
+                  {" · loyalty "}{player.companion.loyalty}/100
+                </div>
+                <button className="text-green-700 hover:underline text-xs mt-0.5"
+                  onClick={() => onCommand("dismiss")}>dismiss</button>
+              </Section>
+            )}
+
+            {Array.isArray(state.incidents) && state.incidents.length > 0 && (
+              <Section title="News of the Realm">
+                <div className="space-y-1">
+                  {state.incidents.map((inc: any) => (
+                    <div key={inc.id} className="text-xs" title={inc.blurb}>
+                      <span className={inc.kind === "incursion" ? "text-red-300" : "text-yellow-300"}>
+                        {inc.kind === "incursion" ? "!" : "+"} {inc.title}
+                      </span>
+                      <span className="text-green-700"> — {inc.location_name}{inc.here ? " (here)" : ""}</span>
+                      {inc.kind === "incursion" && inc.creatures_left != null && (
+                        <span className="text-green-600"> · {inc.creatures_left} {inc.creature_name}{inc.creatures_left === 1 ? "" : "s"} left · {inc.turns_left} turns</span>
+                      )}
+                      {inc.kind === "boon" && inc.effect_words && (
+                        <span className="text-green-600"> · {inc.effect_words} · {inc.turns_left} turns</span>
+                      )}
+                      {inc.kind === "incursion" && inc.here && inc.creatures_left > 0 && (
+                        <button className="ml-2 px-1 border border-red-800 text-red-300 hover:bg-red-950"
+                          onClick={() => onCommand(`fight ${inc.creature_name}`)}>fight</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {state.raid && (
+              <Section title="World Threat">
+                <div className="text-xs">
+                  <span className="text-red-300 font-bold">{state.raid.name}</span>
+                  {state.raid.title ? ` — ${state.raid.title}` : ""}
+                </div>
+                <div className="mt-1 h-2 bg-red-950 border border-red-900">
+                  <div className="h-full bg-red-600"
+                    style={{ width: `${Math.max(0, Math.min(100, (100 * state.raid.hp) / state.raid.max_hp))}%` }} />
+                </div>
+                <div className="text-xs mt-0.5">
+                  {state.raid.hp}/{state.raid.max_hp} HP · your blows: {state.raid.your_damage}
+                </div>
+                {Array.isArray(state.raid.top) && state.raid.top.length > 0 && (
+                  <div className="text-xs text-green-700">
+                    Top: {state.raid.top.map((t: any) => `${t.name} (${t.damage})`).join(", ")}
+                  </div>
+                )}
+                {state.raid.at_lair ? (
+                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                    title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
+                    onClick={() => onCommand("raid strike")}>strike</button>
+                ) : (
+                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                    title="Travel to the Warfront to make your stand"
+                    onClick={() => onCommand("go warfront")}>go to the Warfront</button>
+                )}
+              </Section>
+            )}
+
+            {state.stronghold && (
+              <Section title="Stronghold">
+                {state.stronghold.level === 0 ? (
+                  <>
+                    <div className="text-xs">You hold no ground of your own yet.</div>
+                    <button className="px-1 mt-1 border border-green-800 text-xs hover:bg-green-900"
+                      title="Found a Campsite — a stash, a tribute, and a place to grow"
+                      onClick={() => onCommand("build")}>build a Campsite ({state.stronghold.next_cost})</button>
+                  </>
+                ) : (
+                  <>
+                    <div className="text-xs">
+                      <span className="text-green-300">{state.stronghold.tier}</span> (tier {state.stronghold.level}/5)
+                    </div>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {state.stronghold.tribute > 0 && (
+                        <button className="px-1 border border-yellow-800 text-yellow-300 text-xs hover:bg-yellow-950"
+                          onClick={() => onCommand("collect")}>collect {state.stronghold.tribute} tribute</button>
+                      )}
+                      {state.stronghold.next_cost && (
+                        <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                          onClick={() => onCommand("build")}>
+                          upgrade to {state.stronghold.next_tier} ({state.stronghold.next_cost})
+                        </button>
+                      )}
+                    </div>
+                    {state.stronghold.stash && Object.keys(state.stronghold.stash).length > 0 && (
+                      <div className="mt-1 text-xs">
+                        <div className="text-green-700">
+                          Stash ({Object.keys(state.stronghold.stash).length}/{state.stronghold.stash_cap}):
+                        </div>
+                        {Object.entries(state.stronghold.stash).map(([item, qty]: [string, any]) => (
+                          <div key={item} className="flex items-center gap-2">
+                            <span>{qty}x {item.replace(/_/g, " ")}</span>
+                            <button className="text-green-700 hover:underline"
+                              onClick={() => onCommand(`unstash ${item}`)}>withdraw</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </>
+                )}
+              </Section>
+            )}
 
             {player.status_effects && Object.keys(player.status_effects).length > 0 && (
               <Section title="Status">
@@ -348,6 +569,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                     <div className="flex flex-wrap gap-1 mt-0.5">
                       <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
                         onClick={() => onCommand(`attack ${m.id}`)}>attack</button>
+                      <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
+                        title="Resolve the whole encounter in one action"
+                        onClick={() => onCommand(`fight ${m.id}`)}>fight</button>
                       {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
                         <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
                           title={a.description} onClick={() => onCommand(`${a.id} ${m.id}`)}>{a.name}</button>
@@ -378,11 +602,20 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                 <div className="space-y-1">
                   {people.map((entity: any) => {
                     const isInParty = state.party?.members?.some((mm: any) => mm.player_id === entity.id);
+                    const canRecruit = entity.type === "npc" && !player.companion
+                      && !NON_RECRUITABLE_ROLES.includes(entity.role);
                     return (
-                      <button key={entity.id} className="block text-left hover:underline"
-                        onClick={() => onCommand(`talk ${entity.id}`)}>
-                        {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
-                      </button>
+                      <div key={entity.id} className="flex items-center gap-2">
+                        <button className="text-left hover:underline"
+                          onClick={() => onCommand(`talk ${entity.id}`)}>
+                          {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
+                        </button>
+                        {canRecruit && (
+                          <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
+                            title="Recruit as a companion (costs a coin signing bonus)"
+                            onClick={() => onCommand(`recruit ${entity.id}`)}>recruit</button>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
@@ -436,6 +669,29 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                 ))}
               </div>
             </Section>
+
+            {state.rumors?.length > 0 && (
+              <Section title="Word Going Around">
+                {state.rumors.map((r: string, i: number) => (
+                  <div key={`rumor-${i}`} className="text-xs text-amber-200/80 italic">{r}</div>
+                ))}
+              </Section>
+            )}
+
+            {(state.echoes?.length > 0 || state.notes?.length > 0) && (
+              <Section title="Traces of Others">
+                {(state.echoes ?? []).map((e: any, i: number) => (
+                  <div key={`echo-${i}`} className="text-xs text-green-600 italic">
+                    {e.description} ({e.ago})
+                  </div>
+                ))}
+                {(state.notes ?? []).map((n: any, i: number) => (
+                  <div key={`note-${i}`} className="text-xs text-green-500">
+                    “{n.text}” — {n.player_name}
+                  </div>
+                ))}
+              </Section>
+            )}
           </>
         )}
 
@@ -473,6 +729,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                         </span>
                         <span className="flex gap-2 shrink-0">
                           <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${isGear ? "equip" : "use"} ${item}`)}>{isGear ? "equip" : "use"}</button>
+                          {state.stronghold?.level > 0 && item !== "coin" && (
+                            <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`stash ${item}`)}>stash</button>
+                          )}
                           <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`sell ${item}`)}>sell</button>
                         </span>
                       </li>
@@ -571,6 +830,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
 export default function Page() {
   const [playerId, setPlayerId] = useState<string | null>(null);
+  // A returning player's identity is restored from localStorage after mount;
+  // until that check has run we must not flash the welcome screen at them.
+  const [hasSavedPlayer, setHasSavedPlayer] = useState(true);
   const [input, setInput] = useState("");
   const [log, setLog] = useState<Line[]>([]);
   const [sceneImage, setSceneImage] = useState<string | null>(null);
@@ -586,6 +848,7 @@ export default function Page() {
   const [showBestiary, setShowBestiary] = useState(false);
   const thumbsRef = useRef<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipResumeLook = useRef(false);
 
   // Record a downscaled thumbnail for a location (first image we see wins).
   async function recordThumb(locId?: string, img?: string | null) {
@@ -651,15 +914,38 @@ export default function Page() {
   useEffect(() => {
     const saved = localStorage.getItem("player_id");
     if (saved) setPlayerId(saved);
+    else {
+      setHasSavedPlayer(false);
+      setLog([{
+        id: crypto.randomUUID(),
+        text: "Welcome to QuestAI.",
+      }]);
+    }
     thumbsRef.current = loadThumbs();
   }, []);
 
   useEffect(() => {
     if (!playerId) return;
+    if (skipResumeLook.current) {
+      skipResumeLook.current = false;
+      return;
+    }
 
     (async () => {
       try {
         const resp = await sendCommand("look", playerId);
+
+        if (!resp.ok && !resp.state) {
+          // Stale identity (e.g. the world was reset): drop it and start over.
+          localStorage.removeItem("player_id");
+          setPlayerId(null);
+          setHasSavedPlayer(false);
+          setLog([{
+            id: crypto.randomUUID(),
+            text: "Your hero is gone — the world has begun anew. Type: create <name> to forge a new one.",
+          }]);
+          return;
+        }
 
         if (resp.state) {
           setLastState(resp.state);
@@ -756,6 +1042,11 @@ export default function Page() {
       // Capture player_id if returned
       if (resp.state?.player?.player_id) {
         const pid = resp.state.player.player_id;
+        if (pid !== playerId) {
+          // A hero just forged: their welcome is in THIS response, so the
+          // resume-look must not run and wipe it.
+          skipResumeLook.current = true;
+        }
         setPlayerId(pid);
         localStorage.setItem("player_id", pid);
       }
@@ -782,10 +1073,11 @@ export default function Page() {
       }
 
       // Print messages
-      if (resp.messages) {
+      const messages = resp.messages ?? [];
+      if (messages.length > 0) {
         setLog((l) => [
           ...l,
-          ...resp.messages.map((m) => ({
+          ...messages.map((m) => ({
             id: crypto.randomUUID(),
             text: m,
           })),
@@ -934,8 +1226,17 @@ export default function Page() {
         </Modal>
       )}
 
+      {/* A newcomer sees the realm as it stands and forges a hero; the game
+          proper waits until they have one. */}
+      {!playerId && !hasSavedPlayer && (
+        <Welcome
+          busy={isWaitingForResponse}
+          onCreate={(name, path) => runCommand(`create ${name} ${path}`)}
+        />
+      )}
+
       {/* Main area: left column (image over log) + full-height status pane */}
-      <div className="flex-1 min-h-0 mb-2 flex gap-2">
+      <div className={`flex-1 min-h-0 mb-2 flex gap-2 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
 
         {/* Left column: scene image on top, log below */}
         <div className="flex-[3] flex flex-col min-h-0 gap-2">
@@ -954,8 +1255,13 @@ export default function Page() {
                 style={{ backgroundImage: `url(${sceneImage})` }}
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-green-700">
-                No scene
+              // No art (image generation off, or a render failed): the place
+              // still has a face — its name and its description.
+              <div className="absolute inset-0 bg-gradient-to-b from-green-950 via-black to-black flex flex-col items-center justify-center p-6 text-center">
+                <div className="text-2xl text-green-300">{lastState?.location?.name ?? "QuestAI"}</div>
+                {lastState?.location?.description && (
+                  <div className="text-xs text-green-600 mt-2 max-w-xl">{lastState.location.description}</div>
+                )}
               </div>
             )}
           </div>
@@ -979,11 +1285,12 @@ export default function Page() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <span>&gt;</span>
+      <form onSubmit={handleSubmit} className={`flex gap-2 items-center border border-green-800 px-2 py-1 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
+        <span className="text-green-500">&gt;</span>
         <input
           ref={inputRef}
-          className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700"
+          className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700 placeholder:text-green-900"
+          placeholder={isWaitingForResponse ? "the world turns…" : isLoadingScene ? "painting the scene…" : "type a command — look · go <exit> · fight <foe> · talk <npc> · next"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoadingScene || isWaitingForResponse}

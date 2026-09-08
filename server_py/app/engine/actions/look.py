@@ -41,9 +41,42 @@ def look(player: Player) -> ActionResponse:
             "You see: " + ", ".join(e["name"] for e in entities)
         )
 
+    # An incident underway here (see app/incidents.py) is the news of the place.
+    try:
+        from ...incidents import location_lines
+        messages.extend(location_lines(player.location))
+    except Exception as e:
+        print(f"[INCIDENTS] look lines failed: {e}")
+
+    # Echoes: what other players did here recently.
+    from ...echoes import echo_lines, rumor_lines
+    echoes = echo_lines(player)
+    if echoes:
+        messages.append("Echoes: " + " ".join(echoes))
+
+    # Where people gather, the world's news travels.
+    if any(e.get("type") == "npc" for e in entities):
+        rumors = rumor_lines(player)
+        if rumors:
+            messages.append("Word going around: " + " ".join(rumors))
+
+    # Notes left on the spot by other adventurers.
+    from ...db import get_location_notes
+    notes = get_location_notes(player.location)
+    if notes:
+        messages.append("Notes left here:")
+        for n in notes:
+            messages.append(f"  “{n['text']}” — {n['player_name']}")
+
     from ...world import get_location as _gl
     exits = ", ".join(_gl(e.to).name for e in loc.exits) if loc.exits else "none"
     messages.append(f"Exits: {exits}")
+
+    # An unopened frontier invites exploration.
+    from ...regiongen import frontier_at
+    from ...db import get_region_by_origin
+    if frontier_at(loc.id) and not get_region_by_origin(loc.id):
+        messages.append("Something here remains uncharted... (explore)")
 
     return ActionResponse(
         ok=True,

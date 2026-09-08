@@ -21,6 +21,21 @@ class LocationView(BaseModel):
     exits: List[Exit]
 
 
+class Companion(BaseModel):
+    """An NPC the player recruited to travel and fight alongside them.
+
+    The companion is a personal ally inspired by a world NPC — the original
+    stays put for everyone else. Code is the referee (deterministic combat
+    contribution, loyalty), Miriel is the personality (its spoken lines).
+    """
+    npc_id: str                 # the world NPC this ally came from
+    name: str
+    archetype: str              # "vanguard" | "mender" | "outrider"
+    loyalty: int = 0            # 0..100; grows as you adventure together
+    battles: int = 0           # encounters won at your side
+    recruited_at: int = 0      # epoch ms
+
+
 class Player(BaseModel):
     player_id: PlayerId
     name: str
@@ -44,6 +59,26 @@ class Player(BaseModel):
     last_defeated_at: Optional[int] = None
     last_attacked_target: Optional[str] = None
     last_attacked_at: Optional[int] = None
+    # Action-point economy (see app/action_points.py)
+    action_points: int = 30
+    ap_updated_at: Optional[int] = None
+    # Login recap: when we last summarized "while you were gone"
+    last_recap_at: Optional[int] = None
+    # Where this player's torn map points (location id), if they hold one
+    treasure_target: Optional[str] = None
+    # The ally currently travelling with this player (see app/companions.py)
+    companion: Optional[Companion] = None
+    # Personal stronghold (see app/stronghold.py): a tier you grow, a stash you
+    # fill, and a tribute that accrues while you're away.
+    stronghold_level: int = 0
+    stash: dict[str, int] = {}
+    stronghold_collected_at: Optional[int] = None
+    # Combat identity (see app/archetypes.py): a chosen path and the points you
+    # spend to learn its abilities.
+    archetype: Optional[str] = None
+    skill_points: int = 0
+    # Your Legend (see app/restoration.py): titles earned by putting wrongs right.
+    titles: list[str] = []
 
 class AttackArgs(BaseModel):
     target: str
@@ -52,6 +87,16 @@ class AttackArgs(BaseModel):
 class AttackReq(BaseModel):
     action: Literal["attack"]
     args: AttackArgs
+
+
+class FightArgs(BaseModel):
+    target: str
+    stance: Literal["bold", "standard", "cautious"] = "standard"
+
+
+class FightReq(BaseModel):
+    action: Literal["fight"]
+    args: FightArgs
 
 class InventoryReq(BaseModel):
     action: Literal["inventory"]
@@ -63,6 +108,7 @@ class InventoryReq(BaseModel):
 
 class CreatePlayerArgs(BaseModel):
     name: str = Field(min_length=1, max_length=32)
+    archetype: Optional[str] = Field(default=None, max_length=16)
 
 
 class CreatePlayerReq(BaseModel):
@@ -283,11 +329,157 @@ class ChooseReq(BaseModel):
     args: ChooseArgs
 
 
+class PostNoteArgs(BaseModel):
+    text: str = Field(min_length=1, max_length=240)
+
+
+class PostNoteReq(BaseModel):
+    action: Literal["post_note"]
+    args: PostNoteArgs
+
+
+class PostBountyArgs(BaseModel):
+    target: str = Field(min_length=1, max_length=64)
+    coins: int = Field(ge=1, le=100000)
+
+
+class PostBountyReq(BaseModel):
+    action: Literal["post_bounty"]
+    args: PostBountyArgs
+
+
+class BountiesReq(BaseModel):
+    action: Literal["bounties"]
+    args: Optional[dict] = None
+
+
+class GoalsReq(BaseModel):
+    action: Literal["goals"]
+    args: Optional[dict] = None
+
+
+class ExploreReq(BaseModel):
+    action: Literal["explore"]
+    args: Optional[dict] = None
+
+
+class DigReq(BaseModel):
+    action: Literal["dig"]
+    args: Optional[dict] = None
+
+
+class RestReq(BaseModel):
+    action: Literal["rest"]
+    args: Optional[dict] = None
+
+
+class RecruitArgs(BaseModel):
+    target: str = Field(min_length=1, max_length=64)
+
+
+class RecruitReq(BaseModel):
+    action: Literal["recruit"]
+    args: RecruitArgs
+
+
+class DismissReq(BaseModel):
+    action: Literal["dismiss"]
+    args: Optional[dict] = None
+
+
+class CompanionReq(BaseModel):
+    action: Literal["companion"]
+    args: Optional[dict] = None
+
+
+class RaidStatusReq(BaseModel):
+    action: Literal["raid_status"]
+    args: Optional[dict] = None
+
+
+class RaidStrikeReq(BaseModel):
+    action: Literal["raid_strike"]
+    args: Optional[dict] = None
+
+
+class StrongholdReq(BaseModel):
+    action: Literal["stronghold"]
+    args: Optional[dict] = None
+
+
+class BuildStrongholdReq(BaseModel):
+    action: Literal["build_stronghold"]
+    args: Optional[dict] = None
+
+
+class StashArgs(BaseModel):
+    item: str = Field(min_length=1, max_length=64)
+    qty: Optional[int] = None
+
+
+class StashReq(BaseModel):
+    action: Literal["stash"]
+    args: StashArgs
+
+
+class UnstashReq(BaseModel):
+    action: Literal["unstash"]
+    args: StashArgs
+
+
+class CollectTributeReq(BaseModel):
+    action: Literal["collect_tribute"]
+    args: Optional[dict] = None
+
+
+class GuideReq(BaseModel):
+    action: Literal["guide"]
+    args: Optional[dict] = None
+
+
+class ChoosePathArgs(BaseModel):
+    archetype: str = Field(min_length=1, max_length=16)
+
+
+class ChoosePathReq(BaseModel):
+    action: Literal["choose_path"]
+    args: ChoosePathArgs
+
+
+class LearnArgs(BaseModel):
+    ability: str = Field(min_length=1, max_length=32)
+
+
+class LearnReq(BaseModel):
+    action: Literal["learn"]
+    args: LearnArgs
+
+
+class CampaignReq(BaseModel):
+    action: Literal["campaign"]
+    args: Optional[dict] = None
+
+
+class UndertakeArgs(BaseModel):
+    wrong_id: str = Field(min_length=1, max_length=64)
+
+
+class UndertakeReq(BaseModel):
+    action: Literal["undertake"]
+    args: UndertakeArgs
+
+
+class IncidentsReq(BaseModel):
+    action: Literal["incidents"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
     MoveReq,
     AttackReq,
+    FightReq,
     StatsReq,
     InventoryReq,
     UseReq,
@@ -317,6 +509,29 @@ ActionRequest = Union[
     StoryReq,
     BeginArcReq,
     ChooseReq,
+    PostNoteReq,
+    PostBountyReq,
+    BountiesReq,
+    GoalsReq,
+    ExploreReq,
+    DigReq,
+    RestReq,
+    RecruitReq,
+    DismissReq,
+    CompanionReq,
+    RaidStatusReq,
+    RaidStrikeReq,
+    StrongholdReq,
+    BuildStrongholdReq,
+    StashReq,
+    UnstashReq,
+    CollectTributeReq,
+    GuideReq,
+    ChoosePathReq,
+    LearnReq,
+    CampaignReq,
+    UndertakeReq,
+    IncidentsReq,
 ]
 
 

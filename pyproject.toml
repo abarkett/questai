@@ -5,7 +5,11 @@ requires-python = ">=3.11"
 dependencies = [
   "fastapi>=0.110",
   "uvicorn[standard]>=0.27",
-  "pydantic>=2.6"
+  "pydantic>=2.6",
+  "requests>=2.31",
+  "python-dotenv>=1.0",
+  # Scene art (Gemini). Imported lazily; without it the game runs with no images.
+  "google-genai>=1.0",
 ]
 
 [tool.uvicorn]

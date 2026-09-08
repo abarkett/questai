@@ -44,7 +44,18 @@ def init_db() -> None:
               last_defeated_at INTEGER,
               last_attacked_target TEXT,
               last_attacked_at INTEGER,
-              last_seen INTEGER DEFAULT 0
+              last_seen INTEGER DEFAULT 0,
+              action_points INTEGER DEFAULT 30,
+              ap_updated_at INTEGER,
+              last_recap_at INTEGER,
+              treasure_target TEXT,
+              companion_json TEXT,
+              stronghold_level INTEGER DEFAULT 0,
+              stash_json TEXT DEFAULT '{}',
+              stronghold_collected_at INTEGER,
+              archetype TEXT,
+              skill_points INTEGER DEFAULT 0,
+              titles_json TEXT DEFAULT '[]'
             );
 
             CREATE TABLE IF NOT EXISTS action_log (
@@ -194,9 +205,211 @@ def init_db() -> None:
               spawned_turn INTEGER NOT NULL DEFAULT 0
             );
 
+            -- Generated content: regions minted at runtime (procedural + AI).
+            -- Static catalogs in code are the seed; these tables extend them.
+            CREATE TABLE IF NOT EXISTS regions (
+              region_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              theme TEXT,
+              tier INTEGER NOT NULL,
+              entry_location TEXT NOT NULL,
+              origin_location TEXT NOT NULL,
+              discovered_by TEXT,
+              created_at INTEGER NOT NULL,
+              data_json TEXT DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_locations (
+              location_id TEXT PRIMARY KEY,
+              region_id TEXT,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL,
+              cleared_description TEXT,
+              exits_json TEXT NOT NULL DEFAULT '[]',
+              outdoor INTEGER NOT NULL DEFAULT 0,
+              resource TEXT
+            );
+
+            -- Exits grafted onto existing locations (e.g. a frontier opening
+            -- into a newly minted region).
+            CREATE TABLE IF NOT EXISTS gen_exits (
+              from_location TEXT NOT NULL,
+              to_location TEXT NOT NULL,
+              label TEXT NOT NULL,
+              PRIMARY KEY (from_location, to_location)
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_entities (
+              entity_id TEXT PRIMARY KEY,
+              location_id TEXT NOT NULL,
+              name TEXT NOT NULL,
+              type TEXT NOT NULL,
+              data_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_items (
+              item_id TEXT PRIMARY KEY,
+              data_json TEXT NOT NULL,
+              recipe_json TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS gen_quests (
+              quest_id TEXT PRIMARY KEY,
+              region_id TEXT,
+              data_json TEXT NOT NULL
+            );
+
+            -- Async multiplayer: notes players leave at locations.
+            CREATE TABLE IF NOT EXISTS location_notes (
+              note_id INTEGER PRIMARY KEY AUTOINCREMENT,
+              location_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              text TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+
+            -- Async multiplayer: player-posted bounties on monsters.
+            CREATE TABLE IF NOT EXISTS bounties (
+              bounty_id TEXT PRIMARY KEY,
+              poster_id TEXT NOT NULL,
+              poster_name TEXT NOT NULL,
+              target_name TEXT NOT NULL,
+              reward_coins INTEGER NOT NULL,
+              status TEXT NOT NULL DEFAULT 'open',
+              created_at INTEGER NOT NULL,
+              claimed_by TEXT,
+              claimed_by_name TEXT,
+              claimed_at INTEGER
+            );
+
+            -- Community goals: server-wide objectives everyone chips away at.
+            CREATE TABLE IF NOT EXISTS world_goals (
+              goal_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              description TEXT NOT NULL,
+              kind TEXT NOT NULL,
+              target_name TEXT,
+              required INTEGER NOT NULL,
+              progress INTEGER NOT NULL DEFAULT 0,
+              status TEXT NOT NULL DEFAULT 'active',
+              reward_coins INTEGER NOT NULL DEFAULT 0,
+              expires_at INTEGER,
+              created_at INTEGER NOT NULL,
+              completed_at INTEGER,
+              effect_json TEXT DEFAULT '{}'
+            );
+
+            CREATE TABLE IF NOT EXISTS goal_contributions (
+              goal_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              amount INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (goal_id, player_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_world_goals_status ON world_goals(status);
+
+            -- Co-op raid bosses: a world-threat with a huge shared HP pool that
+            -- many players chip down over real time (see app/raids.py).
+            CREATE TABLE IF NOT EXISTS raid_bosses (
+              raid_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT NOT NULL,
+              hp INTEGER NOT NULL,
+              max_hp INTEGER NOT NULL,
+              attack INTEGER NOT NULL DEFAULT 1,
+              reward_pool INTEGER NOT NULL DEFAULT 0,
+              trophy TEXT,
+              status TEXT NOT NULL DEFAULT 'active',
+              effect_json TEXT DEFAULT '{}',
+              completion_text TEXT,
+              created_at INTEGER NOT NULL,
+              defeated_at INTEGER,
+              finisher_name TEXT
+            );
+
+            CREATE TABLE IF NOT EXISTS raid_contributions (
+              raid_id TEXT NOT NULL,
+              player_id TEXT NOT NULL,
+              player_name TEXT NOT NULL,
+              damage INTEGER NOT NULL DEFAULT 0,
+              PRIMARY KEY (raid_id, player_id)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_raid_bosses_status ON raid_bosses(status);
+
+            -- The Chronicle: which wrongs of the Restoration campaign have been
+            -- put right, and by whom (see app/restoration.py). First righter wins.
+            CREATE TABLE IF NOT EXISTS restorations (
+              wrong_id TEXT PRIMARY KEY,
+              act INTEGER NOT NULL,
+              righted_by_id TEXT NOT NULL,
+              righted_by_name TEXT NOT NULL,
+              righted_at INTEGER NOT NULL,
+              entry TEXT
+            );
+
+            -- The acts of the Restoration campaign, one row per act, authored
+            -- (by Miriel, from the living world) when the act begins and
+            -- immutable from then on (see app/campaigngen.py). `source` says
+            -- who wrote it: 'miriel', or 'authored' / 'skeleton' fallbacks.
+            CREATE TABLE IF NOT EXISTS campaign_acts (
+              act_index INTEGER PRIMARY KEY,
+              source TEXT NOT NULL,
+              data_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+
+            -- World events with teeth: Miriel-authored incidents that carry a
+            -- real mechanic while active and are resolved by play or expire
+            -- with a consequence (see app/incidents.py).
+            CREATE TABLE IF NOT EXISTS incidents (
+              incident_id TEXT PRIMARY KEY,
+              kind TEXT NOT NULL,
+              title TEXT NOT NULL,
+              location_id TEXT,
+              status TEXT NOT NULL DEFAULT 'active',
+              data_json TEXT NOT NULL,
+              created_turn INTEGER NOT NULL,
+              expires_turn INTEGER NOT NULL,
+              resolved_turn INTEGER,
+              resolved_by_id TEXT,
+              resolved_by_name TEXT,
+              created_at INTEGER NOT NULL
+            );
+
+            -- Data-driven world evolution rules (interpreted by world_rules.py)
+            CREATE TABLE IF NOT EXISTS world_rules (
+              rule_id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              description TEXT,
+              conditions_json TEXT NOT NULL DEFAULT '[]',
+              effects_json TEXT NOT NULL DEFAULT '[]',
+              cooldown_turns INTEGER NOT NULL DEFAULT 0,
+              last_triggered_turn INTEGER,
+              enabled INTEGER NOT NULL DEFAULT 1
+            );
+
+            -- SMS play: maps a phone number (or any external handle) to a player.
+            CREATE TABLE IF NOT EXISTS sms_identities (
+              handle TEXT PRIMARY KEY,
+              player_id TEXT NOT NULL,
+              created_at INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_notes_location
+              ON location_notes(location_id, created_at);
+            CREATE INDEX IF NOT EXISTS idx_bounties_status ON bounties(status);
+            CREATE INDEX IF NOT EXISTS idx_world_events_created
+              ON world_events(created_at);
+
             CREATE INDEX IF NOT EXISTS idx_story_arcs_status ON story_arcs(status);
             CREATE INDEX IF NOT EXISTS idx_monsters_location ON monsters(location_id);
             CREATE INDEX IF NOT EXISTS idx_player_story_arcs_player ON player_story_arcs(player_id);
+            CREATE INDEX IF NOT EXISTS idx_gen_locations_region ON gen_locations(region_id);
+            CREATE INDEX IF NOT EXISTS idx_gen_entities_location ON gen_entities(location_id);
 
             -- Initialize world clock if not exists
             INSERT OR IGNORE INTO world_clock (id, current_turn) VALUES (1, 0);
@@ -278,6 +491,17 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         "last_attacked_target": "TEXT",
         "last_attacked_at": "INTEGER",
         "last_seen": "INTEGER DEFAULT 0",
+        "action_points": "INTEGER DEFAULT 30",
+        "ap_updated_at": "INTEGER",
+        "last_recap_at": "INTEGER",
+        "treasure_target": "TEXT",
+        "companion_json": "TEXT",
+        "stronghold_level": "INTEGER DEFAULT 0",
+        "stash_json": "TEXT DEFAULT '{}'",
+        "stronghold_collected_at": "INTEGER",
+        "archetype": "TEXT",
+        "skill_points": "INTEGER DEFAULT 0",
+        "titles_json": "TEXT DEFAULT '[]'",
     }
     
     # Add missing columns
@@ -298,6 +522,15 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         }.items():
             if col not in arc_cols:
                 conn.execute(f"ALTER TABLE player_story_arcs ADD COLUMN {col} {coltype}")
+
+    # The Chronicle gained a narrated entry per righted wrong.
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='restorations'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(restorations)")
+        if "entry" not in {row[1] for row in cursor.fetchall()}:
+            conn.execute("ALTER TABLE restorations ADD COLUMN entry TEXT")
 
     # Clean up duplicate players (keep oldest by player_id)
     _remove_duplicate_players(conn)
@@ -335,6 +568,19 @@ def _build_player_from_row(row: sqlite3.Row) -> Player:
     data.setdefault("last_defeated_at", None)
     data.setdefault("last_attacked_target", None)
     data.setdefault("last_attacked_at", None)
+    if data.get("action_points") is None:
+        data["action_points"] = 30
+    data.setdefault("ap_updated_at", None)
+    data.setdefault("last_recap_at", None)
+    data.setdefault("treasure_target", None)
+    companion_json = data.get("companion_json")
+    data["companion"] = json.loads(companion_json) if companion_json else None
+    data["stronghold_level"] = data.get("stronghold_level") or 0
+    data["stash"] = json.loads(data.get("stash_json") or "{}")
+    data.setdefault("stronghold_collected_at", None)
+    data.setdefault("archetype", None)
+    data["skill_points"] = data.get("skill_points") or 0
+    data["titles"] = json.loads(data.get("titles_json") or "[]")
     return Player(**data)
 
 
@@ -400,9 +646,20 @@ def upsert_player(p: Player) -> None:
               archived_quests_json,
               last_defeated_at,
               last_attacked_target,
-              last_attacked_at
+              last_attacked_at,
+              action_points,
+              ap_updated_at,
+              last_recap_at,
+              treasure_target,
+              companion_json,
+              stronghold_level,
+              stash_json,
+              stronghold_collected_at,
+              archetype,
+              skill_points,
+              titles_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(player_id) DO UPDATE SET
               name=excluded.name,
               location=excluded.location,
@@ -422,7 +679,18 @@ def upsert_player(p: Player) -> None:
               archived_quests_json=excluded.archived_quests_json,
               last_defeated_at=excluded.last_defeated_at,
               last_attacked_target=excluded.last_attacked_target,
-              last_attacked_at=excluded.last_attacked_at
+              last_attacked_at=excluded.last_attacked_at,
+              action_points=excluded.action_points,
+              ap_updated_at=excluded.ap_updated_at,
+              last_recap_at=excluded.last_recap_at,
+              treasure_target=excluded.treasure_target,
+              companion_json=excluded.companion_json,
+              stronghold_level=excluded.stronghold_level,
+              stash_json=excluded.stash_json,
+              stronghold_collected_at=excluded.stronghold_collected_at,
+              archetype=excluded.archetype,
+              skill_points=excluded.skill_points,
+              titles_json=excluded.titles_json
             """,
             (
                 p.player_id,
@@ -445,6 +713,17 @@ def upsert_player(p: Player) -> None:
                 p.last_defeated_at,
                 p.last_attacked_target,
                 p.last_attacked_at,
+                p.action_points,
+                p.ap_updated_at,
+                p.last_recap_at,
+                p.treasure_target,
+                json.dumps(p.companion.model_dump()) if p.companion else None,
+                p.stronghold_level,
+                json.dumps(p.stash),
+                p.stronghold_collected_at,
+                p.archetype,
+                p.skill_points,
+                json.dumps(p.titles or []),
             ),
         )
         conn.commit()
@@ -1418,3 +1697,1091 @@ def remove_monster(instance_id: str) -> None:
     finally:
         conn.close()
 
+
+
+# -------------------------------------------------
+# Generated content (regions minted at runtime)
+# -------------------------------------------------
+
+def create_region(
+    *,
+    region_id: str,
+    name: str,
+    theme: Optional[str],
+    tier: int,
+    entry_location: str,
+    origin_location: str,
+    discovered_by: Optional[str],
+    data: Optional[Dict[str, Any]] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO regions
+              (region_id, name, theme, tier, entry_location, origin_location,
+               discovered_by, created_at, data_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                region_id, name, theme, tier, entry_location, origin_location,
+                discovered_by, int(time.time() * 1000), json.dumps(data or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_region(region_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM regions WHERE region_id = ?", (region_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["data"] = json.loads(d.pop("data_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def get_region_by_origin(origin_location: str) -> Optional[Dict[str, Any]]:
+    """The region (if any) already minted from this frontier location."""
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM regions WHERE origin_location = ?", (origin_location,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["data"] = json.loads(d.pop("data_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def count_regions() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM regions").fetchone()
+        return int(row["c"])
+    finally:
+        conn.close()
+
+
+def list_regions() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM regions ORDER BY created_at").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def upsert_gen_location(
+    *,
+    location_id: str,
+    region_id: Optional[str],
+    name: str,
+    description: str,
+    cleared_description: Optional[str],
+    exits: List[Dict[str, str]],
+    outdoor: bool = False,
+    resource: Optional[str] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_locations
+              (location_id, region_id, name, description, cleared_description,
+               exits_json, outdoor, resource)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(location_id) DO UPDATE SET
+              region_id=excluded.region_id,
+              name=excluded.name,
+              description=excluded.description,
+              cleared_description=excluded.cleared_description,
+              exits_json=excluded.exits_json,
+              outdoor=excluded.outdoor,
+              resource=excluded.resource
+            """,
+            (
+                location_id, region_id, name, description, cleared_description,
+                json.dumps(exits), 1 if outdoor else 0, resource,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_location(location_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM gen_locations WHERE location_id = ?", (location_id,)
+        ).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["exits"] = json.loads(d.pop("exits_json") or "[]")
+        d["outdoor"] = bool(d["outdoor"])
+        return d
+    finally:
+        conn.close()
+
+
+def get_all_gen_locations() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_locations").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["exits"] = json.loads(d.pop("exits_json") or "[]")
+            d["outdoor"] = bool(d["outdoor"])
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def add_gen_exit(from_location: str, to_location: str, label: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO gen_exits (from_location, to_location, label) VALUES (?, ?, ?)",
+            (from_location, to_location, label),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_exits(from_location: str) -> List[Dict[str, str]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT to_location, label FROM gen_exits WHERE from_location = ?",
+            (from_location,),
+        ).fetchall()
+        return [{"to": r["to_location"], "label": r["label"]} for r in rows]
+    finally:
+        conn.close()
+
+
+def upsert_gen_entity(*, entity_id: str, location_id: str, name: str, type: str, data: Dict[str, Any]) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_entities (entity_id, location_id, name, type, data_json)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(entity_id) DO UPDATE SET
+              location_id=excluded.location_id,
+              name=excluded.name,
+              type=excluded.type,
+              data_json=excluded.data_json
+            """,
+            (entity_id, location_id, name, type, json.dumps(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_entities_at(location_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM gen_entities WHERE location_id = ?", (location_id,)
+        ).fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def get_all_gen_entities() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_entities").fetchall()
+        out = []
+        for row in rows:
+            d = dict(row)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def upsert_gen_item(*, item_id: str, data: Dict[str, Any], recipe: Optional[Dict[str, Any]] = None) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_items (item_id, data_json, recipe_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(item_id) DO UPDATE SET
+              data_json=excluded.data_json,
+              recipe_json=excluded.recipe_json
+            """,
+            (item_id, json.dumps(data), json.dumps(recipe) if recipe else None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_item(item_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM gen_items WHERE item_id = ?", (item_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            "item_id": row["item_id"],
+            "data": json.loads(row["data_json"]),
+            "recipe": json.loads(row["recipe_json"]) if row["recipe_json"] else None,
+        }
+    finally:
+        conn.close()
+
+
+def get_all_gen_items() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM gen_items").fetchall()
+        return [
+            {
+                "item_id": r["item_id"],
+                "data": json.loads(r["data_json"]),
+                "recipe": json.loads(r["recipe_json"]) if r["recipe_json"] else None,
+            }
+            for r in rows
+        ]
+    finally:
+        conn.close()
+
+
+def upsert_gen_quest(*, quest_id: str, region_id: Optional[str], data: Dict[str, Any]) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO gen_quests (quest_id, region_id, data_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(quest_id) DO UPDATE SET
+              region_id=excluded.region_id,
+              data_json=excluded.data_json
+            """,
+            (quest_id, region_id, json.dumps(data)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_gen_quest(quest_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM gen_quests WHERE quest_id = ?", (quest_id,)).fetchone()
+        if not row:
+            return None
+        return {
+            "quest_id": row["quest_id"],
+            "region_id": row["region_id"],
+            "data": json.loads(row["data_json"]),
+        }
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Async multiplayer: notes, bounties, event queries
+# -------------------------------------------------
+
+MAX_NOTES_PER_LOCATION = 20
+
+
+def add_location_note(*, location_id: str, player_id: str, player_name: str, text: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO location_notes (location_id, player_id, player_name, text, created_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (location_id, player_id, player_name, text, int(time.time() * 1000)),
+        )
+        # Keep the board from growing without bound.
+        conn.execute(
+            """
+            DELETE FROM location_notes
+            WHERE location_id = ? AND note_id NOT IN (
+              SELECT note_id FROM location_notes
+              WHERE location_id = ?
+              ORDER BY created_at DESC LIMIT ?
+            )
+            """,
+            (location_id, location_id, MAX_NOTES_PER_LOCATION),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_location_notes(location_id: str, limit: int = 3) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM location_notes
+            WHERE location_id = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (location_id, limit),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def create_bounty(
+    *, bounty_id: str, poster_id: str, poster_name: str, target_name: str, reward_coins: int
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO bounties
+              (bounty_id, poster_id, poster_name, target_name, reward_coins, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'open', ?)
+            """,
+            (bounty_id, poster_id, poster_name, target_name, reward_coins, int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_open_bounties(limit: int = 20) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM bounties WHERE status = 'open' ORDER BY created_at DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def claim_bounty_for_kill(target_name: str, killer_id: str, killer_name: str) -> Optional[Dict[str, Any]]:
+    """
+    Atomically claim the oldest open bounty on `target_name` not posted by the
+    killer. Returns the claimed bounty (or None). BEGIN IMMEDIATE so two
+    concurrent kills can't both claim the same bounty.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            """
+            SELECT * FROM bounties
+            WHERE status = 'open' AND LOWER(target_name) = LOWER(?) AND poster_id != ?
+            ORDER BY created_at ASC LIMIT 1
+            """,
+            (target_name, killer_id),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        conn.execute(
+            """
+            UPDATE bounties
+            SET status = 'claimed', claimed_by = ?, claimed_by_name = ?, claimed_at = ?
+            WHERE bounty_id = ?
+            """,
+            (killer_id, killer_name, int(time.time() * 1000), row["bounty_id"]),
+        )
+        conn.commit()
+        return dict(row)
+    finally:
+        conn.close()
+
+
+def get_recent_deeds_at(location_id: str, exclude_player: str, limit: int = 3) -> List[Dict[str, Any]]:
+    """Recent notable deeds by *other* players at a location (for echoes)."""
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM world_events
+            WHERE event_type = 'deed' AND location_id = ?
+            ORDER BY created_at DESC LIMIT ?
+            """,
+            (location_id, limit * 4),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            if d["data"].get("player_id") == exclude_player:
+                continue
+            out.append(d)
+            if len(out) >= limit:
+                break
+        return out
+    finally:
+        conn.close()
+
+
+def get_world_events_since(since_ms: int, limit: int = 50) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM world_events
+            WHERE created_at > ?
+            ORDER BY created_at ASC LIMIT ?
+            """,
+            (since_ms, limit),
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Community goals (server-wide seasonal objectives)
+# -------------------------------------------------
+
+def create_world_goal(
+    *,
+    goal_id: str,
+    name: str,
+    description: str,
+    kind: str,
+    target_name: Optional[str],
+    required: int,
+    reward_coins: int,
+    expires_at: Optional[int],
+    effect: Optional[Dict[str, str]] = None,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT OR IGNORE INTO world_goals
+              (goal_id, name, description, kind, target_name, required,
+               reward_coins, expires_at, created_at, effect_json)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                goal_id, name, description, kind, target_name, required,
+                reward_coins, expires_at, int(time.time() * 1000),
+                json.dumps(effect or {}),
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_active_world_goals() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM world_goals WHERE status = 'active' ORDER BY created_at"
+        ).fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["effect"] = json.loads(d.pop("effect_json") or "{}")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def get_world_goal(goal_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM world_goals WHERE goal_id = ?", (goal_id,)).fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        d["effect"] = json.loads(d.pop("effect_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def increment_world_goal(goal_id: str, player_id: str, player_name: str, amount: int = 1) -> Optional[Dict[str, Any]]:
+    """
+    Atomically add progress (and the player's contribution) to an active goal.
+    Returns the updated goal row, or None if the goal wasn't active.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT * FROM world_goals WHERE goal_id = ? AND status = 'active'",
+            (goal_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        conn.execute(
+            "UPDATE world_goals SET progress = progress + ? WHERE goal_id = ?",
+            (amount, goal_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO goal_contributions (goal_id, player_id, player_name, amount)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(goal_id, player_id) DO UPDATE SET
+              amount = amount + excluded.amount,
+              player_name = excluded.player_name
+            """,
+            (goal_id, player_id, player_name, amount),
+        )
+        updated = conn.execute(
+            "SELECT * FROM world_goals WHERE goal_id = ?", (goal_id,)
+        ).fetchone()
+        conn.commit()
+        d = dict(updated)
+        d["effect"] = json.loads(d.pop("effect_json") or "{}")
+        return d
+    finally:
+        conn.close()
+
+
+def complete_world_goal(goal_id: str) -> bool:
+    """Mark a goal completed. Returns True only for the call that flips it."""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        cur = conn.execute(
+            "UPDATE world_goals SET status = 'completed', completed_at = ? "
+            "WHERE goal_id = ? AND status = 'active'",
+            (int(time.time() * 1000), goal_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def expire_world_goal(goal_id: str) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            "UPDATE world_goals SET status = 'expired' WHERE goal_id = ? AND status = 'active'",
+            (goal_id,),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_goal_contributions(goal_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM goal_contributions WHERE goal_id = ? ORDER BY amount DESC",
+            (goal_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_goal_contribution(goal_id: str, player_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT amount FROM goal_contributions WHERE goal_id = ? AND player_id = ?",
+            (goal_id, player_id),
+        ).fetchone()
+        return int(row["amount"]) if row else 0
+    finally:
+        conn.close()
+
+
+def count_world_goals() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM world_goals").fetchone()
+        return int(row["c"])
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Co-op raid bosses
+# -------------------------------------------------
+
+def create_raid_boss(
+    *,
+    raid_id: str,
+    name: str,
+    title: str,
+    description: str,
+    hp: int,
+    attack: int,
+    reward_pool: int,
+    trophy: Optional[str],
+    effect: Optional[Dict[str, str]],
+    completion_text: str,
+) -> bool:
+    """Create the boss if no row with this raid_id exists (active OR already
+    felled). Returns True only when a new boss was actually created."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO raid_bosses
+              (raid_id, name, title, description, hp, max_hp, attack,
+               reward_pool, trophy, effect_json, completion_text, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                raid_id, name, title, description, hp, hp, attack,
+                reward_pool, trophy, json.dumps(effect or {}), completion_text,
+                int(time.time() * 1000),
+            ),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_raid_boss(raid_id: str) -> Optional[Dict[str, Any]]:
+    """A raid boss by id, whatever its status (active or felled)."""
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM raid_bosses WHERE raid_id = ?", (raid_id,)).fetchone()
+        return _raid_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def _raid_row_to_dict(row: sqlite3.Row) -> Dict[str, Any]:
+    d = dict(row)
+    d["effect"] = json.loads(d.pop("effect_json") or "{}")
+    return d
+
+
+def get_active_raid_boss() -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT * FROM raid_bosses WHERE status = 'active' ORDER BY created_at LIMIT 1"
+        ).fetchone()
+        return _raid_row_to_dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def count_raid_bosses() -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT COUNT(*) AS c FROM raid_bosses").fetchone()
+        return int(row["c"])
+    finally:
+        conn.close()
+
+
+def damage_raid_boss(
+    raid_id: str, damage: int, player_id: str, player_name: str
+) -> Optional[Dict[str, Any]]:
+    """
+    Atomically apply damage to the raid boss and credit the striker.
+
+    Returns None if the boss is no longer active, else a dict with the new hp,
+    `killed` (hp reached 0), and `finisher` (True only for the single call that
+    lands the final blow). Concurrent strikers can't double-kill or lose damage.
+    """
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT hp, max_hp, name FROM raid_bosses WHERE raid_id = ? AND status = 'active'",
+            (raid_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+
+        # Credit the striker for the damage they actually land (never more than
+        # the boss had left, so contribution shares stay honest).
+        landed = min(damage, row["hp"])
+        new_hp = max(0, row["hp"] - damage)
+        conn.execute("UPDATE raid_bosses SET hp = ? WHERE raid_id = ?", (new_hp, raid_id))
+        conn.execute(
+            """
+            INSERT INTO raid_contributions (raid_id, player_id, player_name, damage)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(raid_id, player_id) DO UPDATE SET
+              damage = damage + excluded.damage,
+              player_name = excluded.player_name
+            """,
+            (raid_id, player_id, player_name, max(0, landed)),
+        )
+
+        finisher = False
+        if new_hp <= 0:
+            cur = conn.execute(
+                "UPDATE raid_bosses SET status = 'defeated', defeated_at = ?, finisher_name = ? "
+                "WHERE raid_id = ? AND status = 'active'",
+                (int(time.time() * 1000), player_name, raid_id),
+            )
+            finisher = cur.rowcount > 0
+        conn.commit()
+        return {"killed": new_hp <= 0, "finisher": finisher,
+                "hp": new_hp, "max_hp": row["max_hp"], "name": row["name"]}
+    finally:
+        conn.close()
+
+
+def modify_raid_boss(raid_id: str, *, attack_add: int = 0, heal: int = 0) -> Optional[Dict[str, Any]]:
+    """Atomically apply a phase effect (enrage / self-heal) to the active boss.
+    Returns the new {hp, max_hp, attack}, or None if it isn't active."""
+    conn = get_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        row = conn.execute(
+            "SELECT hp, max_hp, attack FROM raid_bosses WHERE raid_id = ? AND status = 'active'",
+            (raid_id,),
+        ).fetchone()
+        if not row:
+            conn.execute("ROLLBACK")
+            return None
+        new_hp = min(row["max_hp"], row["hp"] + max(0, heal))
+        new_attack = max(1, row["attack"] + attack_add)
+        conn.execute(
+            "UPDATE raid_bosses SET hp = ?, attack = ? WHERE raid_id = ?",
+            (new_hp, new_attack, raid_id),
+        )
+        conn.commit()
+        return {"hp": new_hp, "max_hp": row["max_hp"], "attack": new_attack}
+    finally:
+        conn.close()
+
+
+def get_raid_contributions(raid_id: str) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM raid_contributions WHERE raid_id = ? ORDER BY damage DESC",
+            (raid_id,),
+        ).fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_raid_contribution(raid_id: str, player_id: str) -> int:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT damage FROM raid_contributions WHERE raid_id = ? AND player_id = ?",
+            (raid_id, player_id),
+        ).fetchone()
+        return int(row["damage"]) if row else 0
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# The Chronicle (Restoration campaign)
+# -------------------------------------------------
+
+def mark_wrong_righted(wrong_id: str, act: int, player_id: str, player_name: str) -> bool:
+    """Record that a wrong is put right. Atomic and first-wins: returns True
+    only for the single call that rights it; later callers get False."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO restorations
+              (wrong_id, act, righted_by_id, righted_by_name, righted_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (wrong_id, act, player_id, player_name, int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_restorations() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM restorations ORDER BY righted_at").fetchall()
+        return [dict(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_restoration(wrong_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        row = conn.execute("SELECT * FROM restorations WHERE wrong_id = ?", (wrong_id,)).fetchone()
+        return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def set_restoration_entry(wrong_id: str, entry: str) -> None:
+    """Attach the narrated Chronicle entry to a righted wrong."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE restorations SET entry = ? WHERE wrong_id = ?", (entry, wrong_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Campaign acts (see app/campaigngen.py)
+# -------------------------------------------------
+
+def create_campaign_act(act_index: int, source: str, data: Dict[str, Any]) -> bool:
+    """Persist an authored act, once. INSERT OR IGNORE: the first writer wins,
+    so two concurrent authorings can never produce two different Act N's."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO campaign_acts (act_index, source, data_json, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (act_index, source, json.dumps(data), int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_campaign_acts() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM campaign_acts ORDER BY act_index").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json"))
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Incidents (see app/incidents.py)
+# -------------------------------------------------
+
+def _incident_row(r) -> Dict[str, Any]:
+    d = dict(r)
+    d["data"] = json.loads(d.pop("data_json") or "{}")
+    return d
+
+
+def create_incident(*, incident_id: str, kind: str, title: str, location_id: Optional[str],
+                    data: Dict[str, Any], created_turn: int, expires_turn: int) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO incidents
+              (incident_id, kind, title, location_id, status, data_json, created_turn, expires_turn, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            """,
+            (incident_id, kind, title, location_id, json.dumps(data), created_turn, expires_turn,
+             int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        return _incident_row(r) if r else None
+    finally:
+        conn.close()
+
+
+def get_active_incidents() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM incidents WHERE status = 'active' ORDER BY created_turn"
+        ).fetchall()
+        return [_incident_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_recent_incidents(limit: int = 10) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM incidents ORDER BY created_turn DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [_incident_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def close_incident(incident_id: str, status: str, turn: int,
+                   by_id: Optional[str] = None, by_name: Optional[str] = None) -> bool:
+    """Move an active incident to 'resolved' or 'expired'. First closer wins."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE incidents SET status = ?, resolved_turn = ?, resolved_by_id = ?, resolved_by_name = ?
+            WHERE incident_id = ? AND status = 'active'
+            """,
+            (status, turn, by_id, by_name, incident_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_campaign_act(act_index: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM campaign_acts WHERE act_index = ?", (act_index,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["data"] = json.loads(d.pop("data_json"))
+        return d
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Data-driven world rules
+# -------------------------------------------------
+
+def upsert_world_rule(
+    *,
+    rule_id: str,
+    name: str,
+    description: Optional[str],
+    conditions: List[Dict[str, Any]],
+    effects: List[Dict[str, Any]],
+    cooldown_turns: int = 0,
+    enabled: bool = True,
+) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            """
+            INSERT INTO world_rules
+              (rule_id, name, description, conditions_json, effects_json,
+               cooldown_turns, enabled)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(rule_id) DO UPDATE SET
+              name=excluded.name,
+              description=excluded.description,
+              conditions_json=excluded.conditions_json,
+              effects_json=excluded.effects_json,
+              cooldown_turns=excluded.cooldown_turns,
+              enabled=excluded.enabled
+            """,
+            (
+                rule_id, name, description, json.dumps(conditions),
+                json.dumps(effects), cooldown_turns, 1 if enabled else 0,
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_enabled_world_rules() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM world_rules WHERE enabled = 1").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["conditions"] = json.loads(d.pop("conditions_json") or "[]")
+            d["effects"] = json.loads(d.pop("effects_json") or "[]")
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def stamp_world_rule_triggered(rule_id: str, turn: int) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "UPDATE world_rules SET last_triggered_turn = ? WHERE rule_id = ?",
+            (turn, rule_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# SMS identities
+# -------------------------------------------------
+
+def bind_sms_identity(handle: str, player_id: str) -> None:
+    conn = get_conn()
+    try:
+        conn.execute(
+            "INSERT OR REPLACE INTO sms_identities (handle, player_id, created_at) VALUES (?, ?, ?)",
+            (handle, player_id, int(time.time() * 1000)),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def get_sms_player_id(handle: str) -> Optional[str]:
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            "SELECT player_id FROM sms_identities WHERE handle = ?", (handle,)
+        ).fetchone()
+        return row["player_id"] if row else None
+    finally:
+        conn.close()

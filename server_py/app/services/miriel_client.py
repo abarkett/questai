@@ -25,6 +25,14 @@ PROJECT_NAMESPACE = "questai"
 _TEST_RESPONDER = None
 
 
+def default_timeout() -> float:
+    """Seconds any single Miriel HTTP call may take (MIRIEL_TIMEOUT_SECONDS)."""
+    try:
+        return max(5.0, float(os.getenv("MIRIEL_TIMEOUT_SECONDS", "45")))
+    except ValueError:
+        return 45.0
+
+
 def install_test_responder(fn) -> None:
     """fn(query: str) -> str. Pass None to uninstall. Installing one marks the
     client enabled so is_miriel_enabled() reflects the stubbed-but-working AI."""
@@ -145,6 +153,11 @@ class MirielClient:
         if 'verify' not in kwargs:
             kwargs['verify'] = self.verify
 
+        # Every call is bounded. A Miriel request that never returns would
+        # otherwise hold a player's action — and their input — forever.
+        if kwargs.get('timeout') is None:
+            kwargs['timeout'] = default_timeout()
+
         resp = method(url, **kwargs)
         self._raise_for_status(resp)
         return resp
@@ -168,11 +181,12 @@ class MirielClient:
                 serialized[key] = value
         return serialized
 
-    def make_post_request(self, route, payload=None, files=None):
+    def make_post_request(self, route, payload=None, files=None, timeout=None):
         """
         Makes a POST request to the given URL.
         - If 'files' is provided, sends a multipart/form-data request
         - Otherwise, sends a JSON body
+        `timeout` (seconds) bounds the call; None means the default.
         """
         if files:
             headers = {'Accept': 'application/json'}
@@ -183,6 +197,7 @@ class MirielClient:
                 headers=headers,
                 data=payload,
                 files=files,
+                timeout=timeout,
             )
         else:
             headers = {'Content-Type': 'application/json'}
@@ -191,6 +206,7 @@ class MirielClient:
                 route,
                 headers=headers,
                 json=payload,
+                timeout=timeout,
             )
 
     # ----------------------------
@@ -237,7 +253,7 @@ class MirielClient:
             # Only include response_format when set; strict validators reject null.
             if response_format is not None:
                 payload['response_format'] = response_format
-            return self.make_post_request(route, payload=payload)
+            return self.make_post_request(route, payload=payload, timeout=timeout)
 
         # Single-flight identical concurrent queries (e.g. a background warm and
         # the real look/move/talk for the same scene) so they share one
@@ -361,3 +377,60 @@ def is_miriel_enabled() -> bool:
     """Check if Miriel integration is enabled."""
     client = get_miriel_client()
     return client.enabled
+
+
+def extract_answer(resp) -> str:
+    """
+    Pull the model's text answer out of a Miriel query response.
+
+    Canonically this is {"results": {"answer": "..."}}, but live API versions
+    have moved the text around (e.g. nesting it deeper inside `results`).
+    Search breadth-first for the first non-empty string under increasingly
+    generic key names, so shallow/canonical placements always win. Returns ""
+    when no usable text exists anywhere — callers decide how hard to fail.
+    """
+    if not isinstance(resp, (dict, list)):
+        return ""
+    from collections import deque
+
+    # Purpose-named keys are trusted outright; generic keys must at least look
+    # like prose (a length gate keeps status strings like "ok"/"success" from
+    # masquerading as an answer).
+    tiers = (
+        # llm_result is where the live /api/v2/query (non-streaming) puts the
+        # synthesized answer, beside graph/vector retrieval artifacts.
+        (("llm_result", "answer", "final_answer", "answer_text", "synthesis"), 1),
+        (("response", "summary", "completion", "output_text",
+          "result", "message", "text", "content", "output"), 20),
+    )
+    for key_names, min_len in tiers:
+        for key_name in key_names:
+            queue = deque([resp])
+            while queue:
+                node = queue.popleft()
+                if isinstance(node, dict):
+                    value = node.get(key_name)
+                    if isinstance(value, str) and len(value.strip()) >= min_len:
+                        return value.strip()
+                    queue.extend(node.values())
+                elif isinstance(node, list):
+                    queue.extend(node)
+    return ""
+
+
+def describe_shape(resp, depth: int = 3) -> str:
+    """Compact structural summary of a response, for actionable error logs."""
+    def go(node, d):
+        if isinstance(node, dict):
+            if d <= 0:
+                return "{...}"
+            return "{" + ", ".join(f"{k}: {go(v, d - 1)}" for k, v in list(node.items())[:8]) + "}"
+        if isinstance(node, list):
+            if d <= 0 or not node:
+                return f"list[{len(node)}]"
+            return f"list[{len(node)} x {go(node[0], d - 1)}]"
+        if isinstance(node, str):
+            return f"str({len(node)})"
+        return type(node).__name__
+
+    return go(resp, depth)

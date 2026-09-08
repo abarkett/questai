@@ -154,6 +154,38 @@ ITEMS: Dict[str, Item] = {
         item_id="frostguard_plate", name="Frostguard Plate", type="armor", slot="armor",
         defense=8, value=220,
     ),
+    # ----- Raid trophies (dropped by the finisher of a raid boss; see app/raids.py) -----
+    # On their own they're valuable curios; forged with deep-tier materials they
+    # become best-in-slot relic gear (see the relic recipes below).
+    "dragon_heart": Item(item_id="dragon_heart", name="Dragon Heart", type="material", value=300),
+    "coral_crown": Item(item_id="coral_crown", name="Coral Crown", type="material", value=350),
+    "colossus_core": Item(item_id="colossus_core", name="Colossus Core", type="material", value=400),
+    # ----- Relic gear (forged from raid trophies; the best in each slot) -----
+    "cinderwing_blade": Item(
+        item_id="cinderwing_blade", name="Cinderwing Blade", type="weapon", slot="weapon",
+        damage=18, value=500,
+    ),
+    "tidewarden_plate": Item(
+        item_id="tidewarden_plate", name="Tidewarden Plate", type="armor", slot="armor",
+        defense=12, value=600,
+    ),
+    "colossus_maul": Item(
+        item_id="colossus_maul", name="Colossus Maul", type="weapon", slot="weapon",
+        damage=22, value=700,
+    ),
+    # ----- Trinkets (rare bonus drops; see app/loot.py) -----
+    "bent_locket": Item(item_id="bent_locket", name="Bent Locket", type="material", value=8),
+    "carved_die": Item(item_id="carved_die", name="Carved Bone Die", type="material", value=6),
+    "tin_whistle": Item(item_id="tin_whistle", name="Tin Whistle", type="material", value=7),
+    "moonstone_ring": Item(item_id="moonstone_ring", name="Moonstone Ring", type="material", value=18),
+    "silvered_button": Item(item_id="silvered_button", name="Silvered Button", type="material", value=10),
+    "glass_eye": Item(item_id="glass_eye", name="Glass Eye", type="material", value=12),
+    # A torn map marks a buried cache somewhere in the world (see app/loot.py)
+    "torn_map": Item(item_id="torn_map", name="Torn Map", type="material", value=2),
+    # ----- Relics (far rarer; finding one enters world history) -----
+    "tarnished_crown": Item(item_id="tarnished_crown", name="Tarnished Crown", type="material", value=90),
+    "dragonbone_idol": Item(item_id="dragonbone_idol", name="Dragonbone Idol", type="material", value=120),
+    "star_metal_shard": Item(item_id="star_metal_shard", name="Star-Metal Shard", type="material", value=75),
 }
 
 
@@ -173,6 +205,10 @@ RECIPES: Dict[str, Dict[str, Any]] = {
     "dragonscale_armor": {"inputs": {"ember_core": 4, "mythril_ore": 4}, "qty": 1},
     "frost_brand": {"inputs": {"frost_crystal": 4, "mythril_ore": 3}, "qty": 1},
     "frostguard_plate": {"inputs": {"frost_crystal": 5, "mythril_ore": 2}, "qty": 1},
+    # Relic recipes: a raid trophy forged with deep-tier materials into best-in-slot gear.
+    "cinderwing_blade": {"inputs": {"dragon_heart": 1, "ember_core": 3}, "qty": 1},
+    "tidewarden_plate": {"inputs": {"coral_crown": 1, "mythril_ore": 4}, "qty": 1},
+    "colossus_maul": {"inputs": {"colossus_core": 1, "mythril_ore": 6}, "qty": 1},
 }
 
 # What each location yields when gathered.
@@ -193,8 +229,18 @@ LOCATION_RESOURCES: Dict[str, str] = {
 
 
 def get_item(item_id: str) -> Item | None:
-    return ITEMS.get(item_id)
+    item = ITEMS.get(item_id)
+    if item:
+        return item
+    from .content import get_generated_item
+
+    return get_generated_item(item_id)
 
 
 def get_recipe(item_id: str) -> Dict[str, Any] | None:
-    return RECIPES.get(item_id)
+    recipe = RECIPES.get(item_id)
+    if recipe:
+        return recipe
+    from .content import get_generated_recipe
+
+    return get_generated_recipe(item_id)

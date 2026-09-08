@@ -49,9 +49,11 @@ def get_or_generate_quest(
     Returns:
         Tuple of (Quest object or None, whether it was AI-generated)
     """
-    # Check template first (templates take priority)
-    if quest_id in QUEST_TEMPLATES:
-        template_quest = QUEST_TEMPLATES[quest_id]
+    # Check templates first (hand-authored, then minted-region quests)
+    from .content import get_quest_template
+
+    template_quest = get_quest_template(quest_id)
+    if template_quest:
         # Set the giver NPC if provided
         if npc_id and template_quest.giver_npc_id is None:
             template_quest.giver_npc_id = npc_id
@@ -127,7 +129,8 @@ def generate_quest_for_player(
             return None
 
         # Extract text from response
-        response_text = response.get("results", {}).get("answer", "")
+        from .services.miriel_client import extract_answer
+        response_text = extract_answer(response)
         if not response_text:
             print("[MIRIEL] Quest generation returned empty answer")
             return None
@@ -233,7 +236,8 @@ def generate_story_arc(
         if not response:
             return None
 
-        response_text = response.get("results", {}).get("answer", "")
+        from .services.miriel_client import extract_answer
+        response_text = extract_answer(response)
         if not response_text:
             return None
 

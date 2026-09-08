@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from ...types import Player, ActionResponse
-from ...world import WORLD
+from ...content import get_location_or_none
 from ..state_view import build_action_state
 
 
@@ -15,7 +15,7 @@ def world_map(player: Player) -> ActionResponse:
 
     nodes: dict[str, dict] = {}
     for loc_id in visited:
-        loc = WORLD.get(loc_id)
+        loc = get_location_or_none(loc_id)
         if not loc:
             continue
         nodes[loc_id] = {
@@ -27,11 +27,11 @@ def world_map(player: Player) -> ActionResponse:
 
     # Frontier: destinations reachable from visited rooms but not yet entered.
     for loc_id in list(nodes.keys()):
-        for e in WORLD[loc_id].exits:
-            if e.to not in nodes:
-                nloc = WORLD.get(e.to)
+        for e in nodes[loc_id]["exits"]:
+            if e["to"] not in nodes:
+                nloc = get_location_or_none(e["to"])
                 if nloc:
-                    nodes[e.to] = {
+                    nodes[e["to"]] = {
                         "id": nloc.id,
                         "name": nloc.name,
                         "visited": False,

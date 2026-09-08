@@ -24,6 +24,9 @@ def _all_collect_objectives(quest) -> list:
 def completion_message(quest) -> str:
     if quest.quest_id.startswith("arc__"):
         return f"Story task complete: {quest.name}. Continue with `choose`."
+    if quest.quest_id.startswith("deed__"):
+        # A campaign deed settles itself into the shared world; no turn-in.
+        return f"Deed done: {quest.name}."
     return f"Quest completed: {quest.name}! Return to the quest giver to turn it in."
 
 

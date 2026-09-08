@@ -103,7 +103,8 @@ def generate_npc_dialogue(
             return None
 
         # Extract dialogue from response
-        dialogue_text = response.get("results", {}).get("answer", "").strip()
+        from .services.miriel_client import extract_answer
+        dialogue_text = extract_answer(response)
         if not dialogue_text:
             return None
 
@@ -202,7 +203,8 @@ def generate_quest_offer_dialogue(
         if not response:
             return None
 
-        dialogue_text = response.get("results", {}).get("answer", "").strip()
+        from .services.miriel_client import extract_answer
+        dialogue_text = extract_answer(response)
         if not dialogue_text:
             return None
         if dialogue_text.startswith('"') and dialogue_text.endswith('"'):

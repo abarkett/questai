@@ -23,6 +23,12 @@ def warm_location_caches(player_id: str) -> Dict[str, Any]:
     if not player:
         return {"ok": False, "warmed": 0}
 
+    # Nothing to warm when Miriel is off: describe() falls back to authored
+    # text and the dialogue/quest generators no-op.
+    from ..services.miriel_client import is_miriel_enabled
+    if not is_miriel_enabled():
+        return {"ok": True, "warmed": 0}
+
     from ..descriptions import describe  # local import: Miriel-backed
 
     loc = get_location(player.location)
