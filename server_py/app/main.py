@@ -138,6 +138,66 @@ def sms(
     return PlainTextResponse(render_plain(result, player=_get_player(player_id)))
 
 
+@app.get("/intro")
+def intro():
+    """
+    What a newcomer sees before they have a hero: the realm as it stands
+    right now (the current act, how much of it is put right, who has been
+    doing the righting), the paths they can walk, and a prompt for the
+    title art — all drawn from the live, generated campaign so the welcome
+    screen is never the same twice and never a lie.
+    """
+    from .archetypes import ARCHETYPES
+    out = {
+        "paths": [
+            {"id": a.id, "name": a.name, "description": a.description, "passive": a.passive}
+            for a in ARCHETYPES.values()
+        ],
+        "act": None,
+        "heroes": [],
+        "righted": 0,
+        "total": 0,
+        "art_prompt": None,
+        "images": image_gen_enabled(),
+    }
+    try:
+        from .restoration import current_act, righted_map, max_acts
+        from .db import get_restorations
+        act = current_act()
+        done = righted_map()
+        if act:
+            out["act"] = {"index": act.index, "total": max_acts(), "name": act.name, "blurb": act.blurb,
+                          "climax": act.climax_boss}
+            out["total"] = len(act.wrongs)
+            out["righted"] = sum(1 for w in act.wrongs if w.id in done)
+            wrongs_text = "; ".join(w.blurb for w in act.wrongs if w.deed_type != "climax")[:600]
+            out["art_prompt"] = (
+                "Fantasy RPG title illustration. Wide horizontal composition (16:9), cinematic, "
+                "detailed hand-painted fantasy art, the frame filled edge to edge, no text, no UI, no borders. "
+                f"A realm that has fallen and waits to be restored — the act called '{act.name}': {act.blurb} "
+                f"Signs of it in the land: {wrongs_text} "
+                f"Looming far off: {act.climax_boss}. Dawn light on the horizon: hope, not despair."
+            )
+        else:
+            out["act"] = {"index": None, "total": None, "name": "The Realm Restored",
+                          "blurb": "Every wrong is put right. The Chronicle is complete.", "climax": None}
+            out["art_prompt"] = (
+                "Fantasy RPG title illustration. Wide horizontal composition (16:9), cinematic, detailed "
+                "hand-painted fantasy art, no text, no UI. A restored realm at golden hour: a town at peace, "
+                "banners, fields full, roads open to the mountains."
+            )
+        seen = []
+        for r in reversed(get_restorations()):
+            if r["righted_by_name"] not in seen:
+                seen.append(r["righted_by_name"])
+            if len(seen) >= 5:
+                break
+        out["heroes"] = seen
+    except Exception as e:
+        print(f"[INTRO] campaign summary skipped: {e}")
+    return out
+
+
 @app.post("/prefetch")
 def prefetch(x_player_id: str | None = Header(default=None)):
     """

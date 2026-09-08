@@ -63,12 +63,18 @@ the test.
 
 Ask one question at every stop: *did I want to keep going?*
 
-1. **Create a character, type `campaign`.**
+1. **Open the page with no saved hero.**
+   *Should feel:* a title screen that already tells a story — the realm's
+   current act and blurb, how much of it is put right and by whom, the
+   threat looming, three paths to choose, one field for a name. With
+   `GEMINI_API_KEY` set, title art is rendered for the act (one image shared
+   by all; it changes when the act does). Forge a hero, then type `campaign`.
    *Should feel:* a story already written for *this* world — Act I named,
    four or five wrongs, an empty Legend. With Miriel up the act is authored
    from the live world at server start (check the log line
    `[CAMPAIGN] current act: … (miriel)`; `(authored)` means it fell back).
-   *Knobs:* the prompt and the referee in `app/campaigngen.py`.
+   *Knobs:* `GET /intro` in `app/main.py`; `web/src/app/welcome.tsx`; the
+   prompt and the referee in `app/campaigngen.py`.
 2. **`talk` to the patron a wrong names.**
    *Should feel:* a person who wants something put right, handing you the
    `undertake` line.

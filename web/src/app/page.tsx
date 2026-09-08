@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sendCommand, prefetchCaches } from "./lib/api";
 import { generateSceneImage } from "./lib/gemini";
 import { buildScenePrompt } from "./lib/scene";
+import { Welcome } from "./welcome";
 
 type Line = {
   id: string;
@@ -829,6 +830,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
 export default function Page() {
   const [playerId, setPlayerId] = useState<string | null>(null);
+  // A returning player's identity is restored from localStorage after mount;
+  // until that check has run we must not flash the welcome screen at them.
+  const [hasSavedPlayer, setHasSavedPlayer] = useState(true);
   const [input, setInput] = useState("");
   const [log, setLog] = useState<Line[]>([]);
   const [sceneImage, setSceneImage] = useState<string | null>(null);
@@ -844,6 +848,7 @@ export default function Page() {
   const [showBestiary, setShowBestiary] = useState(false);
   const thumbsRef = useRef<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+  const skipResumeLook = useRef(false);
 
   // Record a downscaled thumbnail for a location (first image we see wins).
   async function recordThumb(locId?: string, img?: string | null) {
@@ -910,9 +915,10 @@ export default function Page() {
     const saved = localStorage.getItem("player_id");
     if (saved) setPlayerId(saved);
     else {
+      setHasSavedPlayer(false);
       setLog([{
         id: crypto.randomUUID(),
-        text: "Welcome to QuestAI. Type: create <name> to forge your hero.",
+        text: "Welcome to QuestAI.",
       }]);
     }
     thumbsRef.current = loadThumbs();
@@ -920,6 +926,10 @@ export default function Page() {
 
   useEffect(() => {
     if (!playerId) return;
+    if (skipResumeLook.current) {
+      skipResumeLook.current = false;
+      return;
+    }
 
     (async () => {
       try {
@@ -929,6 +939,7 @@ export default function Page() {
           // Stale identity (e.g. the world was reset): drop it and start over.
           localStorage.removeItem("player_id");
           setPlayerId(null);
+          setHasSavedPlayer(false);
           setLog([{
             id: crypto.randomUUID(),
             text: "Your hero is gone — the world has begun anew. Type: create <name> to forge a new one.",
@@ -1031,6 +1042,11 @@ export default function Page() {
       // Capture player_id if returned
       if (resp.state?.player?.player_id) {
         const pid = resp.state.player.player_id;
+        if (pid !== playerId) {
+          // A hero just forged: their welcome is in THIS response, so the
+          // resume-look must not run and wipe it.
+          skipResumeLook.current = true;
+        }
         setPlayerId(pid);
         localStorage.setItem("player_id", pid);
       }
@@ -1057,10 +1073,11 @@ export default function Page() {
       }
 
       // Print messages
-      if (resp.messages) {
+      const messages = resp.messages ?? [];
+      if (messages.length > 0) {
         setLog((l) => [
           ...l,
-          ...resp.messages.map((m) => ({
+          ...messages.map((m) => ({
             id: crypto.randomUUID(),
             text: m,
           })),
@@ -1209,8 +1226,17 @@ export default function Page() {
         </Modal>
       )}
 
+      {/* A newcomer sees the realm as it stands and forges a hero; the game
+          proper waits until they have one. */}
+      {!playerId && !hasSavedPlayer && (
+        <Welcome
+          busy={isWaitingForResponse}
+          onCreate={(name, path) => runCommand(`create ${name} ${path}`)}
+        />
+      )}
+
       {/* Main area: left column (image over log) + full-height status pane */}
-      <div className="flex-1 min-h-0 mb-2 flex gap-2">
+      <div className={`flex-1 min-h-0 mb-2 flex gap-2 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
 
         {/* Left column: scene image on top, log below */}
         <div className="flex-[3] flex flex-col min-h-0 gap-2">
@@ -1229,8 +1255,13 @@ export default function Page() {
                 style={{ backgroundImage: `url(${sceneImage})` }}
               />
             ) : (
-              <div className="flex items-center justify-center h-full text-green-700">
-                No scene
+              // No art (image generation off, or a render failed): the place
+              // still has a face — its name and its description.
+              <div className="absolute inset-0 bg-gradient-to-b from-green-950 via-black to-black flex flex-col items-center justify-center p-6 text-center">
+                <div className="text-2xl text-green-300">{lastState?.location?.name ?? "QuestAI"}</div>
+                {lastState?.location?.description && (
+                  <div className="text-xs text-green-600 mt-2 max-w-xl">{lastState.location.description}</div>
+                )}
               </div>
             )}
           </div>
@@ -1254,11 +1285,12 @@ export default function Page() {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="flex gap-2">
-        <span>&gt;</span>
+      <form onSubmit={handleSubmit} className={`flex gap-2 items-center border border-green-800 px-2 py-1 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
+        <span className="text-green-500">&gt;</span>
         <input
           ref={inputRef}
-          className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700"
+          className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700 placeholder:text-green-900"
+          placeholder={isWaitingForResponse ? "the world turns…" : isLoadingScene ? "painting the scene…" : "type a command — look · go <exit> · fight <foe> · talk <npc> · next"}
           value={input}
           onChange={(e) => setInput(e.target.value)}
           disabled={isLoadingScene || isWaitingForResponse}

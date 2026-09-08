@@ -25,6 +25,14 @@ PROJECT_NAMESPACE = "questai"
 _TEST_RESPONDER = None
 
 
+def default_timeout() -> float:
+    """Seconds any single Miriel HTTP call may take (MIRIEL_TIMEOUT_SECONDS)."""
+    try:
+        return max(5.0, float(os.getenv("MIRIEL_TIMEOUT_SECONDS", "45")))
+    except ValueError:
+        return 45.0
+
+
 def install_test_responder(fn) -> None:
     """fn(query: str) -> str. Pass None to uninstall. Installing one marks the
     client enabled so is_miriel_enabled() reflects the stubbed-but-working AI."""
@@ -145,6 +153,11 @@ class MirielClient:
         if 'verify' not in kwargs:
             kwargs['verify'] = self.verify
 
+        # Every call is bounded. A Miriel request that never returns would
+        # otherwise hold a player's action — and their input — forever.
+        if kwargs.get('timeout') is None:
+            kwargs['timeout'] = default_timeout()
+
         resp = method(url, **kwargs)
         self._raise_for_status(resp)
         return resp
@@ -168,11 +181,12 @@ class MirielClient:
                 serialized[key] = value
         return serialized
 
-    def make_post_request(self, route, payload=None, files=None):
+    def make_post_request(self, route, payload=None, files=None, timeout=None):
         """
         Makes a POST request to the given URL.
         - If 'files' is provided, sends a multipart/form-data request
         - Otherwise, sends a JSON body
+        `timeout` (seconds) bounds the call; None means the default.
         """
         if files:
             headers = {'Accept': 'application/json'}
@@ -183,6 +197,7 @@ class MirielClient:
                 headers=headers,
                 data=payload,
                 files=files,
+                timeout=timeout,
             )
         else:
             headers = {'Content-Type': 'application/json'}
@@ -191,6 +206,7 @@ class MirielClient:
                 route,
                 headers=headers,
                 json=payload,
+                timeout=timeout,
             )
 
     # ----------------------------
@@ -237,7 +253,7 @@ class MirielClient:
             # Only include response_format when set; strict validators reject null.
             if response_format is not None:
                 payload['response_format'] = response_format
-            return self.make_post_request(route, payload=payload)
+            return self.make_post_request(route, payload=payload, timeout=timeout)
 
         # Single-flight identical concurrent queries (e.g. a background warm and
         # the real look/move/talk for the same scene) so they share one

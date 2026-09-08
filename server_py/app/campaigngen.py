@@ -40,6 +40,10 @@ ACT_MARKER = "[[CAMPAIGN_ACT]]"
 CHRONICLE_MARKER = "[[CHRONICLE_ENTRY]]"
 PATRON_MARKER = "[[PATRON_LINE]]"
 
+# Best-effort flourishes (a patron's voice, a Chronicle sentence) get a short
+# leash: they must never hold a player's action hostage to a slow model.
+VOICE_TIMEOUT = 20
+
 DEFAULT_MAX_ACTS = 3
 
 
@@ -675,7 +679,10 @@ def voice_patron_line(npc_name: str, wrong: Any, state: str, player: Any,
             "Reply with ONLY what you say aloud: 1-2 sentences, in character, vivid, no quotes, no stage directions, "
             "no commands or game syntax."
         )
-        text = " ".join((extract_answer(get_miriel_client().query(query=query, project="questai")) or "").split())
+        # A flourish, not a gate: bounded tightly so a slow Miriel never holds
+        # the player's `talk` for long.
+        text = " ".join((extract_answer(get_miriel_client().query(query=query, project="questai",
+                                                                  timeout=VOICE_TIMEOUT)) or "").split())
         text = text.strip().strip('"').strip("“”")
         if 10 <= len(text) <= 400 and "{" not in text and "`" not in text:
             db.cache_miriel_content(key, "dialogue", text, ttl_seconds=1800)
@@ -704,7 +711,8 @@ def narrate_chronicle_entry(wrong: Any, player: Any) -> Optional[str]:
             f"{who}{companion} put right the wrong '{wrong.title}' ({wrong.blurb}) by this deed: {wrong.deed} "
             f"Their titles so far: {titles}. Third person, past tense, no quotes, no preamble."
         )
-        text = " ".join((extract_answer(get_miriel_client().query(query=query, project="questai")) or "").split())
+        text = " ".join((extract_answer(get_miriel_client().query(query=query, project="questai",
+                                                                  timeout=VOICE_TIMEOUT)) or "").split())
         if 15 <= len(text) <= 400 and "{" not in text:
             return text.strip('"')
     except Exception as e:
