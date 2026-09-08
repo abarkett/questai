@@ -201,18 +201,19 @@ def intro():
 @app.post("/prefetch")
 def prefetch(x_player_id: str | None = Header(default=None)):
     """
-    Warm Miriel text caches (location descriptions) for the player's current
-    room and its neighbors. Best-effort and never fails; called by the client in
-    the background to make subsequent `look`s instant.
+    Queue look-ahead warming (neighbor scenes, post-combat scenes, Miriel
+    prose, NPC dialogue) for the player's current situation. The dispatcher
+    already does this after every action; this lets a client ask again (e.g.
+    on resume). Returns at once — the work runs on the server's warmer.
     """
     if not x_player_id:
         return {"ok": False}
-    from .engine.prefetch import warm_location_caches
-    return warm_location_caches(x_player_id)
+    from .engine.prefetch import schedule_player_warm
+    return schedule_player_warm(x_player_id, force=True)
 
 
 @app.post("/api/ai/image")
-def ai_image(prompt: str = Body(..., embed=True)):
+def ai_image(prompt: str = Body(..., embed=True), wait: bool = Body(default=True, embed=True)):
     """
     Render (and persistently cache) a scene image for a prompt.
 
@@ -220,6 +221,11 @@ def ai_image(prompt: str = Body(..., embed=True)):
     by every player, so returning to the same place reuses the same image
     across sessions and restarts. A miss with no API key (or a render failure)
     returns a non-200 the frontend treats as "no scene", never breaking play.
+
+    ``wait=false`` is the prefetch mode: a miss queues the render on the
+    server's background warmer and answers 202 immediately, so a browser
+    warming several scenes at once never ties up its connections (and never
+    delays the player's next command) waiting on image models.
     """
     key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
 
@@ -233,12 +239,16 @@ def ai_image(prompt: str = Body(..., embed=True)):
             content={"error": "image generation not configured (set GEMINI_API_KEY)"},
         )
 
+    from .pregen import render_scene_to_cache, schedule_scene_render
+    if not wait:
+        schedule_scene_render(prompt, priority=1)
+        return JSONResponse(status_code=202, content={"status": "rendering"})
+
     # Miss: render via the shared path (Miriel enrichment when available,
-    # cached under the *base* prompt key) — the same path mint-time
-    # pre-generation uses, so client requests and warmed scenes share keys.
-    from .pregen import render_scene_to_cache
+    # cached under the *base* prompt key). Single-flighted: if the warmer is
+    # already rendering this scene, this request waits for it instead of
+    # rendering twice.
     if not render_scene_to_cache(prompt):
         return JSONResponse(status_code=502, content={"error": "image generation failed"})
 
     return {"image": get_cached_scene_image(key), "cached": False}
-
