@@ -362,11 +362,11 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
             )}
 
             {state.campaign && (
-              <Section title={state.campaign.complete ? "The Realm Restored" : `Act ${state.campaign.act_index + 1}: ${state.campaign.act_name}`}>
+              <Section title={state.campaign.complete ? "The Realm Restored" : `Act ${state.campaign.act_index + 1}${state.campaign.acts_total ? ` of ${state.campaign.acts_total}` : ""}: ${state.campaign.act_name}`}>
                 <div className="text-xs text-green-600 mb-1">{state.campaign.act_blurb}</div>
                 <div className="space-y-1">
                   {(state.campaign.wrongs || []).map((w: any) => (
-                    <div key={w.id} className="text-xs flex items-start gap-2" title={w.deed}>
+                    <div key={w.id} className="text-xs flex items-start gap-2 flex-wrap" title={w.blurb ? `${w.blurb} ${w.deed}` : w.deed}>
                       <span className={
                         w.status === "righted" ? "text-green-800 line-through" :
                         w.status === "active" ? "text-yellow-300" : "text-green-300"
@@ -375,6 +375,9 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
                       </span>
                       {w.status === "righted" && w.righted_by && (
                         <span className="text-green-800">— {w.righted_by}</span>
+                      )}
+                      {w.status === "righted" && w.entry && (
+                        <span className="basis-full pl-4 italic text-green-900">“{w.entry}”</span>
                       )}
                       {w.status === "active" && w.progress && (
                         <span className="text-yellow-600">{w.progress}</span>

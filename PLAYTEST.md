@@ -59,6 +59,30 @@ the test.
     the full narrated recap).
     *Knobs:* `PULSE_GAP_MS` / `RECAP_GAP_MS` in `app/recap.py`.
 
+## The campaign route (the spine)
+
+Ask one question at every stop: *did I want to keep going?*
+
+1. **Create a character, type `campaign`.**
+   *Should feel:* a story already written for *this* world — Act I named,
+   four or five wrongs, an empty Legend. With Miriel up the act is authored
+   from the live world at server start (check the log line
+   `[CAMPAIGN] current act: … (miriel)`; `(authored)` means it fell back).
+   *Knobs:* the prompt and the referee in `app/campaigngen.py`.
+2. **`talk` to the patron a wrong names.**
+   *Should feel:* a person who wants something put right, handing you the
+   `undertake` line.
+3. **`undertake <wrong>`, go do the deed.**
+   *Should feel:* on the last kill / delivery, no turn-in — the Chronicle
+   speaks (one narrated sentence about *you*), the title lands, the place
+   reads restored on the next `look`.
+4. **Second character (incognito), `campaign`.**
+   *Should feel:* "✓ righted by <your first hero>" — a shared world.
+5. **Right the rest, then `raid strike` at the Warfront until the climax falls.**
+   *Should feel:* it stays dead; Act II opens and its text names the heroes
+   of Act I and the beast they felled.
+   *Knobs:* `_climax_stats` in `app/campaigngen.py`; `QUESTAI_CAMPAIGN_ACTS`.
+
 ## The three questions that matter
 
 - **Surprise:** did anything happen this session that you didn't see coming?

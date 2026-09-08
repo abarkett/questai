@@ -326,6 +326,53 @@ are told the realm is fallen, and the web client carries the ledger as its
 first panel. Restoration is shared — one world; whoever rights a wrong rights
 it for all — and the Legend is personal: what *you* put right.
 
+## 16. The generated campaign (`app/campaigngen.py`)
+
+The spine above is no longer hand-written in play. **Miriel authors each act
+from the living world** the moment the campaign reaches it, and code is the
+referee.
+
+**The dossier.** When an act is needed, the engine assembles the world as it
+actually is: every place (hand-authored *and* minted regions, with who
+discovered them), every creature and where it prowls (with HP, so the model
+can escalate), every NPC, everything that can be gathered or won, the acts so
+far, the **Chronicle** (who put what right, with its narrated entries), the
+heroes' names, and the last twenty world events. Miriel is asked to write the
+next act from that — its wrongs, the one deed that rights each, the place that
+changes and how it reads restored, the patron who cares, the title earned —
+and the act's **climax**: a new great threat for the Warfront, with its
+epithet, its lair, the minion it summons, its trophy and the relic forged from
+it. Later acts are told to push outward and deeper; the last is told to feel
+like an ending. The story grows from what players did: the heroes of Act I are
+named in Act II, and a region someone opened becomes its stage.
+
+**The referee.** Miriel never chooses a number and never invents a target.
+Every kill target must be an exact creature name, every collect target an
+item that exists, every visit and every restored place a real location id,
+every patron a real NPC, the climax a *new* name; `required` is capped by how
+many of that creature exist. Ids, flags, the exact deed line, boss HP/attack/
+reward, minion stats, trophy and relic stats are all assigned by code (Act I
+matches the hand-authored dragon; each act after it is heavier). A rejected
+answer is sent back once with its problems listed for repair. If that fails
+too, the hand-authored act for that index stands in; past those, a procedural
+**skeleton** from the catalog — so the campaign always exists, but with Miriel
+it is *written from this world*. `QUESTAI_CAMPAIGN_ACTS` sets the length
+(default 3).
+
+**Persistence.** Acts are written once into `campaign_acts` (first writer
+wins, single-flighted) and never change, so every player shares one story. The
+opening act is authored at startup (after the starter regions are minted, so
+they can be in it); the next is authored the moment the previous act
+completes — inside the finisher's own action, so the message "A new act
+begins: …" names an act that already exists. Generated climaxes are real raid
+bosses (`raids.py` looks up the act's spec before its authored rotation), and
+their trophies and relics are real generated items with recipes.
+
+**The Chronicle's voice.** When a wrong is righted, Miriel writes one sentence
+for the Chronicle about *that* righting — who, as what, with which companion —
+stored on the restoration row and read back in `campaign`, in the web ledger,
+and in the dossier the next act is written from.
+
 ## New commands
 
 | Command | Effect |
@@ -359,5 +406,7 @@ All systems have offline script tests in `server_py/` (run each with
 `test_world_rules_engine.py`, `test_sms.py`, `test_companions.py`,
 `test_raids.py`, `test_defeat.py`, `test_stronghold.py`, `test_guidance.py`,
 `test_cohesion.py` (an integration walk that exercises the Miriel-gated
-move/look path), `test_archetypes.py`, `test_restoration.py`, plus the
-pre-existing suite.
+move/look path), `test_archetypes.py`, `test_restoration.py`,
+`test_campaigngen.py` (a stub loremaster: authoring, repair, fallback, the
+generated climax at the Warfront, the next act written from the Chronicle),
+plus the pre-existing suite.

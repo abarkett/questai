@@ -20,6 +20,14 @@ climax *stays* felled: the campaign is won act by act and ends in the realm's
 restoration. Restoration is shared (one world; whoever rights a wrong rights
 it for all), the Legend is personal (what *you* put right). Code is the
 referee; Miriel narrates the change.
+
+The acts themselves are **written by Miriel from the living world** as the
+campaign reaches them (see app/campaigngen.py): what is wrong, what deed
+rights it, how the place reads afterwards, who cares, what title it earns, and
+what great threat closes the act — all authored from the actual places,
+creatures, people, discoveries and Chronicle of *this* world, validated by
+code, and persisted so every player shares one story. The hand-authored acts
+below are the fallback when Miriel cannot write one.
 """
 
 from __future__ import annotations
@@ -37,9 +45,11 @@ from .db import (
     log_world_event,
     get_restorations,
     get_restoration,
+    set_restoration_entry,
     mark_wrong_righted,
     get_player,
     upsert_player,
+    get_campaign_acts,
 )
 
 
@@ -67,9 +77,13 @@ class Act(BaseModel):
     climax_boss: str               # raid boss name (see app/raids.py)
     act_title: str                 # title for everyone who righted a wrong in it
     completion_text: str
+    climax: Optional[dict] = None  # generated raid spec (None: hand-authored boss in raids.py)
+    source: str = "authored"       # authored | miriel | skeleton
 
 
-ACTS: List[Act] = [
+# The hand-authored acts: the fallback story when Miriel can't write one for
+# an index. (Still exported as ACTS for older imports.)
+AUTHORED_ACTS: List[Act] = [
     Act(
         index=0,
         name="The Town Besieged",
@@ -299,6 +313,8 @@ ACTS: List[Act] = [
     ),
 ]
 
+ACTS = AUTHORED_ACTS  # legacy alias; live code uses get_acts()
+
 CAMPAIGN_FLAG = "realm_restored"
 
 
@@ -307,11 +323,73 @@ def now_ms() -> int:
 
 
 # -------------------------------------------------
+# The acts of this world
+# -------------------------------------------------
+
+# Acts are immutable once written, so they are cached by count: a new row is
+# the only thing that can change the list.
+_acts_cache: Dict[int, Act] = {}
+
+
+def _load_acts() -> List[Act]:
+    rows = get_campaign_acts()
+    if len(rows) != len(_acts_cache) or any(r["act_index"] not in _acts_cache for r in rows):
+        _acts_cache.clear()
+        for r in rows:
+            _acts_cache[r["act_index"]] = Act(**r["data"])
+    return [_acts_cache[i] for i in sorted(_acts_cache)]
+
+
+def _author(index: int, previous: List[Act]) -> Act:
+    from .campaigngen import author_act
+    fallback = AUTHORED_ACTS[index].model_dump() if index < len(AUTHORED_ACTS) else None
+    data = author_act(index, previous, authored_fallback=fallback)
+    _acts_cache.clear()
+    return Act(**data)
+
+
+def max_acts() -> int:
+    from .campaigngen import max_acts as _max
+    return _max()
+
+
+def get_acts() -> List[Act]:
+    """Every act written so far. Writing happens here, lazily: the opening act
+    the first time anyone asks, and each next act once the one before it is
+    complete — so the story is always authored from the world as it stands."""
+    acts = _load_acts()
+    if not acts:
+        acts = [_author(0, [])]
+    while len(acts) < max_acts() and is_act_complete(acts[-1].index):
+        acts = acts + [_author(len(acts), acts)]
+    return acts
+
+
+def ensure_campaign() -> Act:
+    """Startup hook: make sure the opening act exists. Returns the current or
+    last act."""
+    acts = get_acts()
+    return current_act() or acts[-1]
+
+
+def climax_spec(index: int) -> Optional[dict]:
+    """The generated raid spec for act `index`'s climax, if it has one."""
+    for act in _load_acts():
+        if act.index == index:
+            return act.climax
+    return None
+
+
+def climax_specs() -> List[dict]:
+    return [a.climax for a in _load_acts() if a.climax]
+
+
+# -------------------------------------------------
 # Lookups
 # -------------------------------------------------
 
 def find_wrong(wrong_id: str) -> Optional[Tuple[Act, Wrong]]:
-    for act in ACTS:
+    for act in get_acts():
         for w in act.wrongs:
             if w.id == wrong_id:
                 return act, w
@@ -319,7 +397,7 @@ def find_wrong(wrong_id: str) -> Optional[Tuple[Act, Wrong]]:
 
 
 def wrong_for_boss(boss_name: str) -> Optional[Tuple[Act, Wrong]]:
-    for act in ACTS:
+    for act in get_acts():
         for w in act.wrongs:
             if w.deed_type == "climax" and w.target == boss_name:
                 return act, w
@@ -344,7 +422,7 @@ def is_act_complete(index: int) -> bool:
 
 def current_act() -> Optional[Act]:
     """The act the realm is fighting through now; None once all are won."""
-    for act in ACTS:
+    for act in get_acts():
         if not is_act_complete(act.index):
             return act
     return None
@@ -360,13 +438,15 @@ def campaign_complete() -> bool:
 
 
 def restored_description(location_id: str) -> Optional[str]:
-    """If a righted wrong re-describes this location, that description."""
+    """If a righted wrong re-describes this location, that description. The
+    latest act's restoration wins if several touched the same place."""
     done = righted_map()
-    for act in ACTS:
+    found = None
+    for act in _load_acts():
         for w in act.wrongs:
             if w.location == location_id and w.restored and w.id in done:
-                return w.restored
-    return None
+                found = w.restored
+    return found
 
 
 def deed_quest_id(wrong_id: str) -> str:
@@ -490,6 +570,16 @@ def right_wrong(wrong_id: str, player: Player) -> List[str]:
     first = mark_wrong_righted(w.id, act.index, player.player_id, player.name)
     if first:
         set_world_state(w.flag, "true")
+        # The Chronicle's own words for this righting — who, how, with whom —
+        # narrated from the deed as it was actually done (best-effort).
+        entry = None
+        try:
+            from .campaigngen import narrate_chronicle_entry
+            entry = narrate_chronicle_entry(w, player)
+            if entry:
+                set_restoration_entry(w.id, entry)
+        except Exception as e:
+            print(f"[RESTORATION] chronicle entry failed: {e}")
         log_world_event(
             event_type="wrong_righted",
             location_id=w.location,
@@ -498,7 +588,7 @@ def right_wrong(wrong_id: str, player: Player) -> List[str]:
                 "act": act.index,
                 "player_id": player.player_id,
                 "player_name": player.name,
-                "description": f"{w.title} — put right by {player.name}. {w.righted_text}",
+                "description": entry or f"{w.title} — put right by {player.name}. {w.righted_text}",
             },
         )
         from .echoes import record_deed
@@ -508,6 +598,8 @@ def right_wrong(wrong_id: str, player: Player) -> List[str]:
             pass
         messages.append(w.righted_text)
         messages.append(f"The Chronicle records it: {w.title} — righted by {player.name}.")
+        if entry:
+            messages.append(f"“{entry}”")
         if grant_title(player, w.title_earned):
             messages.append(f"Your Legend grows: you are named {w.title_earned}.")
         messages.extend(_check_act(act, player))
@@ -576,7 +668,7 @@ def _check_act(act: Act, player: Player) -> List[str]:
             else:
                 upsert_player(target)
 
-    if act.index == ACTS[-1].index:
+    if act.index + 1 >= max_acts():
         set_world_state(CAMPAIGN_FLAG, "true")
         log_world_event(
             event_type="realm_restored",
@@ -585,8 +677,15 @@ def _check_act(act: Act, player: Player) -> List[str]:
         )
         messages.append("The realm is restored. Every hand that restored it is written in the Chronicle.")
     else:
-        nxt = ACTS[act.index + 1]
-        messages.append(f"A new act begins: {nxt.name}. {nxt.blurb}")
+        # The next act is written NOW, from the world these players made —
+        # the Chronicle they filled, the regions they opened, the beast they
+        # felled all become its raw material.
+        try:
+            nxt = get_acts()[act.index + 1]
+            messages.append(f"A new act begins: {nxt.name}. {nxt.blurb}")
+        except Exception as e:
+            print(f"[RESTORATION] next act not yet written: {e}")
+            messages.append("A new act of the Restoration is being written. See `campaign` soon.")
     return messages
 
 
@@ -606,7 +705,8 @@ def campaign_status(player: Player) -> ActionResponse:
     else:
         messages.append(f"Act {act.index + 1}: {act.name} — {act.blurb}")
 
-    for a in ACTS:
+    acts = get_acts()
+    for a in acts:
         if act is not None and a.index > act.index:
             messages.append(f"Act {a.index + 1}: {a.name} — (not yet)")
             continue
@@ -618,6 +718,8 @@ def campaign_status(player: Player) -> ActionResponse:
             state = wrong_state(player, w, done)
             if state == "righted":
                 messages.append(f"  ✓ {w.title} — righted by {done[w.id]['righted_by_name']}")
+                if done[w.id].get("entry"):
+                    messages.append(f"      “{done[w.id]['entry']}”")
             elif act is not None and a.index == act.index:
                 if state == "active":
                     messages.append(f"  … {w.title} — underway ({_deed_progress(player, w)}). {w.deed}")
@@ -645,18 +747,22 @@ def campaign_summary(player: Player) -> dict:
             wrongs.append({
                 "id": w.id,
                 "title": w.title,
+                "blurb": w.blurb,
                 "deed": w.deed,
                 "status": state,
                 "righted_by": done[w.id]["righted_by_name"] if w.id in done else None,
+                "entry": done[w.id].get("entry") if w.id in done else None,
                 "command": (f"undertake {w.id}" if state == "open" and w.deed_type != "climax" else None),
                 "progress": _deed_progress(player, w) if state == "active" else "",
                 "climax": w.deed_type == "climax",
             })
     return {
         "complete": act is None,
-        "act_index": act.index if act else len(ACTS),
+        "act_index": act.index if act else max_acts(),
+        "acts_total": max_acts(),
         "act_name": act.name if act else "The Realm Restored",
         "act_blurb": act.blurb if act else "Every wrong is put right. The Chronicle is complete.",
+        "act_source": act.source if act else None,
         "wrongs": wrongs,
         "titles": list(player.titles or []),
     }

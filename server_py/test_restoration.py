@@ -34,7 +34,7 @@ from app.engine.parse_command import parse_command  # noqa: E402
 from app.engine.apply_action import apply_action  # noqa: E402
 import app.restoration as R  # noqa: E402
 from app.restoration import (  # noqa: E402
-    ACTS, undertake, settle_deeds, right_wrong, is_righted, current_act,
+    get_acts, undertake, settle_deeds, right_wrong, is_righted, current_act,
     is_act_complete, next_wrong_for, campaign_summary, patron_lines,
 )
 
@@ -133,7 +133,7 @@ def main() -> None:
 
     # ---- act completion: titles for every righter, next act unlocks ----
     fin = mk("fin")
-    for w in ACTS[0].wrongs:
+    for w in get_acts()[0].wrongs:
         if not is_righted(w.id):
             right_wrong(w.id, fin)
     upsert_player(fin)

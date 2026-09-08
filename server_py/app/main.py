@@ -42,6 +42,15 @@ def _startup() -> None:
     # regions are pre-minted so day one is bigger than the static 22 rooms.
     from .regiongen import pre_mint_regions
     pre_mint_regions()
+    # The Restoration's opening act is written from this world (by Miriel,
+    # from the places, creatures and people that actually exist — the minted
+    # starter regions included) before the first player arrives.
+    try:
+        from .restoration import ensure_campaign
+        act = ensure_campaign()
+        print(f"[CAMPAIGN] current act: {act.index + 1} — {act.name} ({act.source})")
+    except Exception as e:  # the campaign must never block startup
+        print(f"[CAMPAIGN] opening act not written at startup: {e}")
     # Initialize factions
     for faction_id, faction in FACTIONS.items():
         create_faction(

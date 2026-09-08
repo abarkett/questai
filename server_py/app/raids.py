@@ -162,10 +162,23 @@ def _scaled(base: int, level: int, per_level: float) -> int:
     return int(round(base * (1 + per_level * (level - 1))))
 
 
+def _raid_spec(index: int) -> dict:
+    """The great threat of act `index`: the act's generated climax when Miriel
+    wrote one (see app/campaigngen.py), else the hand-authored rotation."""
+    try:
+        from .restoration import climax_spec
+        spec = climax_spec(index)
+        if spec:
+            return spec
+    except Exception as e:
+        print(f"[RAIDS] climax spec lookup failed: {e}")
+    return RAID_BOSSES[index % len(RAID_BOSSES)]
+
+
 def _seed_raid(index: int) -> None:
     """Create act `index`'s great threat, once. INSERT OR IGNORE means a boss
     that has already been felled is never re-created: a won act stays won."""
-    spec = RAID_BOSSES[index % len(RAID_BOSSES)]
+    spec = _raid_spec(index)
     level = _world_level()
     raid_id = f"raid_{index}"
     hp = _scaled(spec["base_hp"], level, 0.4)
@@ -212,6 +225,13 @@ def ensure_active_raid() -> None:
 
 
 def _spec_for(boss: dict) -> dict:
+    try:
+        from .restoration import climax_specs
+        for spec in climax_specs():
+            if spec["name"] == boss["name"]:
+                return spec
+    except Exception as e:
+        print(f"[RAIDS] climax spec lookup failed: {e}")
     for spec in RAID_BOSSES:
         if spec["name"] == boss["name"]:
             return spec
@@ -350,7 +370,9 @@ def _resolve_defeat(boss: dict, finisher: Player, rng: random.Random) -> List[st
     trophy = boss.get("trophy")
     if trophy:
         finisher.inventory[trophy] = finisher.inventory.get(trophy, 0) + 1
-        messages.append(f"For the killing blow you claim {FINISHER_BONUS} coins and a {trophy}.")
+        from .items import get_item
+        item = get_item(trophy)
+        messages.append(f"For the killing blow you claim {FINISHER_BONUS} coins and a {item.name if item else trophy}.")
     else:
         messages.append(f"For the killing blow you claim {FINISHER_BONUS} coins.")
 

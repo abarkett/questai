@@ -347,7 +347,19 @@ def init_db() -> None:
               act INTEGER NOT NULL,
               righted_by_id TEXT NOT NULL,
               righted_by_name TEXT NOT NULL,
-              righted_at INTEGER NOT NULL
+              righted_at INTEGER NOT NULL,
+              entry TEXT
+            );
+
+            -- The acts of the Restoration campaign, one row per act, authored
+            -- (by Miriel, from the living world) when the act begins and
+            -- immutable from then on (see app/campaigngen.py). `source` says
+            -- who wrote it: 'miriel', or 'authored' / 'skeleton' fallbacks.
+            CREATE TABLE IF NOT EXISTS campaign_acts (
+              act_index INTEGER PRIMARY KEY,
+              source TEXT NOT NULL,
+              data_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
             );
 
             -- Data-driven world evolution rules (interpreted by world_rules.py)
@@ -492,6 +504,15 @@ def _migrate_schema(conn: sqlite3.Connection) -> None:
         }.items():
             if col not in arc_cols:
                 conn.execute(f"ALTER TABLE player_story_arcs ADD COLUMN {col} {coltype}")
+
+    # The Chronicle gained a narrated entry per righted wrong.
+    cursor.execute(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='restorations'"
+    )
+    if cursor.fetchone():
+        cursor.execute("PRAGMA table_info(restorations)")
+        if "entry" not in {row[1] for row in cursor.fetchall()}:
+            conn.execute("ALTER TABLE restorations ADD COLUMN entry TEXT")
 
     # Clean up duplicate players (keep oldest by player_id)
     _remove_duplicate_players(conn)
@@ -2513,6 +2534,65 @@ def get_restoration(wrong_id: str) -> Optional[Dict[str, Any]]:
     try:
         row = conn.execute("SELECT * FROM restorations WHERE wrong_id = ?", (wrong_id,)).fetchone()
         return dict(row) if row else None
+    finally:
+        conn.close()
+
+
+def set_restoration_entry(wrong_id: str, entry: str) -> None:
+    """Attach the narrated Chronicle entry to a righted wrong."""
+    conn = get_conn()
+    try:
+        conn.execute("UPDATE restorations SET entry = ? WHERE wrong_id = ?", (entry, wrong_id))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Campaign acts (see app/campaigngen.py)
+# -------------------------------------------------
+
+def create_campaign_act(act_index: int, source: str, data: Dict[str, Any]) -> bool:
+    """Persist an authored act, once. INSERT OR IGNORE: the first writer wins,
+    so two concurrent authorings can never produce two different Act N's."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO campaign_acts (act_index, source, data_json, created_at)
+            VALUES (?, ?, ?, ?)
+            """,
+            (act_index, source, json.dumps(data), int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_campaign_acts() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute("SELECT * FROM campaign_acts ORDER BY act_index").fetchall()
+        out = []
+        for r in rows:
+            d = dict(r)
+            d["data"] = json.loads(d.pop("data_json"))
+            out.append(d)
+        return out
+    finally:
+        conn.close()
+
+
+def get_campaign_act(act_index: int) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM campaign_acts WHERE act_index = ?", (act_index,)).fetchone()
+        if not r:
+            return None
+        d = dict(r)
+        d["data"] = json.loads(d.pop("data_json"))
+        return d
     finally:
         conn.close()
 

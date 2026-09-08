@@ -139,9 +139,9 @@ def main() -> None:
     print("PASS  a felled climax stays felled; the Warfront falls quiet")
 
     # Right every other wrong of Act I -> the act completes -> Act II's threat rises.
-    from app.restoration import ACTS, right_wrong, is_act_complete
+    from app.restoration import get_acts, right_wrong, is_act_complete
     fin = get_player("finisher")
-    for w in ACTS[0].wrongs:
+    for w in get_acts()[0].wrongs:
         if w.deed_type != "climax":
             right_wrong(w.id, fin)
     upsert_player(fin)
