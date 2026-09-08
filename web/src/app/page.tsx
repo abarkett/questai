@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { sendCommand, prefetchCaches } from "./lib/api";
-import { generateSceneImage } from "./lib/gemini";
+import { generateSceneImage, requestSceneImage } from "./lib/gemini";
 import { buildScenePrompt } from "./lib/scene";
 import { Welcome } from "./welcome";
 
@@ -18,10 +18,14 @@ const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
 
 // cache survives re-renders
 const sceneImageCache = new Map<string, string>();
-// in-flight renders, so foreground + prefetch never render the same scene twice
+// in-flight foreground renders, so two views never render the same scene twice
 const sceneInFlight = new Map<string, Promise<string>>();
+// scenes being warmed in the background (polled, never awaited by the foreground)
+const scenePrefetching = new Set<string>();
 
 // Get a scene image for a key, reusing the cache or any in-flight render.
+// The server single-flights renders too, so a foreground request for a scene
+// the warmer is already painting waits for that one instead of a second.
 function renderSceneCached(key: string, prompt: string): Promise<string> {
   const cached = sceneImageCache.get(key);
   if (cached) return Promise.resolve(cached);
@@ -39,6 +43,37 @@ function renderSceneCached(key: string, prompt: string): Promise<string> {
     });
   sceneInFlight.set(key, p);
   return p;
+}
+
+// Poll intervals for a scene the server is still rendering (ms). Short
+// requests only: the browser's per-origin connection budget stays free for
+// the player's next command and for the foreground scene.
+const PREFETCH_POLL_MS = [2500, 4000, 6000, 8000, 10000, 12000, 15000, 15000, 15000, 20000, 20000, 20000];
+
+// Warm a scene into the local cache without ever blocking: ask the server
+// (which renders in the background), then poll until it's there. Resolves to
+// the image, or null if it never arrived. Never rejects.
+async function prefetchScene(key: string, prompt: string): Promise<string | null> {
+  if (sceneImageCache.has(key) || scenePrefetching.has(key)) return sceneImageCache.get(key) ?? null;
+  scenePrefetching.add(key);
+  try {
+    for (let i = 0; i <= PREFETCH_POLL_MS.length; i++) {
+      const img = await requestSceneImage(prompt, { wait: false });
+      if (img) {
+        sceneImageCache.set(key, img);
+        return img;
+      }
+      if (i === PREFETCH_POLL_MS.length) break;
+      await new Promise((r) => setTimeout(r, PREFETCH_POLL_MS[i]));
+      const arrived = sceneImageCache.get(key); // a foreground render may have landed it
+      if (arrived) return arrived;
+    }
+  } catch {
+    // best-effort: no image this time
+  } finally {
+    scenePrefetching.delete(key);
+  }
+  return null;
 }
 
 // ---- Map thumbnails (downscaled scene art, persisted in localStorage) ----
@@ -83,22 +118,14 @@ function downscale(dataUri: string, w = 160, h = 90): Promise<string> {
 }
 
 
+// The scene key IS the image prompt: two states that would paint the same
+// picture share one cache entry, so returning to an unchanged place (or one
+// where only other players moved) is instant. The prompt already ignores hp
+// (art shouldn't change as a monster takes damage) and other players.
 function computeSceneKeyFromResponse(resp: any) {
   const state = resp?.state;
   if (!state?.location) return null;
-
-  const entities = state.entities ?? [];
-
-  // NOTE: the key intentionally excludes hp — the scene art shouldn't change as
-  // a monster takes damage, only when the *set* of creatures present changes
-  // (a monster dies/spawns). This avoids regenerating on every hit.
-  return JSON.stringify({
-    locationId: state.location.id,
-    locationDescription: state.location.description,
-    entities: entities
-      .map((e: any) => ({ type: e.type, name: e.name }))
-      .sort((a: any, b: any) => a.name.localeCompare(b.name)),
-  });
+  return buildScenePrompt({ location: state.location, entities: state.entities ?? [] });
 }
 
 function computeMapLayout(mapData: any) {
@@ -1377,12 +1404,8 @@ export default function Page() {
 
     setIsLoadingScene(true);
     try {
-      const prompt = buildScenePrompt({
-        location: resp.state?.location,
-        entities: resp.state?.entities ?? [],
-      });
-
-      const img = await renderSceneCached(newKey, prompt); // reuses any prefetch
+      // The key is the prompt; the server joins any render already underway.
+      const img = await renderSceneCached(newKey, newKey);
       setSceneImage(img);
       recordThumb(resp.state?.location?.id, img);
     } catch {
@@ -1464,14 +1487,16 @@ export default function Page() {
     if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
   }, [log, isWaitingForResponse, view]);
 
+  // The server already warms these the moment we arrive (see
+  // app/engine/prefetch.py); this pulls the finished images into the browser
+  // so the next move shows its scene with no round-trip at all.
   function prefetchAdjacentScenes(state: any) {
     for (const scene of state.adjacent_scenes ?? []) {
       const key = computeSceneKeyFromResponse({ state: scene });
       if (!key || sceneImageCache.has(key)) continue;
-      const prompt = buildScenePrompt({ location: scene.location, entities: scene.entities });
-      renderSceneCached(key, prompt)
-        .then((img) => recordThumb(scene.location?.id, img))
-        .catch(() => {});
+      prefetchScene(key, key).then((img) => {
+        if (img) recordThumb(scene.location?.id, img);
+      });
     }
   }
 
@@ -1491,8 +1516,7 @@ export default function Page() {
     for (const ents of variants) {
       const key = computeSceneKeyFromResponse({ state: { ...state, entities: ents } });
       if (!key || sceneImageCache.has(key)) continue;
-      const prompt = buildScenePrompt({ location: state.location, entities: ents });
-      renderSceneCached(key, prompt).catch(() => {});
+      prefetchScene(key, key);
     }
   }
 

@@ -53,19 +53,42 @@ def _warm_location_text(location_id: str) -> int:
     return warmed
 
 
+def scene_cache_key(prompt: str) -> str:
+    """The shared image-cache key for a *base* prompt (matches /api/ai/image)."""
+    return hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+
+
 def render_scene_to_cache(prompt: str) -> bool:
     """
     Render a scene image for `prompt` into the shared cache (keyed by the hash
     of the *base* prompt, matching /api/ai/image). Returns True if the cache
     holds an image afterwards. Raises if Miriel enrichment is unavailable.
-    """
-    from .services import image_gen
 
-    key = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    Single-flighted per prompt: a player's foreground request for a scene the
+    background warmer is already rendering waits for that render instead of
+    paying for a second one.
+    """
+    key = scene_cache_key(prompt)
     if db.get_cached_scene_image(key) is not None:
         return True
-    if not image_gen.image_gen_enabled():
+    if not image_gen_enabled():
         return False
+
+    from .single_flight import run as single_flight
+    return single_flight(f"scene:{key}", lambda: _render_uncached(key, prompt))
+
+
+def image_gen_enabled() -> bool:
+    from .services import image_gen
+    return image_gen.image_gen_enabled()
+
+
+def _render_uncached(key: str, prompt: str) -> bool:
+    from .services import image_gen
+
+    # A follower that queued behind the leader re-checks the cache first.
+    if db.get_cached_scene_image(key) is not None:
+        return True
 
     # Enrichment requires Miriel and propagates its failures (no fallback):
     # a scene rendered without world context would silently cache forever.
@@ -76,6 +99,20 @@ def render_scene_to_cache(prompt: str) -> bool:
         return False
     db.cache_scene_image(key, prompt, image, image_gen.get_image_model())
     return True
+
+
+def schedule_scene_render(prompt: str, *, priority: int = 5) -> bool:
+    """
+    Render `prompt` in the background unless it is cached or already queued.
+    Returns True if a render was queued. Never raises.
+    """
+    key = scene_cache_key(prompt)
+    if db.get_cached_scene_image(key) is not None:
+        return False
+    if not image_gen_enabled():
+        return False
+    from . import warmer
+    return warmer.submit(f"scene:{key}", lambda: render_scene_to_cache(prompt), priority=priority)
 
 
 def _warm_location_image(location_id: str) -> bool:

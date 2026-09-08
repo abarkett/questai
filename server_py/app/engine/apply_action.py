@@ -350,6 +350,13 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     if recap_msgs and result.ok:
         result.messages = recap_msgs + result.messages
 
+    # Look ahead: the moment the player is somewhere, the scenes and prose
+    # they could need next (next door, this room after a fight) are generated
+    # in the background, shared by every player. Deduplicated and never fatal.
+    if result.ok and result.state is not None:
+        from .prefetch import schedule_player_warm
+        schedule_player_warm(player.player_id)
+
     log_action(
         player_id=player.player_id,
         action=req.action,

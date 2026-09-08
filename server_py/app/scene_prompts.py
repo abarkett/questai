@@ -58,3 +58,28 @@ def scene_prompt_for_location(location_id: str) -> str:
     loc = get_location(location_id)
     names = scene_entity_names(get_entities_at(location_id))
     return build_scene_prompt(loc.name, effective_description(loc), names)
+
+
+def scene_prompt_for_entities(loc, entities: List[Dict[str, Any]]) -> str:
+    """The client's prompt for `loc` with exactly `entities` present (order kept)."""
+    from .engine.state_view import effective_description
+
+    return build_scene_prompt(loc.name, effective_description(loc), scene_entity_names(entities))
+
+
+def combat_variant_entity_sets(entities: List[Dict[str, Any]]) -> List[List[Dict[str, Any]]]:
+    """
+    The entity sets the web client pre-renders for a room with monsters (see
+    prefetchCombatVariants in page.tsx): the fully cleared room, and — when
+    more than one monster is present — the room with each single monster
+    removed. Order is preserved because the prompt (and so the cache key)
+    joins names in list order.
+    """
+    monsters = [e for e in entities if e.get("type") == "monster"]
+    if not monsters:
+        return []
+    variants = [[e for e in entities if e.get("type") != "monster"]]
+    if len(monsters) > 1:
+        for m in monsters:
+            variants.append([e for e in entities if e.get("id") != m.get("id")])
+    return variants

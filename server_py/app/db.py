@@ -1514,6 +1514,28 @@ def get_cached_miriel_content(cache_key: str) -> Optional[str]:
         conn.close()
 
 
+def get_latest_miriel_content_by_prefix(prefix: str) -> Optional[str]:
+    """
+    The most recently written cached content whose key starts with `prefix`,
+    *including expired entries*. This is the stale-while-revalidate read: a
+    previous rendering of the same thing is better served instantly than
+    regenerated while the player waits.
+    """
+    conn = get_conn()
+    try:
+        row = conn.execute(
+            """
+            SELECT content_json FROM miriel_content_cache
+            WHERE cache_key LIKE ? ESCAPE '\\'
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%",),
+        ).fetchone()
+        return row["content_json"] if row else None
+    finally:
+        conn.close()
+
+
 # ===== Scene image cache (persistent, shared across players) =====
 
 def get_cached_scene_image(cache_key: str) -> Optional[str]:
