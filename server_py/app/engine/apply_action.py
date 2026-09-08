@@ -53,6 +53,8 @@ PASSIVE_ACTIONS = {
     "guide", "choose_path", "learn",
     # The campaign ledger is a read; taking up a deed is personal bookkeeping.
     "campaign", "undertake",
+    # The realm's news is a read.
+    "incidents",
 }
 
 
@@ -258,6 +260,9 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     elif req.action == "undertake":
         from ..restoration import undertake
         result = undertake(player, req.args.wrong_id)
+    elif req.action == "incidents":
+        from ..incidents import incidents_status
+        result = incidents_status(player)
     elif req.action == "post_note":
         from .actions.post_note import post_note
         result = post_note(player, req.args.text)
@@ -309,6 +314,19 @@ def apply_action(*, player_id: Optional[str], req_json: Any) -> ActionResponse:
     if result.ok and req.action not in PASSIVE_ACTIONS:
         new_turn = increment_world_turn()
         print(f"[TURN] New turn: {new_turn}, Action: {req.action}")
+
+        # World events with teeth (see app/incidents.py): what has run its
+        # course expires (an unanswered incursion digs in), and when the
+        # cadence allows, Miriel authors the next incident from the world.
+        try:
+            from ..incidents import tick_incidents, maybe_author_incident
+            for note in tick_incidents():
+                result.messages.append(f"Word spreads: {note}")
+            fresh = maybe_author_incident()
+            if fresh:
+                result.messages.append(f"Word spreads: {fresh['data']['announce_text']}")
+        except Exception as e:
+            print(f"[INCIDENTS] turn hook failed: {e}")
 
         # Evaluate world evolution rules periodically (every 5 turns)
         if new_turn % 5 == 0:

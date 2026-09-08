@@ -448,6 +448,31 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
               </Section>
             )}
 
+            {Array.isArray(state.incidents) && state.incidents.length > 0 && (
+              <Section title="News of the Realm">
+                <div className="space-y-1">
+                  {state.incidents.map((inc: any) => (
+                    <div key={inc.id} className="text-xs" title={inc.blurb}>
+                      <span className={inc.kind === "incursion" ? "text-red-300" : "text-yellow-300"}>
+                        {inc.kind === "incursion" ? "!" : "+"} {inc.title}
+                      </span>
+                      <span className="text-green-700"> — {inc.location_name}{inc.here ? " (here)" : ""}</span>
+                      {inc.kind === "incursion" && inc.creatures_left != null && (
+                        <span className="text-green-600"> · {inc.creatures_left} {inc.creature_name}{inc.creatures_left === 1 ? "" : "s"} left · {inc.turns_left} turns</span>
+                      )}
+                      {inc.kind === "boon" && inc.effect_words && (
+                        <span className="text-green-600"> · {inc.effect_words} · {inc.turns_left} turns</span>
+                      )}
+                      {inc.kind === "incursion" && inc.here && inc.creatures_left > 0 && (
+                        <button className="ml-2 px-1 border border-red-800 text-red-300 hover:bg-red-950"
+                          onClick={() => onCommand(`fight ${inc.creature_name}`)}>fight</button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
             {state.raid && (
               <Section title="World Threat">
                 <div className="text-xs">

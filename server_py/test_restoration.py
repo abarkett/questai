@@ -122,8 +122,16 @@ def main() -> None:
     # ---- patrons are the doorway: they speak of their wrongs ----
     lines = patron_lines("Town Warden", mk("c"))
     assert any("granary" in l.lower() and "undertake granary_rats" in l for l in lines), lines
+    # A righted wrong gets one line of gratitude (voiced by the stub here; the
+    # deterministic "is put right" line stands in when Miriel doesn't answer).
     done_lines = patron_lines("Old Merchant", get_player("a"))
-    assert any("put right" in l for l in done_lines), done_lines
+    assert len(done_lines) == 1 and "undertake" not in done_lines[0], done_lines
+    install_test_responder(None)
+    from app.services.miriel_client import get_miriel_client
+    get_miriel_client().enabled = False
+    quiet = patron_lines("Old Merchant", get_player("a"))
+    assert any("put right" in l for l in quiet), quiet
+    install_test_responder(lambda q: "Test prose.")
     print("PASS  patron NPCs point at open wrongs and acknowledge righted ones")
 
     # ---- guidance points at the spine; the raid is the climax ----

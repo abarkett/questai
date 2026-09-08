@@ -12,6 +12,13 @@ canon, growing without bound (each region's boss lair is the next frontier).
 Generation is deterministic and offline-capable: a seeded procedural generator
 builds the structure; Miriel, when configured, re-voices the prose (names and
 descriptions only — never the numbers).
+
+With Miriel the *theme itself* is authored too (see author_theme): what kind
+of place lies behind this particular frontier, its place-names, its creatures
+and their boss, its material and gear, its keeper — written from the frontier's
+flavor, its tier, and everything that already exists (so nothing repeats).
+Code validates the theme and still assigns every number; the fixed theme bank
+below is the fallback.
 """
 
 from __future__ import annotations
@@ -254,13 +261,16 @@ def _slug(text: str) -> str:
 
 
 def generate_region_spec(*, index: int, tier: int, origin_location: str,
-                         discovered_by: Optional[str] = None) -> Dict[str, Any]:
+                         discovered_by: Optional[str] = None,
+                         theme: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
     """
     Build a complete, self-consistent region spec. Deterministic for a given
-    (index, tier, origin) so a re-mint after a crash lands identically.
+    (index, tier, origin, theme) so a re-mint after a crash lands identically.
+    `theme` is a Miriel-authored theme (see author_theme); without one the
+    fixed bank is used.
     """
     rng = random.Random(f"{index}|{tier}|{origin_location}")
-    theme = THEMES[index % len(THEMES)]
+    theme = theme or THEMES[index % len(THEMES)]
     region_id = f"region_{index}"
     b = budget(tier)
 
@@ -431,6 +441,8 @@ def generate_region_spec(*, index: int, tier: int, origin_location: str,
         "region_id": region_id,
         "name": region_name,
         "theme": theme["key"],
+        "theme_source": theme.get("source", "bank"),
+        "theme_spec": theme,
         "tier": tier,
         "origin_location": origin_location,
         "entry_location": entry_id,
@@ -441,6 +453,219 @@ def generate_region_spec(*, index: int, tier: int, origin_location: str,
         "items": items,
         "quests": quests,
     }
+
+
+# ---------------------------------------------------------------------------
+# Miriel-authored themes (the referee is below; the bank is the fallback)
+# ---------------------------------------------------------------------------
+
+THEME_MARKER = "[[REGION_THEME]]"
+
+
+class ThemeValidationError(ValueError):
+    def __init__(self, problems: List[str]):
+        super().__init__("; ".join(problems))
+        self.problems = problems
+
+
+def _existing_names() -> Dict[str, set]:
+    """Every name already in the world, so a new theme can't collide."""
+    from .content import monster_catalog, all_location_ids, get_location_or_none
+    from .items import ITEMS
+    monsters = {e.name for _, e in monster_catalog()}
+    regions = db.list_regions()
+    region_names = {r["name"] for r in regions}
+    for r in regions:
+        t = (r.get("data") or {}).get("theme_spec") or {}
+        monsters.update(t.get("monsters") or [])
+        if t.get("boss"):
+            monsters.add(t["boss"])
+    for t in THEMES:
+        region_names.add(t["name"])
+    places = set()
+    for lid in all_location_ids():
+        loc = get_location_or_none(lid)
+        if loc:
+            places.add(loc.name)
+    item_names = {i.name for i in ITEMS.values()} | {
+        (row["data"] or {}).get("name", "") for row in db.get_all_gen_items()
+    }
+    return {"monsters": monsters, "regions": region_names, "places": places, "items": item_names}
+
+
+_THEME_SCHEMA = {
+    "name": "The region's name (2-3 words, e.g. 'Drowned Catacombs')",
+    "outdoor": "true or false",
+    "loc_names": ["8 distinct place names within it (2-4 words each)"],
+    "scenery": ["4 one-sentence scenery details, each usable in any room of the region"],
+    "monsters": ["4 distinct lesser creature names native to it (not in the existing lists)"],
+    "boss": "Its ruler: a new named boss (e.g. 'The Drowned Abbot')",
+    "boss_effect": "poison | weaken | none — what the boss inflicts",
+    "material": "A crafting material found here (2 words, e.g. 'Relic Shard')",
+    "weapon": "A weapon forged from it (2 words)",
+    "armor": "An armor made from it (2 words)",
+    "npc": "The one person who lingers at its threshold (a title, e.g. 'Keeper of the Sunken Door')",
+    "entry_flavor": "One sentence: the moment of stepping into it",
+}
+
+
+def build_theme_prompt(dossier: Dict[str, Any], problems: Optional[List[str]] = None) -> str:
+    parts = [
+        THEME_MARKER,
+        "You are the loremaster of a shared fantasy world that grows at its frontiers. An adventurer "
+        "has just pushed through an unexplored way, and a whole new region must be authored behind it — "
+        "a place no one has seen, that will belong to this world from now on.",
+        "",
+        f"Where it opens from: {dossier['origin_name']} — {dossier['origin_description']}",
+        f"The way in: {dossier['flavor']}",
+        f"Danger tier: {dossier['tier']} of 8 (1 is a nervous beginner's first cellar; 8 is the end of the world).",
+        "",
+        "Rules (the engine enforces them; a broken one is rejected):",
+        "- Invent something that fits what it opens from and how deep it is. Do not reuse or lightly rename anything "
+        "in `existing_regions`, `existing_monsters`, `existing_places` or `existing_items` — this must be NEW.",
+        "- Names are plain text, no markdown, no quotes inside strings, no numbers, no game syntax.",
+        "- Give exactly 8 loc_names, 4 scenery lines, 4 monsters.",
+        "",
+        "Reply with ONLY a JSON object of exactly this shape:",
+        json.dumps(_THEME_SCHEMA, indent=1),
+        "",
+        "EXISTING (avoid):",
+        json.dumps({k: sorted(dossier[k])[:120] for k in
+                    ("existing_regions", "existing_monsters", "existing_places", "existing_items")}),
+    ]
+    if problems:
+        parts += ["", "Your previous answer was rejected for these reasons; fix every one of them:",
+                  *[f"- {p}" for p in problems]]
+    return "\n".join(parts)
+
+
+def validate_theme(raw: Any, existing: Dict[str, set]) -> Dict[str, Any]:
+    """Turn Miriel's answer into a theme the generator accepts, or raise
+    ThemeValidationError listing every problem for repair."""
+    problems: List[str] = []
+    if not isinstance(raw, dict):
+        raise ThemeValidationError(["the answer must be a JSON object"])
+
+    def text(key: str, lo: int, hi: int) -> str:
+        v = raw.get(key)
+        if not isinstance(v, str) or not (lo <= len(v.strip()) <= hi):
+            problems.append(f"{key} must be text of {lo}-{hi} characters")
+            return ""
+        return " ".join(v.split())
+
+    def texts(key: str, n: int, lo: int, hi: int) -> List[str]:
+        v = raw.get(key)
+        if not isinstance(v, list) or len(v) != n or not all(isinstance(s, str) and lo <= len(s.strip()) <= hi for s in v):
+            problems.append(f"{key} must be a list of exactly {n} strings of {lo}-{hi} characters")
+            return []
+        out = [" ".join(s.split()) for s in v]
+        if len({s.lower() for s in out}) != n:
+            problems.append(f"{key} must not repeat")
+        return out
+
+    name = text("name", 4, 40)
+    if name in existing["regions"]:
+        problems.append(f"name '{name}' already exists")
+    outdoor = raw.get("outdoor")
+    if isinstance(outdoor, str):
+        outdoor = outdoor.strip().lower() == "true"
+    if not isinstance(outdoor, bool):
+        problems.append("outdoor must be true or false")
+    loc_names = texts("loc_names", 8, 3, 40)
+    for n in loc_names:
+        if n in existing["places"]:
+            problems.append(f"loc_names contains an existing place '{n}'")
+    scenery = texts("scenery", 4, 10, 200)
+    monsters = texts("monsters", 4, 3, 40)
+    for m in monsters:
+        if m in existing["monsters"]:
+            problems.append(f"monsters contains an existing creature '{m}'")
+    boss = text("boss", 3, 50)
+    if boss in existing["monsters"] or boss in monsters:
+        problems.append(f"boss '{boss}' already exists")
+    effect = (raw.get("boss_effect") or "none")
+    if effect not in ("poison", "weaken", "none"):
+        problems.append("boss_effect must be poison, weaken or none")
+    material = text("material", 3, 30)
+    weapon = text("weapon", 3, 30)
+    armor = text("armor", 3, 30)
+    for label, v in (("material", material), ("weapon", weapon), ("armor", armor)):
+        if v and v in existing["items"]:
+            problems.append(f"{label} '{v}' already exists")
+    if len({material.lower(), weapon.lower(), armor.lower()}) < 3:
+        problems.append("material, weapon and armor must be three different names")
+    npc = text("npc", 3, 60)
+    entry_flavor = text("entry_flavor", 10, 200)
+    key = _slug(name)
+    if not key:
+        problems.append("name must contain letters")
+    for label, v in (("material", material), ("weapon", weapon), ("armor", armor)):
+        if v and not _slug(v):
+            problems.append(f"{label} must contain letters")
+
+    if problems:
+        raise ThemeValidationError(problems)
+
+    return {
+        "key": key,
+        "name": name,
+        "outdoor": outdoor,
+        "loc_names": loc_names,
+        "scenery": scenery,
+        "monsters": monsters,
+        "boss": boss,
+        # The boss's affliction is capped modestly; the tier scales it at mint.
+        "boss_inflicts": ({"effect": effect, "magnitude": 3, "turns": 3} if effect != "none" else None),
+        "material": (_slug(material), material),
+        "weapon": (_slug(weapon), weapon),
+        "armor": (_slug(armor), armor),
+        "npc": npc,
+        "entry_flavor": entry_flavor,
+        "source": "miriel",
+    }
+
+
+def author_theme(*, tier: int, origin_location: str, flavor: str) -> Optional[Dict[str, Any]]:
+    """Ask Miriel for this frontier's theme (two tries, the second with the
+    first's problems). None when Miriel is off or can't produce a sound one."""
+    from .services.miriel_client import is_miriel_enabled, get_miriel_client, extract_answer
+    from .content import get_location_or_none
+
+    if not is_miriel_enabled():
+        return None
+    origin = get_location_or_none(origin_location)
+    existing = _existing_names()
+    dossier = {
+        "origin_name": origin.name if origin else origin_location,
+        "origin_description": (origin.description if origin else "")[:200],
+        "flavor": flavor,
+        "tier": tier,
+        "existing_regions": existing["regions"],
+        "existing_monsters": existing["monsters"],
+        "existing_places": existing["places"],
+        "existing_items": existing["items"],
+    }
+    problems: Optional[List[str]] = None
+    for attempt in (1, 2):
+        try:
+            resp = get_miriel_client().query(query=build_theme_prompt(dossier, problems), project="questai")
+            answer = extract_answer(resp) or ""
+            match = re.search(r"\{.*\}", answer, re.DOTALL)
+            if not match:
+                problems = ["the reply contained no JSON object"]
+                print(f"[REGIONGEN] theme attempt {attempt}: no JSON in answer")
+                continue
+            return validate_theme(json.loads(match.group(0)), existing)
+        except ThemeValidationError as e:
+            problems = e.problems
+            print(f"[REGIONGEN] theme attempt {attempt} rejected: {e}")
+        except json.JSONDecodeError as e:
+            problems = [f"the JSON did not parse: {e}"]
+            print(f"[REGIONGEN] theme attempt {attempt}: bad JSON ({e})")
+        except Exception as e:
+            print(f"[REGIONGEN] theme attempt {attempt} failed: {e}")
+            return None
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -595,7 +820,8 @@ def _persist_region(spec: Dict[str, Any]) -> None:
         entry_location=spec["entry_location"],
         origin_location=spec["origin_location"],
         discovered_by=spec.get("discovered_by"),
-        data={"lair": spec["lair"]},
+        data={"lair": spec["lair"], "theme_source": spec.get("theme_source", "bank"),
+              "theme_spec": spec.get("theme_spec")},
     )
     # Open the way: graft the frontier exit onto the origin location.
     db.add_gen_exit(spec["origin_location"], spec["entry_location"], "unexplored path")
@@ -682,14 +908,25 @@ def mint_region_from(origin_location: str, player: Optional[Player]) -> Optional
             return existing
 
         index = db.count_regions() + 1
+        # What kind of place lies behind this frontier: authored by Miriel from
+        # the frontier itself and everything that already exists; the theme
+        # bank stands in when it can't be.
+        theme = None
+        try:
+            theme = author_theme(tier=frontier["tier"], origin_location=origin_location,
+                                 flavor=frontier["flavor"])
+        except Exception as e:
+            print(f"[REGIONGEN] theme authoring failed: {e}")
         spec = generate_region_spec(
             index=index,
             tier=frontier["tier"],
             origin_location=origin_location,
             discovered_by=player.name if player else None,
+            theme=theme,
         )
         spec = _enrich_with_miriel(spec)
         validate_region(spec)
+        print(f"[REGIONGEN] region {index} minted: {spec['name']} (theme: {spec['theme_source']})")
 
         # The discoverer enters the canon: their name lives in the entry text.
         if player:

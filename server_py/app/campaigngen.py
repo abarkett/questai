@@ -38,6 +38,7 @@ from . import single_flight
 # right kind of query with the right kind of content.
 ACT_MARKER = "[[CAMPAIGN_ACT]]"
 CHRONICLE_MARKER = "[[CHRONICLE_ENTRY]]"
+PATRON_MARKER = "[[PATRON_LINE]]"
 
 DEFAULT_MAX_ACTS = 3
 
@@ -148,6 +149,21 @@ def world_dossier(act_index: int, previous_acts: list) -> Dict[str, Any]:
 
     heroes = sorted({c["righted_by"] for c in chronicle} | {l["discovered_by"] for l in locations if l.get("discovered_by")})
 
+    # Incidents (see app/incidents.py): what befell the realm between deeds,
+    # and who answered — or didn't.
+    incidents = []
+    try:
+        for inc in db.get_recent_incidents(12):
+            if inc["status"] == "active":
+                continue
+            incidents.append({
+                "kind": inc["kind"], "title": inc["title"], "location": inc.get("location_id"),
+                "status": inc["status"], "resolved_by": inc.get("resolved_by_name"),
+            })
+            heroes = sorted(set(heroes) | ({inc["resolved_by_name"]} if inc.get("resolved_by_name") else set()))
+    except Exception as e:
+        print(f"[CAMPAIGN] incidents in dossier skipped: {e}")
+
     return {
         "act_index": act_index,
         "acts_total": max_acts(),
@@ -160,6 +176,7 @@ def world_dossier(act_index: int, previous_acts: list) -> Dict[str, Any]:
         "chronicle": chronicle,
         "heroes": heroes,
         "recent_events": events,
+        "incidents": incidents,
         "used_targets": used_targets,
     }
 
@@ -616,6 +633,57 @@ def _learn_act(data: Dict[str, Any], dossier: Dict[str, Any]) -> None:
 # ---------------------------------------------------------------------------
 # The Chronicle's voice
 # ---------------------------------------------------------------------------
+
+def voice_patron_line(npc_name: str, wrong: Any, state: str, player: Any,
+                      record: Optional[Dict[str, Any]], progress: str = "") -> Optional[str]:
+    """
+    What a patron says about their wrong, in Miriel's voice, with the
+    Chronicle in view: an open wrong is a plea, one underway is a check-in,
+    a righted one is gratitude that names who did it (and what the Chronicle
+    wrote). Cached per (npc, wrong, state, righter, progress) so a
+    conversation is stable but moves when the world does. Best-effort: None
+    means the deterministic line stands.
+    """
+    from .services.miriel_client import is_miriel_enabled, get_miriel_client, extract_answer
+
+    if not is_miriel_enabled():
+        return None
+    import hashlib
+    righter = (record or {}).get("righted_by_name") or ""
+    entry = (record or {}).get("entry") or ""
+    key = "patron_" + hashlib.sha256(
+        f"{npc_name}|{wrong.id}|{state}|{righter}|{progress}|{player.player_id if state == 'righted' else ''}".encode()
+    ).hexdigest()[:16]
+    cached = db.get_cached_miriel_content(key)
+    if cached:
+        return cached
+    try:
+        legend = ", ".join(getattr(player, "titles", None) or []) or "no titles yet"
+        if state == "righted":
+            you = "the very adventurer you are speaking to" if (record or {}).get("righted_by_id") == player.player_id else righter
+            situation = (f"The wrong has been PUT RIGHT by {you}. Chronicle entry: '{entry or wrong.righted_text}'. "
+                         f"Speak of it with gratitude and name who did it; the world is changed: {wrong.restored or wrong.righted_text}")
+        elif state == "active":
+            situation = f"{player.name} has taken up the deed and is partway through ({progress}). Urge them on."
+        elif wrong.deed_type == "climax":
+            situation = "This is the act's great threat, felled only by the whole realm together at the Warfront. Ask them to join the muster."
+        else:
+            situation = f"The wrong is OPEN. Plead with {player.name} to take it up. The deed: {wrong.deed}"
+        query = (
+            f"{PATRON_MARKER}\nYou are {npc_name}, an NPC in a fantasy world, speaking to the adventurer {player.name} "
+            f"(Legend: {legend}). You care about this wrong: '{wrong.title}' — {wrong.blurb}\n{situation}\n"
+            "Reply with ONLY what you say aloud: 1-2 sentences, in character, vivid, no quotes, no stage directions, "
+            "no commands or game syntax."
+        )
+        text = " ".join((extract_answer(get_miriel_client().query(query=query, project="questai")) or "").split())
+        text = text.strip().strip('"').strip("“”")
+        if 10 <= len(text) <= 400 and "{" not in text and "`" not in text:
+            db.cache_miriel_content(key, "dialogue", text, ttl_seconds=1800)
+            return text
+    except Exception as e:
+        print(f"[CAMPAIGN] patron voice skipped: {e}")
+    return None
+
 
 def narrate_chronicle_entry(wrong: Any, player: Any) -> Optional[str]:
     """One sentence for the Chronicle about *this* righting — who, how, with

@@ -332,6 +332,15 @@ def _campaign_safe(player: Player) -> Optional[Dict[str, Any]]:
         return None
 
 
+def _incidents_safe(player: Player) -> List[Dict[str, Any]]:
+    try:
+        from ..incidents import incident_summary
+        return incident_summary(player)
+    except Exception as e:
+        print(f"[INCIDENTS] summary failed: {e}")
+        return []
+
+
 def _identity_safe(player: Player) -> Dict[str, Any]:
     """Combat-identity summary for the web client: path, skill points, and the
     abilities you could learn or still choose among."""
@@ -380,6 +389,7 @@ def build_action_state(
         "guidance": _guidance_safe(player),
         "identity": _identity_safe(player),
         "campaign": _campaign_safe(player),
+        "incidents": _incidents_safe(player),
     }
     if scene_dirty is not None:
         state["scene_dirty"] = scene_dirty

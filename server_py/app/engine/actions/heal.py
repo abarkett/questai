@@ -21,6 +21,14 @@ def heal_cost() -> int:
             return 0
     except Exception:
         pass
+    # A passing boon (a festival, a blessing — see app/incidents.py) can do
+    # the same for a while.
+    try:
+        from ...incidents import boon_active
+        if boon_active("free_heal"):
+            return 0
+    except Exception:
+        pass
     return HEAL_COST
 
 

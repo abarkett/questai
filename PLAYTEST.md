@@ -82,6 +82,16 @@ Ask one question at every stop: *did I want to keep going?*
    *Should feel:* it stays dead; Act II opens and its text names the heroes
    of Act I and the beast they felled.
    *Knobs:* `_climax_stats` in `app/campaigngen.py`; `QUESTAI_CAMPAIGN_ACTS`.
+6. **Keep acting for a dozen turns, then `news`.**
+   *Should feel:* something *happened* while you were busy — wolves at a gate
+   you can't pass, or a festival that makes rest cheap — and it reads like a
+   reaction to what you did. Ignore an incursion and come back: it dug in.
+   *Knobs:* `QUESTAI_INCIDENT_EVERY_TURNS` (set it to 3 for a playtest);
+   `MAX_ACTIVE`, `_creature_stats` in `app/incidents.py`.
+7. **`explore` at a frontier (the tavern cellar, the riverside towpath).**
+   *Should feel:* a region written *for that door* — its name, creatures and
+   keeper fit where you came from. The log line
+   `[REGIONGEN] region N minted: … (theme: miriel)` confirms Miriel wrote it.
 
 ## The three questions that matter
 

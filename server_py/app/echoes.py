@@ -50,6 +50,8 @@ def echo_lines(player: Player, limit: int = 3) -> List[str]:
 _RUMOR_EVENT_TYPES = {
     "region_discovered", "world_evolution", "goal_completed",
     "goal_started", "goal_expired",
+    "incident_started", "incident_resolved", "incident_expired",
+    "act_authored", "act_complete", "wrong_righted",
 }
 
 

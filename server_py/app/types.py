@@ -469,6 +469,11 @@ class UndertakeReq(BaseModel):
     args: UndertakeArgs
 
 
+class IncidentsReq(BaseModel):
+    action: Literal["incidents"]
+    args: Optional[dict] = None
+
+
 ActionRequest = Union[
     CreatePlayerReq,
     LookReq,
@@ -526,6 +531,7 @@ ActionRequest = Union[
     LearnReq,
     CampaignReq,
     UndertakeReq,
+    IncidentsReq,
 ]
 
 

@@ -362,6 +362,24 @@ def init_db() -> None:
               created_at INTEGER NOT NULL
             );
 
+            -- World events with teeth: Miriel-authored incidents that carry a
+            -- real mechanic while active and are resolved by play or expire
+            -- with a consequence (see app/incidents.py).
+            CREATE TABLE IF NOT EXISTS incidents (
+              incident_id TEXT PRIMARY KEY,
+              kind TEXT NOT NULL,
+              title TEXT NOT NULL,
+              location_id TEXT,
+              status TEXT NOT NULL DEFAULT 'active',
+              data_json TEXT NOT NULL,
+              created_turn INTEGER NOT NULL,
+              expires_turn INTEGER NOT NULL,
+              resolved_turn INTEGER,
+              resolved_by_id TEXT,
+              resolved_by_name TEXT,
+              created_at INTEGER NOT NULL
+            );
+
             -- Data-driven world evolution rules (interpreted by world_rules.py)
             CREATE TABLE IF NOT EXISTS world_rules (
               rule_id TEXT PRIMARY KEY,
@@ -2580,6 +2598,84 @@ def get_campaign_acts() -> List[Dict[str, Any]]:
             d["data"] = json.loads(d.pop("data_json"))
             out.append(d)
         return out
+    finally:
+        conn.close()
+
+
+# -------------------------------------------------
+# Incidents (see app/incidents.py)
+# -------------------------------------------------
+
+def _incident_row(r) -> Dict[str, Any]:
+    d = dict(r)
+    d["data"] = json.loads(d.pop("data_json") or "{}")
+    return d
+
+
+def create_incident(*, incident_id: str, kind: str, title: str, location_id: Optional[str],
+                    data: Dict[str, Any], created_turn: int, expires_turn: int) -> bool:
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            INSERT OR IGNORE INTO incidents
+              (incident_id, kind, title, location_id, status, data_json, created_turn, expires_turn, created_at)
+            VALUES (?, ?, ?, ?, 'active', ?, ?, ?, ?)
+            """,
+            (incident_id, kind, title, location_id, json.dumps(data), created_turn, expires_turn,
+             int(time.time() * 1000)),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+    finally:
+        conn.close()
+
+
+def get_incident(incident_id: str) -> Optional[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        r = conn.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone()
+        return _incident_row(r) if r else None
+    finally:
+        conn.close()
+
+
+def get_active_incidents() -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM incidents WHERE status = 'active' ORDER BY created_turn"
+        ).fetchall()
+        return [_incident_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def get_recent_incidents(limit: int = 10) -> List[Dict[str, Any]]:
+    conn = get_conn()
+    try:
+        rows = conn.execute(
+            "SELECT * FROM incidents ORDER BY created_turn DESC LIMIT ?", (limit,)
+        ).fetchall()
+        return [_incident_row(r) for r in rows]
+    finally:
+        conn.close()
+
+
+def close_incident(incident_id: str, status: str, turn: int,
+                   by_id: Optional[str] = None, by_name: Optional[str] = None) -> bool:
+    """Move an active incident to 'resolved' or 'expired'. First closer wins."""
+    conn = get_conn()
+    try:
+        cur = conn.execute(
+            """
+            UPDATE incidents SET status = ?, resolved_turn = ?, resolved_by_id = ?, resolved_by_name = ?
+            WHERE incident_id = ? AND status = 'active'
+            """,
+            (status, turn, by_id, by_name, incident_id),
+        )
+        conn.commit()
+        return cur.rowcount > 0
     finally:
         conn.close()
 

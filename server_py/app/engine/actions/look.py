@@ -41,6 +41,13 @@ def look(player: Player) -> ActionResponse:
             "You see: " + ", ".join(e["name"] for e in entities)
         )
 
+    # An incident underway here (see app/incidents.py) is the news of the place.
+    try:
+        from ...incidents import location_lines
+        messages.extend(location_lines(player.location))
+    except Exception as e:
+        print(f"[INCIDENTS] look lines failed: {e}")
+
     # Echoes: what other players did here recently.
     from ...echoes import echo_lines, rumor_lines
     echoes = echo_lines(player)

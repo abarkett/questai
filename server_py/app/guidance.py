@@ -87,6 +87,23 @@ def suggestions(player: Player, limit: int = 5) -> List[Dict[str, Any]]:
     except Exception:
         pass
 
+    # --- an incursion underway is the realm's most urgent small trouble ---
+    try:
+        from .incidents import incident_summary
+        for inc in incident_summary(player):
+            if inc["kind"] != "incursion" or not inc["creatures_left"]:
+                continue
+            if inc["here"]:
+                tips.append(_tip(6, f"{inc['title']} — {inc['creatures_left']} {inc['creature_name']}s here. "
+                                    f"Slay them all to end it (`fight {inc['creature_name']}`).",
+                                f"fight {inc['creature_name']}"))
+            else:
+                tips.append(_tip(8, f"{inc['title']} at {inc['location_name']} — {inc['turns_left']} turns before "
+                                    "they dig in. See `news`.", "news"))
+            break
+    except Exception:
+        pass
+
     # --- choose a combat path, then spend skill points on it ---
     if not player.archetype:
         try:

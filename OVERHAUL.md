@@ -373,12 +373,63 @@ for the Chronicle about *that* righting — who, as what, with which companion �
 stored on the restoration row and read back in `campaign`, in the web ledger,
 and in the dossier the next act is written from.
 
+**Patrons in Miriel's voice.** A patron NPC no longer recites a template. Their
+line is voiced by Miriel with the Chronicle in view — a plea for an open wrong,
+a check-in on one underway, gratitude that *names who righted it* and quotes
+what the Chronicle wrote — cached per (npc, wrong, state, righter) so it is
+stable but moves when the world does. The engine always follows the voiced
+line with the exact ledger line (`— Rats in the Granary: Slay 2 Rats
+(`undertake …`)`), so the task is never lost in the prose; the deterministic
+line stands in when Miriel doesn't answer.
+
+## 17. Generated regions (`regiongen.author_theme`)
+
+Minted regions used to draw from a bank of eight themes. Now, when a frontier
+is opened, **Miriel authors the theme for that frontier**: what kind of place
+lies behind *this* passage — written from where it opens (the origin's name
+and description), how the way in reads, the danger tier, and everything that
+already exists (every region, creature, place and item name, so nothing
+repeats). It supplies the region's name, eight place names, four scenery
+lines, four native creatures, the boss and what it inflicts, the material,
+weapon and armor, the keeper at the threshold, and the entry line. The same
+deterministic generator then builds the region from it, so every number is
+still the stat budget's, `validate_region` still gates it, and what was
+written becomes canon the next author must avoid. The theme is persisted on
+the region row (`theme_spec`, `theme_source`); the bank is the fallback.
+
+## 18. World events with teeth (`app/incidents.py`, `news`)
+
+A world event used to be a line of text. An **incident** is a line of text
+that *does something*. Every dozen world turns (`QUESTAI_INCIDENT_EVERY_TURNS`),
+if there is room (two at once, one incursion), Miriel authors one from the
+same dossier the campaign is written from — a *reaction* to what the heroes
+did and where they went, not a random roll — and the engine validates and
+installs it:
+
+- **Incursion.** A new creature (Miriel's name, the engine's stats, scaled to
+  the world level) appears somewhere in numbers and may **close a road** out
+  of that place. `look` says so, `news` lists it, `next` points at it, the web
+  panel shows it, and `go` refuses the held road by name. It is **resolved by
+  the last kill**: the slayer is paid and named in history, and the road opens.
+  If no one answers before it expires, **they dig in**: a stronger leader
+  rises, the road stays held until the last of them and the leader fall, and
+  history records that the realm let it happen.
+- **Boon.** A festival, a blessing, a market glut: for a while the temple heals
+  free, rest heals double, or the shops sell cheap. It simply passes, and
+  history says so.
+
+Resolved and expired incidents (and who answered) enter the next act's dossier
+and the rumor mill, so the story reacts to what *happened*, not only to what
+was slain. Numbers and cadence are the engine's; Miriel supplies only what
+happens and how it reads.
+
 ## New commands
 
 | Command | Effect |
 | --- | --- |
 | `campaign` / `chronicle` / `legend` | The ledger of wrongs, who righted them, and your Legend |
 | `undertake <wrong>` | Take up a wrong's deed as a quest |
+| `news` / `incidents` | What is befalling the realm right now, and what recently passed |
 | `fight [bold\|cautious] <target>` | Resolve a whole encounter in one action |
 | `explore` | Open a frontier into a brand-new region |
 | `note <text>` | Leave a note at your location |
@@ -408,5 +459,8 @@ All systems have offline script tests in `server_py/` (run each with
 `test_cohesion.py` (an integration walk that exercises the Miriel-gated
 move/look path), `test_archetypes.py`, `test_restoration.py`,
 `test_campaigngen.py` (a stub loremaster: authoring, repair, fallback, the
-generated climax at the Warfront, the next act written from the Chronicle),
-plus the pre-existing suite.
+generated climax at the Warfront, the next act written from the Chronicle,
+voiced patrons), `test_regiongen_miriel.py` (authored region themes under the
+referee, with the bank as fallback), `test_incidents.py` (incursions that
+close roads and dig in, boons that change rules, and both feeding the next
+act), plus the pre-existing suite.

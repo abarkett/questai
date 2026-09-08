@@ -25,7 +25,9 @@ from app.engine.entities import seed_world_monsters  # noqa: E402
 seed_world_monsters()
 
 from app.services.miriel_client import install_test_responder  # noqa: E402
-from app.campaigngen import ACT_MARKER, CHRONICLE_MARKER, validate_act, world_dossier, ActValidationError  # noqa: E402
+from app.campaigngen import (  # noqa: E402
+    ACT_MARKER, CHRONICLE_MARKER, PATRON_MARKER, validate_act, world_dossier, ActValidationError,
+)
 from app.types import Player  # noqa: E402
 from app.db import upsert_player, get_player, get_world_events  # noqa: E402
 from app.world import get_location  # noqa: E402
@@ -118,6 +120,10 @@ class Loremaster:
             return act_json(idx, boss="The Hollow Sovereign" if idx == 0 else "The Pale Matriarch")
         if q.startswith(CHRONICLE_MARKER):
             return "Hero_a, with steel and stubbornness, cleared the rat-kings from the forest verges."
+        if q.startswith(PATRON_MARKER):
+            if "PUT RIGHT" in q:
+                return "Bless Hero_a — the verges are clear, and I sleep again."
+            return "The rats are in the grain and the children go hungry. Will you go where I cannot?"
         return "Test prose."
 
 
@@ -180,8 +186,13 @@ def main() -> None:
     assert get_item("relic_a0_the_hollow_sovereign").damage == 18
     print("PASS  the generated climax rises at the Warfront with a trophy and a relic recipe")
 
-    # ---- a generated wrong plays like any other, and the Chronicle speaks ----
+    # ---- patrons speak in Miriel's voice, and the ledger line always follows ----
     p = mk("a")
+    lines = R.patron_lines("Town Warden", p)
+    assert any("children go hungry" in l and "`undertake a0_the_rat_kings_of_the_forest`" in l for l in lines), lines
+    print("PASS  a patron pleads in Miriel's voice and the exact deed line follows")
+
+    # ---- a generated wrong plays like any other, and the Chronicle speaks ----
     r = R.undertake(p, "a0_the_rat_kings_of_the_forest")
     assert r.ok, r
     msgs = R.right_wrong("a0_the_rat_kings_of_the_forest", p)
@@ -193,6 +204,13 @@ def main() -> None:
     st = R.campaign_status(get_player("a"))
     assert any("steel and stubbornness" in m for m in st.messages)
     print("PASS  righting a generated wrong changes the world and the Chronicle narrates it")
+
+    # ...and the patron now speaks of it with the Chronicle in view.
+    thanks = R.patron_lines("Town Warden", mk("z"))
+    assert any("Bless Hero_a" in l for l in thanks), thanks
+    voiced_prompt = [q for q in lore.prompts if q.startswith(PATRON_MARKER) and "PUT RIGHT" in q][-1]
+    assert "steel and stubbornness" in voiced_prompt      # the Chronicle entry reached the patron
+    print("PASS  a patron's gratitude names the righter and quotes the Chronicle")
 
     # ---- the next act is written from what these players did ----
     fin = mk("fin")

@@ -34,7 +34,14 @@ def rest(player: Player) -> ActionResponse:
             error="You can't rest with hostile eyes on you. Clear them out or move on.",
         )
 
-    healed = min(REST_HP, player.max_hp - player.hp)
+    per_rest = REST_HP
+    try:
+        from ...incidents import boon_active
+        if boon_active("rest_double"):
+            per_rest *= 2
+    except Exception:
+        pass
+    healed = min(per_rest, player.max_hp - player.hp)
     player.hp += healed
 
     flavor = _FLAVOR[player.hp % len(_FLAVOR)]

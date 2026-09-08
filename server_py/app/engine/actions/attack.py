@@ -184,6 +184,13 @@ def resolve_monster_kill(player: Player, entity_id: str, result: dict) -> list[s
     # Community goals advance with every kill (see app/world_goals.py).
     from ...world_goals import record_kill_progress
     messages.extend(record_kill_progress(player, result["name"]))
+
+    # The last intruder of an incursion ends it (see app/incidents.py).
+    try:
+        from ...incidents import on_monster_killed
+        messages.extend(on_monster_killed(player, entity_id))
+    except Exception as e:
+        print(f"[INCIDENTS] kill hook failed: {e}")
     return messages
 
 

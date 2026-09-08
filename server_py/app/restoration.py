@@ -770,7 +770,10 @@ def campaign_summary(player: Player) -> dict:
 
 def patron_lines(npc_name: str, player: Player) -> List[str]:
     """What an NPC says about the wrongs they care about — the narrative
-    doorway into the campaign. Deterministic, so it works without Miriel."""
+    doorway into the campaign. Miriel voices the line with the Chronicle in
+    view (who righted it, what was written); the engine always follows it
+    with the exact ledger line, so the *task* is never lost in the prose. A
+    deterministic line stands in when Miriel does not answer."""
     act = current_act()
     if act is None:
         return []
@@ -780,14 +783,25 @@ def patron_lines(npc_name: str, player: Player) -> List[str]:
         if w.patron != npc_name:
             continue
         state = wrong_state(player, w, done)
+        progress = _deed_progress(player, w) if state == "active" else ""
+        voiced = None
+        try:
+            from .campaigngen import voice_patron_line
+            voiced = voice_patron_line(npc_name, w, state, player, done.get(w.id), progress)
+        except Exception as e:
+            print(f"[CAMPAIGN] patron voice failed: {e}")
+
         if state == "righted":
             who = done[w.id]["righted_by_name"]
             you = "You" if done[w.id]["righted_by_id"] == player.player_id else who
-            lines.append(f'"{w.title} is put right — {you} saw to that. The realm remembers."')
+            lines.append(f'"{voiced}"' if voiced else f'"{w.title} is put right — {you} saw to that. The realm remembers."')
         elif state == "active":
-            lines.append(f'"How goes it? {w.title} — {_deed_progress(player, w)}. Do not fail us."')
+            lines.append((f'"{voiced}"' if voiced else '"How goes it? Do not fail us."')
+                         + f" — {w.title}: {progress}. {w.deed}")
         elif w.deed_type == "climax":
-            lines.append(f'"{w.blurb} Only the whole realm together can fell it — at the Warfront."')
+            lines.append((f'"{voiced}"' if voiced else f'"{w.blurb} Only the whole realm together can fell it."')
+                         + f" — {w.title}: {w.deed}")
         else:
-            lines.append(f'"{w.blurb} Will you put it right? {w.deed} (`undertake {w.id}`)"')
+            lines.append((f'"{voiced}"' if voiced else f'"{w.blurb} Will you put it right?"')
+                         + f" — {w.title}: {w.deed} (`undertake {w.id}`)")
     return lines

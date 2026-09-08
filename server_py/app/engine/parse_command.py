@@ -329,6 +329,10 @@ def parse_command(text: str) -> Dict[str, Any]:
     if verb in ("undertake", "right", "take") and rest:
         return {"action": "undertake", "args": {"wrong_id": "_".join(rest)}}
 
+    # ---- THE REALM'S NEWS (incidents underway) ----
+    if verb in ("news", "incidents", "tidings", "happenings"):
+        return {"action": "incidents"}
+
     # ---- GUIDANCE (what now?) ----
     if verb in ("next", "guide", "hint", "todo", "advice"):
         return {"action": "guide"}
