@@ -11,6 +11,11 @@ type Line = {
   text: string;
 };
 
+type View = "play" | "map" | "journal" | "bestiary";
+type Tab = "here" | "gear" | "skills" | "party";
+
+const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"];
+
 // cache survives re-renders
 const sceneImageCache = new Map<string, string>();
 // in-flight renders, so foreground + prefetch never render the same scene twice
@@ -161,7 +166,7 @@ function computeMapLayout(mapData: any) {
     L.forEach((id, i) => (pos[id] = [i + offset, d]));
   });
 
-  const edges: { a: [number, number]; b: [number, number]; current: boolean }[] = [];
+  const edges: { a: [number, number]; b: [number, number]; current: boolean; unexplored: boolean }[] = [];
   const seen = new Set<string>();
   for (const n of mapData.locations) {
     for (const ex of n.exits || []) {
@@ -171,7 +176,11 @@ function computeMapLayout(mapData: any) {
       const ek = `${a}|${b}`;
       if (seen.has(ek)) continue;
       seen.add(ek);
-      edges.push({ a: pos[a], b: pos[b], current: n.id === mapData.current || ex.to === mapData.current });
+      edges.push({
+        a: pos[a], b: pos[b],
+        current: n.id === mapData.current || ex.to === mapData.current,
+        unexplored: !byId[a]?.visited || !byId[b]?.visited,
+      });
     }
   }
 
@@ -185,90 +194,85 @@ function computeMapLayout(mapData: any) {
   };
 }
 
+const MAP_COLORS = {
+  accent: "#2f3a5c",
+  accentTint: "#d6dceb",
+  paper: "#f6f1e7",
+  plate: "#fbf8f0",
+  ink: "#2a2620",
+  inkFaint: "#8a7f66",
+  ruleFaint: "#b9ab8a",
+};
+
 function MapGraph({ mapData, thumbs }: { mapData: any; thumbs: Record<string, string> }) {
   const L = computeMapLayout(mapData);
-  const cell = 130, pad = 24, nodeW = 100, nodeH = 64;
+  const cell = 150, pad = 24, nodeW = 112, nodeH = 60;
   const cols = L.maxX - L.minX + 1, rows = L.maxY - L.minY + 1;
   const W = cols * cell + pad * 2, H = rows * cell + pad * 2;
   const cx = (gx: number) => pad + (gx - L.minX) * cell + cell / 2;
   const cy = (gy: number) => pad + (gy - L.minY) * cell + cell / 2;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className="w-full" style={{ maxHeight: "72vh" }}>
-      {/* Non-current edges first (dim), then current-location edges on top (bright). */}
+    <svg viewBox={`0 0 ${W} ${H}`} className="w-full block font-sans" style={{ maxHeight: "70vh" }}>
+      {/* Faint roads elsewhere first, then the roads out of here on top. */}
       {L.edges.filter((e) => !e.current).map((e, i) => (
         <line key={`d${i}`} x1={cx(e.a[0])} y1={cy(e.a[1])} x2={cx(e.b[0])} y2={cy(e.b[1])}
-          stroke="#14532d" strokeWidth={1.5} />
+          stroke={MAP_COLORS.ruleFaint} strokeWidth={1.5} strokeDasharray={e.unexplored ? "4 4" : undefined} />
       ))}
       {L.edges.filter((e) => e.current).map((e, i) => (
         <line key={`c${i}`} x1={cx(e.a[0])} y1={cy(e.a[1])} x2={cx(e.b[0])} y2={cy(e.b[1])}
-          stroke="#4ade80" strokeWidth={4} />
+          stroke={MAP_COLORS.accent} strokeWidth={3} />
       ))}
       {mapData.locations.map((n: any) => {
         const p = L.pos[n.id];
         if (!p) return null;
         const X = cx(p[0]) - nodeW / 2;
         const Y = cy(p[1]) - nodeH / 2;
-        const thumb = n.visited ? thumbs[n.id] : undefined;
         const here = n.id === mapData.current;
+        const thumb = n.visited && !here ? thumbs[n.id] : undefined;
+        const clipId = `clip-${n.id.replace(/[^a-zA-Z0-9_-]/g, "_")}`;
+        const roads = (n.exits || []).length;
+        const sub = here
+          ? "you are here"
+          : n.visited
+          ? roads === 1 ? "1 road" : `${roads} roads`
+          : "unexplored";
+        const fill = here ? MAP_COLORS.accent : n.visited ? MAP_COLORS.plate : "transparent";
+        const stroke = here ? MAP_COLORS.accent : n.visited ? MAP_COLORS.inkFaint : MAP_COLORS.ruleFaint;
+        const textFill = here ? MAP_COLORS.paper : n.visited ? MAP_COLORS.ink : MAP_COLORS.inkFaint;
+        const subFill = here ? MAP_COLORS.accentTint : MAP_COLORS.inkFaint;
         return (
           <g key={n.id}>
             {thumb && (
-              <image
-                href={thumb} x={X} y={Y} width={nodeW} height={nodeH}
-                preserveAspectRatio="xMidYMid slice"
-              />
+              <clipPath id={clipId}>
+                <rect x={X} y={Y} width={nodeW} height={nodeH} rx={5} />
+              </clipPath>
             )}
             <rect
-              x={X} y={Y} width={nodeW} height={nodeH}
-              fill={thumb ? "transparent" : n.visited ? "#052e16" : "#0a0a0a"}
-              stroke={here ? "#86efac" : n.visited ? "#15803d" : "#14532d"}
-              strokeWidth={here ? 3 : 1.5}
+              x={X} y={Y} width={nodeW} height={nodeH} rx={5}
+              fill={fill}
+              stroke={stroke}
+              strokeWidth={here ? 2 : 1.25}
+              strokeDasharray={n.visited ? undefined : "4 3"}
             />
-            {!thumb && !n.visited && (
-              <text x={cx(p[0])} y={cy(p[1]) + 5} fill="#3f6212" fontSize="22" textAnchor="middle">?</text>
+            {thumb && (
+              <g clipPath={`url(#${clipId})`}>
+                <image href={thumb} x={X} y={Y} width={nodeW} height={nodeH} preserveAspectRatio="xMidYMid slice" />
+                {/* Label plate over the lower part of the thumbnail. */}
+                <rect x={X} y={Y + 16} width={nodeW} height={nodeH - 16} fill={MAP_COLORS.plate} fillOpacity={0.92} />
+              </g>
             )}
-            <text
-              x={cx(p[0])} y={Y + nodeH + 14}
-              fill={here ? "#bbf7d0" : n.visited ? "#86efac" : "#4b5563"}
-              fontSize="12" textAnchor="middle"
-            >
-              {n.visited ? n.name : "Unexplored"}
+            <text x={cx(p[0])} y={Y + 27} fill={textFill} fontSize={12} fontWeight={600} textAnchor="middle">
+              {n.visited ? n.name : "?"}
+            </text>
+            <text x={cx(p[0])} y={Y + 44} fill={subFill} fontSize={10} fontStyle="italic"
+              fontFamily="var(--font-spectral), Georgia, serif" textAnchor="middle">
+              {sub}
             </text>
           </g>
         );
       })}
     </svg>
-  );
-}
-
-function Modal({
-  title,
-  onClose,
-  children,
-}: {
-  title: string;
-  onClose: () => void;
-  children: ReactNode;
-}) {
-  return (
-    <div
-      className="fixed inset-0 z-50 bg-black/90 p-6 overflow-auto"
-      onClick={onClose}
-    >
-      <div className="max-w-5xl mx-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-lg text-green-300">{title}</h2>
-          <button
-            className="border border-green-700 px-3 py-1 text-sm hover:bg-green-900"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
   );
 }
 
@@ -283,190 +287,467 @@ const COMPANION_TITLE: Record<string, string> = {
   outrider: "Outrider",
 };
 
-function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: string) => void; }) {
-  const [tab, setTab] = useState<string>("summary");
+const ABILITY_KIND_LABEL: Record<string, string> = {
+  attack: "attack", dot: "bleed", heal: "heal", aoe: "area",
+};
+const ABILITY_KIND_CLASS: Record<string, string> = {
+  attack: "text-danger", dot: "text-danger", heal: "text-good", aoe: "text-accent",
+};
 
-  if (!state?.player || !state?.location) {
-    return <div className="text-green-700">No character loaded</div>;
+const DIRECTION_ARROW: Record<string, string> = {
+  north: "↑", south: "↓", east: "→", west: "←",
+};
+
+function humanize(s: string) {
+  return String(s).replace(/_/g, " ");
+}
+
+function titleCase(s: string) {
+  return humanize(s).replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function totalXpForLevel(level: number) {
+  return level <= 1 ? 0 : 10 * (level - 1) * level;
+}
+
+function pct(n: number, max: number) {
+  if (!max) return 0;
+  return Math.max(0, Math.min(100, (100 * n) / max));
+}
+
+// ---- Story log line kinds ----
+type LineKind = "cmd" | "narr" | "sys" | "error";
+
+const SYSTEM_LINE_RE = /^(Welcome|Quest updated|Quest Journal|Map opened|Bestiary|Your hero is gone|You have discovered|You gained|You learned|Level up)/i;
+
+function classifyLine(text: string): { kind: LineKind; text: string } {
+  if (text.startsWith("> ")) return { kind: "cmd", text: text.slice(2) };
+  if (text.startsWith("[error]")) return { kind: "error", text: text.replace(/^\[error\]\s*/, "") };
+  if (SYSTEM_LINE_RE.test(text)) return { kind: "sys", text };
+  return { kind: "narr", text };
+}
+
+// ---- Autocomplete candidates, built from the live state ----
+type Suggestion = { cmd: string; hint: string };
+
+const STATIC_COMMANDS: Suggestion[] = [
+  { cmd: "look", hint: "describe the scene" },
+  { cmd: "gather", hint: "search for herbs" },
+  { cmd: "heal", hint: "use a healing item" },
+  { cmd: "rest", hint: "recover between fights" },
+  { cmd: "next", hint: "what to do now" },
+  { cmd: "map", hint: "open the known world" },
+  { cmd: "journal", hint: "open your quests" },
+  { cmd: "bestiary", hint: "open the bestiary" },
+  { cmd: "party status", hint: "who travels with you" },
+  { cmd: "reputation", hint: "how the factions see you" },
+];
+
+function buildCandidates(state: any | null): Suggestion[] {
+  if (!state?.player) return STATIC_COMMANDS;
+  const out: Suggestion[] = [];
+  const entities = state.entities ?? [];
+  const monsters = entities.filter((e: any) => e.type === "monster");
+  const people = entities.filter((e: any) => e.type === "npc" || e.type === "player");
+  const abilities = state.abilities ?? [];
+  const player = state.player;
+
+  for (const m of monsters) {
+    out.push({ cmd: `attack ${m.id}`, hint: `strike the ${m.name}` });
+    out.push({ cmd: `fight ${m.id}`, hint: `fight the ${m.name} to the end` });
+    for (const a of abilities) {
+      if (a.ready && (a.kind === "attack" || a.kind === "dot")) {
+        out.push({ cmd: `${a.id} ${m.id}`, hint: `${a.name} · ready` });
+      }
+    }
   }
+  for (const a of abilities) {
+    if (a.kind === "heal" || a.kind === "aoe") {
+      out.push({ cmd: a.id, hint: a.ready ? `${a.name} · ready` : `${a.name} · ${a.remaining}s` });
+    }
+  }
+  for (const e of people) {
+    out.push({ cmd: `talk ${e.id}`, hint: `speak with ${e.name}` });
+    if (e.type === "npc" && !player.companion && !NON_RECRUITABLE_ROLES.includes(e.role)) {
+      out.push({ cmd: `recruit ${e.id}`, hint: `hire ${e.name} as a companion` });
+    }
+  }
+  for (const ex of state.location?.exits ?? []) {
+    out.push({ cmd: `go ${ex.label}`, hint: ex.name ?? ex.label });
+  }
+  for (const [item] of Object.entries(player.inventory ?? {})) {
+    const info = (state.item_info ?? {})[item] ?? {};
+    const isGear = info.type === "weapon" || info.type === "armor" || GEAR_RE.test(item);
+    const verb = isGear ? "equip" : "use";
+    const hint = info.stat
+      ? `${info.stat}${typeof info.delta === "number" ? (info.delta > 0 ? ` +${info.delta}` : info.delta < 0 ? ` ${info.delta}` : "") : ""}`
+      : isGear ? "wield it" : "consume it";
+    out.push({ cmd: `${verb} ${item}`, hint });
+    if (item !== "coin") out.push({ cmd: `sell ${item}`, hint: "sell to a merchant" });
+  }
+  return out.concat(STATIC_COMMANDS);
+}
 
+function matchSuggestions(input: string, candidates: Suggestion[]): Suggestion[] {
+  const q = input.trim().toLowerCase();
+  if (!q) return [];
+  const seen = new Set<string>();
+  const hits: Suggestion[] = [];
+  for (const c of candidates) {
+    const cmd = c.cmd.toLowerCase();
+    if (seen.has(cmd)) continue;
+    if (cmd.startsWith(q) || cmd.split(" ").some((w) => w.startsWith(q))) {
+      seen.add(cmd);
+      hits.push(c);
+    }
+  }
+  // Typing the full command exactly needs no hint.
+  if (hits.length === 1 && hits[0].cmd.toLowerCase() === q) return [];
+  return hits.slice(0, 6);
+}
+
+// ---- Small handbook pieces ----
+
+function Section({ title, children, className = "" }: { title: ReactNode; children: ReactNode; className?: string }) {
+  return (
+    <div className={className}>
+      <div className="hb-label mb-2">{title}</div>
+      {children}
+    </div>
+  );
+}
+
+function Track({ value, max, height, colorClass }: { value: number; max: number; height: number; colorClass: string }) {
+  return (
+    <div className="flex-1 bg-paper-track overflow-hidden" style={{ height, borderRadius: height / 2 }}>
+      <div className={`h-full ${colorClass}`} style={{ width: `${pct(value, max)}%`, borderRadius: height / 2 }} />
+    </div>
+  );
+}
+
+function CharacterCard({ state, onTab }: { state: any; onTab: (t: Tab) => void }) {
+  const { player, identity } = state;
+  const apMax = 30; // server cap (QUESTAI_AP_MAX); AP fields ship in player state
+  const ap = typeof player.action_points === "number" ? player.action_points : null;
+  const effects = Object.entries(player.status_effects ?? {}) as [string, any][];
+  const skillPoints = identity?.skill_points ?? 0;
+  // Mirrors app/progression.py: total XP to reach level L is 10 * (L-1) * L.
+  const xpFloor = totalXpForLevel(player.level);
+  const xpCeil = totalXpForLevel(player.level + 1);
+
+  return (
+    <div className="hb-card px-5 py-[18px]">
+      <div className="flex justify-between items-baseline gap-3">
+        <div className="font-serif text-[22px] font-semibold leading-tight truncate">{player.name}</div>
+        <div className="text-[12px] font-semibold tracking-[.06em] uppercase text-ink-muted whitespace-nowrap">
+          Level {player.level}
+        </div>
+      </div>
+
+      <div className="mt-3 flex items-center gap-[10px]">
+        <Track value={player.hp} max={player.max_hp} height={8} colorClass="bg-danger" />
+        <span className="text-[12px] font-semibold tabular-nums text-danger whitespace-nowrap">
+          {player.hp} / {player.max_hp}
+        </span>
+      </div>
+
+      <div className="mt-[6px] flex items-center gap-[10px]">
+        <Track value={player.xp - xpFloor} max={xpCeil - xpFloor} height={4} colorClass="bg-accent" />
+        <span className="text-[12px] tabular-nums text-ink-muted whitespace-nowrap" title={`${Math.max(0, xpCeil - player.xp)} xp to level ${player.level + 1}`}>
+          {player.xp} xp
+        </span>
+      </div>
+
+      {ap != null && (
+        <div className="mt-[6px] flex items-center gap-[10px]"
+          title="Action points — every world-changing action costs 1; they regenerate over time">
+          <Track value={ap} max={apMax} height={4} colorClass="bg-good" />
+          <span className="text-[12px] tabular-nums text-ink-muted whitespace-nowrap">{ap} / {apMax} ap</span>
+        </div>
+      )}
+
+      {identity?.archetype && (
+        <div className="mt-3 text-[12px] text-ink-muted">
+          <span className="font-semibold text-ink">{identity.archetype_name}</span>
+          {identity.passive ? <> · {identity.passive}</> : null}
+        </div>
+      )}
+
+      {(effects.length > 0 || skillPoints > 0) && (
+        <div className="mt-3 flex gap-[6px] flex-wrap">
+          {effects.map(([eid, st]) => (
+            <span key={eid} className="hb-tag">
+              {titleCase(eid)} · {st?.turns ?? 0} {st?.turns === 1 ? "turn" : "turns"}
+            </span>
+          ))}
+          {skillPoints > 0 && (
+            <button className="hb-tag hb-tag-accent hover:underline" onClick={() => onTab("skills")}
+              title="Spend them in Skills">
+              {skillPoints} skill {skillPoints === 1 ? "point" : "points"} to spend
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ItemsList(items: Record<string, number> | undefined) {
+  return Object.entries(items ?? {}).map(([it, q]) => `${q} ${humanize(it)}`).join(", ");
+}
+
+function quickObjective(q: any): { done: boolean; text: string | null } {
+  const staged = q.stages && q.stages.length > 0;
+  const objs: any[] = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
+  if (objs.length === 0) return { done: false, text: null };
+  const pending = objs.find((o) => o.progress < o.required);
+  if (!pending) return { done: true, text: null };
+  return { done: false, text: `${pending.progress} / ${pending.required} ${humanize(pending.target)}` };
+}
+
+function StatusPane({
+  state, tab, onTab, onCommand, bestiaryByName,
+}: {
+  state: any;
+  tab: Tab;
+  onTab: (t: Tab) => void;
+  onCommand: (cmd: string) => void;
+  bestiaryByName: Record<string, any>;
+}) {
   const { player, location } = state;
   const entities = state.entities ?? [];
   const monsters = entities.filter((e: any) => e.type === "monster");
   const people = entities.filter((e: any) => e.type === "npc" || e.type === "player");
   const abilities = state.abilities ?? [];
-  const hpPct = Math.max(0, Math.min(100, (100 * player.hp) / player.max_hp));
+  const selfAbilities = abilities.filter((a: any) => a.kind === "heal" || a.kind === "aoe");
+  const activeQuests = Object.values(player.active_quests ?? {}) as any[];
+  const completedQuests = Object.values(player.completed_quests ?? {}) as any[];
+  const hasStronghold = (state.stronghold?.level ?? 0) > 0;
 
-  const Section = ({ title, children }: { title: string; children: ReactNode }) => (
-    <div>
-      <div className="text-green-400 font-bold">{title}</div>
-      {children}
-    </div>
-  );
-
-  const apMax = 30; // server cap (QUESTAI_AP_MAX); AP fields ship in player state
-  const ap = typeof player.action_points === "number" ? player.action_points : null;
-  const apPct = ap != null ? Math.max(0, Math.min(100, (100 * ap) / apMax)) : 0;
-
-  const hpBar = (
-    <div>
-      <div className="flex items-center gap-2">
-        <div className="flex-1 h-3 bg-green-950 border border-green-800">
-          <div className="h-full bg-green-600" style={{ width: `${hpPct}%` }} />
-        </div>
-        <span className="text-xs whitespace-nowrap">{player.hp}/{player.max_hp}</span>
-      </div>
-      {ap != null && (
-        <div className="flex items-center gap-2 mt-1" title="Action points — every world-changing action costs 1; they regenerate over time">
-          <div className="flex-1 h-2 bg-green-950 border border-green-800">
-            <div className="h-full bg-amber-500" style={{ width: `${apPct}%` }} />
-          </div>
-          <span className="text-xs whitespace-nowrap">AP {ap}/{apMax}</span>
-        </div>
-      )}
-      <div className="text-xs mt-1">Level {player.level} · XP {player.xp}</div>
-    </div>
-  );
-
-  const TABS: [string, string][] = [
-    ["summary", "Summary"], ["gear", "Gear"], ["skills", "Skills"], ["party", "Party"],
+  const TABS: [Tab, string][] = [
+    ["here", "Here"], ["gear", "Gear"], ["skills", "Skills"], ["party", "Party"],
   ];
 
   return (
-    <div className="h-full flex flex-col text-sm">
-      <div className="text-base font-bold text-green-300 mb-1 shrink-0">{player.name}</div>
-      <div className="flex gap-1 mb-2 shrink-0">
+    <div className="hb-card overflow-hidden">
+      <div className="flex border-b border-paper-track">
         {TABS.map(([id, label]) => (
-          <button key={id} onClick={() => setTab(id)}
-            className={`px-2 py-0.5 text-xs border ${tab === id ? "border-green-400 text-green-200" : "border-green-800 text-green-600 hover:text-green-400"}`}>
+          <button key={id} onClick={() => onTab(id)}
+            className={`flex-1 py-[10px] text-[12px] font-bold tracking-[.06em] uppercase border-b-2 ${
+              tab === id ? "text-accent border-accent" : "text-ink-faint border-transparent hover:text-accent"
+            }`}>
             {label}
           </button>
         ))}
       </div>
 
-      <div className="flex-1 overflow-y-auto pr-1 space-y-3">
-        {tab === "summary" && (
+      <div className="px-5 py-4 flex flex-col gap-[18px]">
+        {tab === "here" && (
           <>
             {Array.isArray(state.guidance) && state.guidance.length > 0 && (
               <Section title="What now?">
-                <div className="space-y-1">
-                  {state.guidance.map((g: any, i: number) => (
+                <div className="flex flex-col gap-1">
+                  {state.guidance.map((g: any, i: number) =>
                     g.command ? (
-                      <button key={i} className="block text-left text-xs text-green-300 hover:underline"
-                        onClick={() => onCommand(g.command)}>• {g.text}</button>
+                      <button key={i} className="text-left text-[13px] text-accent hover:underline"
+                        onClick={() => onCommand(g.command)}>· {g.text}</button>
                     ) : (
-                      <div key={i} className="text-xs text-green-600">• {g.text}</div>
+                      <div key={i} className="text-[13px] text-ink-muted">· {g.text}</div>
                     )
-                  ))}
+                  )}
                 </div>
               </Section>
             )}
 
             {state.campaign && (
-              <Section title={state.campaign.complete ? "The Realm Restored" : `Act ${state.campaign.act_index + 1}${state.campaign.acts_total ? ` of ${state.campaign.acts_total}` : ""}: ${state.campaign.act_name}`}>
-                <div className="text-xs text-green-600 mb-1">{state.campaign.act_blurb}</div>
-                <div className="space-y-1">
+              <Section title={state.campaign.complete
+                ? "The Realm Restored"
+                : `Act ${ROMAN[state.campaign.act_index] ?? state.campaign.act_index + 1}${state.campaign.acts_total ? ` of ${state.campaign.acts_total}` : ""} · ${state.campaign.act_name}`}>
+                {state.campaign.act_blurb && (
+                  <div className="font-serif italic text-[13px] text-ink-muted mb-2">{state.campaign.act_blurb}</div>
+                )}
+                <div className="flex flex-col gap-[6px]">
                   {(state.campaign.wrongs || []).map((w: any) => (
-                    <div key={w.id} className="text-xs flex items-start gap-2 flex-wrap" title={w.blurb ? `${w.blurb} ${w.deed}` : w.deed}>
+                    <div key={w.id} className="text-[13px] flex items-start gap-2 flex-wrap"
+                      title={w.blurb ? `${w.blurb} ${w.deed}` : w.deed}>
                       <span className={
-                        w.status === "righted" ? "text-green-800 line-through" :
-                        w.status === "active" ? "text-yellow-300" : "text-green-300"
+                        w.status === "righted" ? "text-ink-faint line-through" :
+                        w.status === "active" ? "text-accent font-semibold" : "text-ink"
                       }>
                         {w.status === "righted" ? "✓" : w.status === "active" ? "…" : w.climax ? "!" : "•"} {w.title}
                       </span>
                       {w.status === "righted" && w.righted_by && (
-                        <span className="text-green-800">— {w.righted_by}</span>
+                        <span className="text-ink-faint text-[12px]">— {w.righted_by}</span>
                       )}
                       {w.status === "righted" && w.entry && (
-                        <span className="basis-full pl-4 italic text-green-900">“{w.entry}”</span>
+                        <span className="basis-full pl-4 font-serif italic text-[13px] text-ink-faint">“{w.entry}”</span>
                       )}
                       {w.status === "active" && w.progress && (
-                        <span className="text-yellow-600">{w.progress}</span>
+                        <span className="text-ink-muted text-[12px]">{w.progress}</span>
                       )}
                       {w.status === "open" && w.command && (
-                        <button className="px-1 border border-green-800 hover:bg-green-900"
-                          onClick={() => onCommand(w.command)}>undertake</button>
+                        <button className="hb-btn hb-btn-outline py-[2px] px-2" onClick={() => onCommand(w.command)}>Undertake</button>
                       )}
                       {w.status === "open" && w.climax && (
-                        <button className="px-1 border border-red-800 text-red-300 hover:bg-red-950"
-                          onClick={() => onCommand("raid")}>the Warfront</button>
+                        <button className="hb-btn hb-btn-danger py-[2px] px-2" onClick={() => onCommand("raid")}>The Warfront</button>
                       )}
                     </div>
                   ))}
                 </div>
                 {Array.isArray(state.campaign.titles) && state.campaign.titles.length > 0 && (
-                  <div className="text-xs mt-1 text-yellow-300">Your Legend: {state.campaign.titles.join(", ")}</div>
+                  <div className="text-[12px] mt-2 text-ink-muted">
+                    <span className="font-semibold text-ink">Your legend</span> · {state.campaign.titles.join(", ")}
+                  </div>
                 )}
               </Section>
             )}
 
-            {hpBar}
+            {monsters.length > 0 && (
+              <Section title="Enemies">
+                <div className="flex flex-col gap-[10px]">
+                  {monsters.map((m: any) => {
+                    const maxHp = bestiaryByName[m.name]?.max_hp;
+                    return (
+                      <div key={m.id} className="hb-inset flex flex-col gap-[6px]">
+                        <div className="flex justify-between items-baseline gap-3">
+                          <span className="font-serif text-[16px] font-semibold">{m.name}</span>
+                          {m.hp != null && (
+                            <span className="text-[12px] text-danger font-semibold tabular-nums whitespace-nowrap">{m.hp} hp</span>
+                          )}
+                        </div>
+                        {m.hp != null && maxHp > 0 && (
+                          <div className="h-[3px] rounded-[2px] bg-paper-track overflow-hidden">
+                            <div className="h-full bg-danger" style={{ width: `${pct(m.hp, maxHp)}%` }} />
+                          </div>
+                        )}
+                        <div className="flex gap-[6px] flex-wrap mt-[2px]">
+                          <button className="hb-btn hb-btn-danger" onClick={() => onCommand(`attack ${m.id}`)}>Attack</button>
+                          <button className="hb-btn hb-btn-outline" title="Resolve the whole encounter in one action"
+                            onClick={() => onCommand(`fight ${m.id}`)}>Fight</button>
+                          {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
+                            <button key={a.id} className="hb-btn hb-btn-outline" title={a.description}
+                              onClick={() => onCommand(`${a.id} ${m.id}`)}>{a.name}</button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </Section>
+            )}
 
-            {state.identity && !state.identity.archetype && Array.isArray(state.identity.paths) && (
-              <Section title="Choose your path">
-                <div className="text-xs text-green-600 mb-1">The one choice that shapes how you fight.</div>
-                <div className="space-y-1">
-                  {state.identity.paths.map((p: any) => (
-                    <button key={p.id} className="block text-left text-xs hover:underline"
-                      title={`${p.description} — ${p.passive}`}
-                      onClick={() => onCommand(`path ${p.id}`)}>
-                      <span className="text-green-300">{p.name}</span> — {p.passive}
+            {selfAbilities.length > 0 && (
+              <Section title="Self / Area">
+                <div className="flex gap-[6px] flex-wrap">
+                  {selfAbilities.map((a: any) => (
+                    <button key={a.id} disabled={!a.ready} className="hb-btn hb-btn-outline"
+                      title={a.ready ? a.description : `On cooldown (${a.remaining}s)`}
+                      onClick={() => onCommand(a.id)}>
+                      {a.name}{a.ready ? "" : ` · ${a.remaining}s`}
                     </button>
                   ))}
                 </div>
               </Section>
             )}
 
-            {state.identity && state.identity.archetype && (
-              <Section title="Path">
-                <div className="text-xs">
-                  <span className="text-green-300">{state.identity.archetype_name}</span> · {state.identity.passive}
+            {people.length > 0 && (
+              <Section title="People">
+                <div className="flex flex-col gap-[6px]">
+                  {people.map((entity: any) => {
+                    const isInParty = state.party?.members?.some((mm: any) => mm.player_id === entity.id);
+                    const canRecruit = entity.type === "npc" && !player.companion
+                      && !NON_RECRUITABLE_ROLES.includes(entity.role);
+                    return (
+                      <div key={entity.id} className="hb-row">
+                        <button className="flex-1 flex justify-between items-center text-left gap-3 hover:text-accent min-w-0"
+                          onClick={() => onCommand(`talk ${entity.id}`)}>
+                          <span className="font-serif text-[16px] truncate">
+                            {entity.name}
+                            {entity.type === "player" && <span className="font-sans text-[11px] text-ink-faint"> player</span>}
+                            {isInParty && <span className="font-sans text-[11px] text-ink-faint"> · party</span>}
+                          </span>
+                          <span className="text-[12px] text-ink-faint whitespace-nowrap">Talk →</span>
+                        </button>
+                        {canRecruit && (
+                          <button className="hb-link" title="Recruit as a companion (costs a coin signing bonus)"
+                            onClick={() => onCommand(`recruit ${entity.id}`)}>Recruit</button>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
-                {state.identity.skill_points > 0 && (
-                  <div className="mt-1">
-                    <div className="text-xs text-yellow-300">{state.identity.skill_points} skill point(s) to spend:</div>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      {(state.identity.learnable || []).map((a: any) => (
-                        <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
-                          onClick={() => onCommand(`learn ${a.id}`)}>learn {a.name}</button>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </Section>
             )}
 
-            {player.companion && (
-              <Section title="Companion">
-                <div className="text-xs">
-                  <span className="text-green-300">{player.companion.name}</span>
-                  {" — "}{COMPANION_TITLE[player.companion.archetype] ?? player.companion.archetype}
-                  {" · Lv "}{1 + Math.floor(Math.min(player.companion.loyalty, 100) / 25)}
-                  {" · loyalty "}{player.companion.loyalty}/100
+            {(activeQuests.length > 0 || completedQuests.length > 0) && (
+              <Section title="Quests">
+                <div className="flex flex-col gap-2">
+                  {activeQuests.map((q: any) => {
+                    const staged = q.stages && q.stages.length > 0;
+                    const prog = quickObjective(q);
+                    return (
+                      <div key={q.quest_id}>
+                        <div className="flex justify-between gap-3">
+                          <span className="font-semibold">{q.name}</span>
+                          {prog.done ? (
+                            <span className="text-[12px] text-good font-semibold whitespace-nowrap">Ready to turn in</span>
+                          ) : prog.text ? (
+                            <span className="text-[12px] text-ink-muted tabular-nums whitespace-nowrap">{prog.text}</span>
+                          ) : null}
+                        </div>
+                        {staged && (
+                          <div className="text-[12px] text-ink-muted">
+                            Stage {q.current_stage + 1} of {q.stages.length} · {q.stages[q.current_stage]?.description}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  {completedQuests.map((q: any) => (
+                    <div key={q.quest_id} className="flex justify-between gap-3">
+                      <span className="font-semibold">{q.name}</span>
+                      <span className="text-[12px] text-good font-semibold whitespace-nowrap">Ready to turn in</span>
+                    </div>
+                  ))}
                 </div>
-                <button className="text-green-700 hover:underline text-xs mt-0.5"
-                  onClick={() => onCommand("dismiss")}>dismiss</button>
               </Section>
             )}
+
+            <Section title="Paths">
+              {location.exits.length === 0 ? (
+                <div className="font-serif italic text-[14px] text-ink-faint">No road leads out of here.</div>
+              ) : (
+                <div className="flex gap-[6px] flex-wrap">
+                  {location.exits.map((e: any) => {
+                    const arrow = DIRECTION_ARROW[String(e.label).toLowerCase()];
+                    return (
+                      <button key={e.to} className="hb-chip" onClick={() => onCommand(`go ${e.label}`)}>
+                        {arrow ? `${arrow} ` : ""}{e.name ?? e.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </Section>
 
             {Array.isArray(state.incidents) && state.incidents.length > 0 && (
               <Section title="News of the Realm">
-                <div className="space-y-1">
+                <div className="flex flex-col gap-[6px]">
                   {state.incidents.map((inc: any) => (
-                    <div key={inc.id} className="text-xs" title={inc.blurb}>
-                      <span className={inc.kind === "incursion" ? "text-red-300" : "text-yellow-300"}>
+                    <div key={inc.id} className="text-[13px]" title={inc.blurb}>
+                      <span className={inc.kind === "incursion" ? "text-danger font-semibold" : "text-good font-semibold"}>
                         {inc.kind === "incursion" ? "!" : "+"} {inc.title}
                       </span>
-                      <span className="text-green-700"> — {inc.location_name}{inc.here ? " (here)" : ""}</span>
+                      <span className="text-ink-muted text-[12px]"> — {inc.location_name}{inc.here ? " (here)" : ""}</span>
                       {inc.kind === "incursion" && inc.creatures_left != null && (
-                        <span className="text-green-600"> · {inc.creatures_left} {inc.creature_name}{inc.creatures_left === 1 ? "" : "s"} left · {inc.turns_left} turns</span>
+                        <span className="text-ink-faint text-[12px]"> · {inc.creatures_left} {inc.creature_name}{inc.creatures_left === 1 ? "" : "s"} left · {inc.turns_left} turns</span>
                       )}
                       {inc.kind === "boon" && inc.effect_words && (
-                        <span className="text-green-600"> · {inc.effect_words} · {inc.turns_left} turns</span>
+                        <span className="text-ink-faint text-[12px]"> · {inc.effect_words} · {inc.turns_left} turns</span>
                       )}
                       {inc.kind === "incursion" && inc.here && inc.creatures_left > 0 && (
-                        <button className="ml-2 px-1 border border-red-800 text-red-300 hover:bg-red-950"
-                          onClick={() => onCommand(`fight ${inc.creature_name}`)}>fight</button>
+                        <button className="hb-btn hb-btn-danger py-[2px] px-2 ml-2"
+                          onClick={() => onCommand(`fight ${inc.creature_name}`)}>Fight</button>
                       )}
                     </div>
                   ))}
@@ -476,220 +757,111 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
             {state.raid && (
               <Section title="World Threat">
-                <div className="text-xs">
-                  <span className="text-red-300 font-bold">{state.raid.name}</span>
-                  {state.raid.title ? ` — ${state.raid.title}` : ""}
-                </div>
-                <div className="mt-1 h-2 bg-red-950 border border-red-900">
-                  <div className="h-full bg-red-600"
-                    style={{ width: `${Math.max(0, Math.min(100, (100 * state.raid.hp) / state.raid.max_hp))}%` }} />
-                </div>
-                <div className="text-xs mt-0.5">
-                  {state.raid.hp}/{state.raid.max_hp} HP · your blows: {state.raid.your_damage}
-                </div>
-                {Array.isArray(state.raid.top) && state.raid.top.length > 0 && (
-                  <div className="text-xs text-green-700">
-                    Top: {state.raid.top.map((t: any) => `${t.name} (${t.damage})`).join(", ")}
+                <div className="hb-inset flex flex-col gap-[6px]">
+                  <div className="flex justify-between items-baseline gap-3">
+                    <span className="font-serif text-[16px] font-semibold text-danger">{state.raid.name}</span>
+                    <span className="text-[12px] text-danger font-semibold tabular-nums whitespace-nowrap">
+                      {state.raid.hp} / {state.raid.max_hp}
+                    </span>
                   </div>
-                )}
-                {state.raid.at_lair ? (
-                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                    title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
-                    onClick={() => onCommand("raid strike")}>strike</button>
-                ) : (
-                  <button className="px-1 mt-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                    title="Travel to the Warfront to make your stand"
-                    onClick={() => onCommand("go warfront")}>go to the Warfront</button>
-                )}
+                  {state.raid.title && <div className="text-[12px] text-ink-muted">{state.raid.title}</div>}
+                  <div className="h-[3px] rounded-[2px] bg-paper-track overflow-hidden">
+                    <div className="h-full bg-danger" style={{ width: `${pct(state.raid.hp, state.raid.max_hp)}%` }} />
+                  </div>
+                  <div className="text-[12px] text-ink-muted">Your blows: {state.raid.your_damage}</div>
+                  {Array.isArray(state.raid.top) && state.raid.top.length > 0 && (
+                    <div className="text-[12px] text-ink-faint">
+                      Top: {state.raid.top.map((t: any) => `${t.name} (${t.damage})`).join(", ")}
+                    </div>
+                  )}
+                  <div className="flex gap-[6px] flex-wrap mt-[2px]">
+                    {state.raid.at_lair ? (
+                      <button className="hb-btn hb-btn-danger"
+                        title={`Strike the boss — spoils pool ${state.raid.reward_pool} coins, split by damage done`}
+                        onClick={() => onCommand("raid strike")}>Strike</button>
+                    ) : (
+                      <button className="hb-btn hb-btn-outline" title="Travel to the Warfront to make your stand"
+                        onClick={() => onCommand("go warfront")}>Go to the Warfront</button>
+                    )}
+                  </div>
+                </div>
               </Section>
             )}
 
             {state.stronghold && (
               <Section title="Stronghold">
                 {state.stronghold.level === 0 ? (
-                  <>
-                    <div className="text-xs">You hold no ground of your own yet.</div>
-                    <button className="px-1 mt-1 border border-green-800 text-xs hover:bg-green-900"
-                      title="Found a Campsite — a stash, a tribute, and a place to grow"
-                      onClick={() => onCommand("build")}>build a Campsite ({state.stronghold.next_cost})</button>
-                  </>
-                ) : (
-                  <>
-                    <div className="text-xs">
-                      <span className="text-green-300">{state.stronghold.tier}</span> (tier {state.stronghold.level}/5)
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[13px] text-ink-muted">You hold no ground of your own yet.</div>
+                    <div>
+                      <button className="hb-btn hb-btn-outline"
+                        title="Found a Campsite — a stash, a tribute, and a place to grow"
+                        onClick={() => onCommand("build")}>Build a Campsite · {state.stronghold.next_cost}</button>
                     </div>
-                    <div className="flex flex-wrap gap-1 mt-1">
+                  </div>
+                ) : (
+                  <div className="flex flex-col gap-2">
+                    <div className="text-[13px]">
+                      <span className="font-serif text-[16px] font-semibold">{state.stronghold.tier}</span>
+                      <span className="text-ink-muted text-[12px]"> · tier {state.stronghold.level} of 5</span>
+                    </div>
+                    <div className="flex flex-wrap gap-[6px]">
                       {state.stronghold.tribute > 0 && (
-                        <button className="px-1 border border-yellow-800 text-yellow-300 text-xs hover:bg-yellow-950"
-                          onClick={() => onCommand("collect")}>collect {state.stronghold.tribute} tribute</button>
+                        <button className="hb-btn hb-btn-accent" onClick={() => onCommand("collect")}>
+                          Collect {state.stronghold.tribute} tribute
+                        </button>
                       )}
                       {state.stronghold.next_cost && (
-                        <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
-                          onClick={() => onCommand("build")}>
-                          upgrade to {state.stronghold.next_tier} ({state.stronghold.next_cost})
+                        <button className="hb-btn hb-btn-outline" onClick={() => onCommand("build")}>
+                          Upgrade to {state.stronghold.next_tier} · {state.stronghold.next_cost}
                         </button>
                       )}
                     </div>
                     {state.stronghold.stash && Object.keys(state.stronghold.stash).length > 0 && (
-                      <div className="mt-1 text-xs">
-                        <div className="text-green-700">
-                          Stash ({Object.keys(state.stronghold.stash).length}/{state.stronghold.stash_cap}):
+                      <div>
+                        <div className="text-[12px] text-ink-faint mb-1">
+                          Stash · {Object.keys(state.stronghold.stash).length} of {state.stronghold.stash_cap}
                         </div>
                         {Object.entries(state.stronghold.stash).map(([item, qty]: [string, any]) => (
-                          <div key={item} className="flex items-center gap-2">
-                            <span>{qty}x {item.replace(/_/g, " ")}</span>
-                            <button className="text-green-700 hover:underline"
-                              onClick={() => onCommand(`unstash ${item}`)}>withdraw</button>
+                          <div key={item} className="hb-row">
+                            <span>
+                              <span className="font-serif text-[16px]">{titleCase(item)}</span>
+                              <span className="text-ink-faint text-[12px]"> ×{qty}</span>
+                            </span>
+                            <button className="hb-link" onClick={() => onCommand(`unstash ${item}`)}>Withdraw</button>
                           </div>
                         ))}
                       </div>
                     )}
-                  </>
+                  </div>
                 )}
               </Section>
             )}
 
-            {player.status_effects && Object.keys(player.status_effects).length > 0 && (
-              <Section title="Status">
-                {Object.entries(player.status_effects).map(([eid, st]: [string, any]) => (
-                  <div key={eid} className="text-xs">
-                    {String(eid).replace(/_/g, " ")} ({st?.turns ?? 0} turns)
-                  </div>
-                ))}
-              </Section>
-            )}
-
-            <Section title="Location"><div>{location.name}</div></Section>
-
-            {monsters.length > 0 && (
-              <Section title="Enemies Here">
-                {monsters.map((m: any) => (
-                  <div key={m.id} className="mb-1">
-                    <div>{m.name}{m.hp != null ? ` (${m.hp} hp)` : ""}</div>
-                    <div className="flex flex-wrap gap-1 mt-0.5">
-                      <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                        onClick={() => onCommand(`attack ${m.id}`)}>attack</button>
-                      <button className="px-1 border border-red-800 text-red-300 text-xs hover:bg-red-950"
-                        title="Resolve the whole encounter in one action"
-                        onClick={() => onCommand(`fight ${m.id}`)}>fight</button>
-                      {abilities.filter((a: any) => a.ready && (a.kind === "attack" || a.kind === "dot")).map((a: any) => (
-                        <button key={a.id} className="px-1 border border-green-800 text-xs hover:bg-green-900"
-                          title={a.description} onClick={() => onCommand(`${a.id} ${m.id}`)}>{a.name}</button>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </Section>
-            )}
-
-            {abilities.some((a: any) => a.kind === "heal" || a.kind === "aoe") && (
-              <Section title="Self / Area">
-                <div className="flex flex-wrap gap-1">
-                  {abilities.filter((a: any) => a.kind === "heal" || a.kind === "aoe").map((a: any) => (
-                    <button key={a.id} disabled={!a.ready}
-                      title={a.ready ? a.description : `On cooldown (${a.remaining}s)`}
-                      className="px-1 border border-green-800 text-xs hover:bg-green-900 disabled:opacity-40"
-                      onClick={() => onCommand(a.id)}>
-                      {a.name}{a.ready ? "" : ` (${a.remaining}s)`}
-                    </button>
+            {state.rumors?.length > 0 && (
+              <Section title="Word Going Around">
+                <div className="flex flex-col gap-1">
+                  {state.rumors.map((r: string, i: number) => (
+                    <div key={`rumor-${i}`} className="font-serif italic text-[14px] text-ink-muted">{r}</div>
                   ))}
                 </div>
               </Section>
             )}
 
-            {people.length > 0 && (
-              <Section title="People Here">
-                <div className="space-y-1">
-                  {people.map((entity: any) => {
-                    const isInParty = state.party?.members?.some((mm: any) => mm.player_id === entity.id);
-                    const canRecruit = entity.type === "npc" && !player.companion
-                      && !NON_RECRUITABLE_ROLES.includes(entity.role);
-                    return (
-                      <div key={entity.id} className="flex items-center gap-2">
-                        <button className="text-left hover:underline"
-                          onClick={() => onCommand(`talk ${entity.id}`)}>
-                          {entity.name}{entity.type === "player" ? " (player)" : ""}{isInParty ? " ⚔️" : ""}
-                        </button>
-                        {canRecruit && (
-                          <button className="px-1 border border-green-800 text-xs hover:bg-green-900"
-                            title="Recruit as a companion (costs a coin signing bonus)"
-                            onClick={() => onCommand(`recruit ${entity.id}`)}>recruit</button>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </Section>
-            )}
-
-            {((player.active_quests && Object.keys(player.active_quests).length > 0) ||
-              (player.completed_quests && Object.keys(player.completed_quests).length > 0)) && (
-              <Section title="Active Quests">
-                {Object.values(player.active_quests ?? {}).map((q: any) => {
-                  const staged = q.stages && q.stages.length > 0;
-                  const objs = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
-                  return (
-                    <div key={q.quest_id} className="text-xs mb-1">
-                      <div className="font-semibold">{q.name}</div>
-                      {staged && (
-                        <div className="text-green-600">
-                          Stage {q.current_stage + 1}/{q.stages.length}: {q.stages[q.current_stage]?.description}
-                        </div>
-                      )}
-                      {objs.map((obj: any, i: number) => (
-                        <div key={i} className={obj.progress >= obj.required ? "text-green-400" : "text-green-700"}>
-                          {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-                {Object.values(player.completed_quests ?? {}).map((q: any) => {
-                  const staged = q.stages && q.stages.length > 0;
-                  const objs = staged ? (q.stages[q.current_stage]?.objectives ?? []) : (q.objectives ?? []);
-                  return (
-                    <div key={q.quest_id} className="text-xs mb-1">
-                      <div className="font-semibold">{q.name}</div>
-                      {objs.map((obj: any, i: number) => (
-                        <div key={i} className="text-green-400">
-                          {obj.type} {String(obj.target).replace(/_/g, " ")}: {obj.progress}/{obj.required}
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })}
-              </Section>
-            )}
-
-            <Section title="Exits">
-              <div className="flex flex-wrap gap-2 mt-1">
-                {location.exits.map((e: any) => (
-                  <button key={e.to} className="px-2 py-1 border border-green-700 hover:bg-green-900 text-green-300 text-xs"
-                    onClick={() => onCommand(`go ${e.label}`)}>{e.name ?? e.label}</button>
-                ))}
-              </div>
-            </Section>
-
-            {state.rumors?.length > 0 && (
-              <Section title="Word Going Around">
-                {state.rumors.map((r: string, i: number) => (
-                  <div key={`rumor-${i}`} className="text-xs text-amber-200/80 italic">{r}</div>
-                ))}
-              </Section>
-            )}
-
             {(state.echoes?.length > 0 || state.notes?.length > 0) && (
               <Section title="Traces of Others">
-                {(state.echoes ?? []).map((e: any, i: number) => (
-                  <div key={`echo-${i}`} className="text-xs text-green-600 italic">
-                    {e.description} ({e.ago})
-                  </div>
-                ))}
-                {(state.notes ?? []).map((n: any, i: number) => (
-                  <div key={`note-${i}`} className="text-xs text-green-500">
-                    “{n.text}” — {n.player_name}
-                  </div>
-                ))}
+                <div className="flex flex-col gap-1">
+                  {(state.echoes ?? []).map((e: any, i: number) => (
+                    <div key={`echo-${i}`} className="font-serif italic text-[14px] text-ink-muted">
+                      {e.description} <span className="font-sans not-italic text-[12px] text-ink-faint">({e.ago})</span>
+                    </div>
+                  ))}
+                  {(state.notes ?? []).map((n: any, i: number) => (
+                    <div key={`note-${i}`} className="font-serif text-[14px] text-ink">
+                      “{n.text}” <span className="font-sans text-[12px] text-ink-faint">— {n.player_name}</span>
+                    </div>
+                  ))}
+                </div>
               </Section>
             )}
           </>
@@ -697,134 +869,455 @@ function StatusPane({ state, onCommand }: { state: any | null; onCommand: (cmd: 
 
         {tab === "gear" && (
           <>
-            {hpBar}
             <Section title="Equipped">
               {player.equipment && Object.keys(player.equipment).length > 0 ? (
                 Object.entries(player.equipment).map(([slot, itemId]) => (
-                  <div key={slot} className="flex justify-between items-center text-xs">
-                    <span>{slot}: {String(itemId).replace(/_/g, " ")}</span>
-                    <button className="text-green-700 hover:underline" onClick={() => onCommand(`unequip ${slot}`)}>unequip</button>
+                  <div key={slot} className="hb-row">
+                    <span className="min-w-0 truncate">
+                      <span className="text-ink-faint text-[12px]">{titleCase(slot)} · </span>
+                      <span className="font-serif text-[16px]">{titleCase(String(itemId))}</span>
+                    </span>
+                    <button className="text-[12px] text-ink-faint hover:text-danger whitespace-nowrap"
+                      onClick={() => onCommand(`unequip ${slot}`)}>Unequip</button>
                   </div>
                 ))
-              ) : (<div className="text-green-700 text-xs">Nothing equipped</div>)}
+              ) : (
+                <div className="font-serif italic text-[14px] text-ink-faint">Nothing equipped.</div>
+              )}
             </Section>
-            <Section title="Inventory">
+
+            <Section title="Pack">
               {player.inventory && Object.keys(player.inventory).length > 0 ? (
-                <ul className="space-y-0.5">
+                <div className="flex flex-col">
                   {Object.entries(player.inventory).map(([item, qty]) => {
                     const info = (state.item_info ?? {})[item] ?? {};
                     const isGear = info.type === "weapon" || info.type === "armor" || GEAR_RE.test(item);
                     const hasDelta = typeof info.delta === "number";
+                    const noteClass = hasDelta
+                      ? info.delta > 0 ? "text-good" : info.delta < 0 ? "text-danger" : "text-ink-muted"
+                      : "text-ink-muted";
+                    const note = info.stat
+                      ? `${info.stat}${hasDelta ? (info.delta > 0 ? ` · ${info.delta} better than equipped` : info.delta < 0 ? ` · ${-info.delta} worse than equipped` : " · same as equipped") : ""}`
+                      : null;
                     return (
-                      <li key={item} className="flex justify-between items-center gap-2">
-                        <span className="min-w-0">
-                          {item.replace(/_/g, " ")} × {qty as number}
-                          {info.stat && <span className="text-green-600"> ({info.stat}</span>}
-                          {hasDelta && (
-                            <span className={info.delta > 0 ? "text-green-400" : info.delta < 0 ? "text-red-400" : "text-green-700"}>
-                              {info.delta > 0 ? `, ${info.delta} better` : info.delta < 0 ? `, ${-info.delta} worse` : ", same"}
-                            </span>
+                      <div key={item} className="hb-row py-[7px]">
+                        <div className="min-w-0">
+                          <span className="font-serif text-[16px]">{titleCase(item)}</span>
+                          <span className="text-ink-faint text-[12px]"> ×{qty as number}</span>
+                          {note && <div className={`text-[12px] ${noteClass}`}>{note}</div>}
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                          <button className="hb-link" onClick={() => onCommand(`${isGear ? "equip" : "use"} ${item}`)}>
+                            {isGear ? "Equip" : "Use"}
+                          </button>
+                          {hasStronghold && item !== "coin" && (
+                            <button className="hb-link-faint" onClick={() => onCommand(`stash ${item}`)}>Stash</button>
                           )}
-                          {info.stat && <span className="text-green-600">)</span>}
-                        </span>
-                        <span className="flex gap-2 shrink-0">
-                          <button className="text-green-400 hover:underline text-xs" onClick={() => onCommand(`${isGear ? "equip" : "use"} ${item}`)}>{isGear ? "equip" : "use"}</button>
-                          {state.stronghold?.level > 0 && item !== "coin" && (
-                            <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`stash ${item}`)}>stash</button>
-                          )}
-                          <button className="text-green-700 hover:underline text-xs" onClick={() => onCommand(`sell ${item}`)}>sell</button>
-                        </span>
-                      </li>
+                          <button className="hb-link-faint" onClick={() => onCommand(`sell ${item}`)}>Sell</button>
+                        </div>
+                      </div>
                     );
                   })}
-                </ul>
-              ) : (<div className="text-green-700">Empty</div>)}
+                </div>
+              ) : (
+                <div className="font-serif italic text-[14px] text-ink-faint">Your pack is empty.</div>
+              )}
             </Section>
           </>
         )}
 
         {tab === "skills" && (
-          <Section title="Abilities">
+          <>
+            {state.identity && !state.identity.archetype && Array.isArray(state.identity.paths) && (
+              <Section title="Choose your path">
+                <div className="text-[12.5px] text-ink-muted mb-2">The one choice that shapes how you fight.</div>
+                <div className="flex flex-col gap-2">
+                  {state.identity.paths.map((p: any) => (
+                    <div key={p.id} className="hb-inset">
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="font-serif text-[16px] font-semibold">{p.name}</span>
+                        <button className="hb-btn hb-btn-outline py-1" onClick={() => onCommand(`path ${p.id}`)}>Choose</button>
+                      </div>
+                      <div className="text-[12.5px] text-ink-muted mt-[2px]">{p.description}</div>
+                      {p.passive && <div className="text-[12px] text-ink-faint mt-1">{p.passive}</div>}
+                    </div>
+                  ))}
+                </div>
+              </Section>
+            )}
+
+            {state.identity?.skill_points > 0 && (
+              <Section title={`${state.identity.skill_points} skill ${state.identity.skill_points === 1 ? "point" : "points"} to spend`}>
+                {(state.identity.learnable || []).length > 0 ? (
+                  <div className="flex flex-wrap gap-[6px]">
+                    {(state.identity.learnable || []).map((a: any) => (
+                      <button key={a.id} className="hb-btn hb-btn-accent" onClick={() => onCommand(`learn ${a.id}`)}>
+                        Learn {a.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="font-serif italic text-[14px] text-ink-faint">Nothing new to learn yet.</div>
+                )}
+              </Section>
+            )}
+
             {abilities.length === 0 ? (
-              <div className="text-green-700 text-xs">No abilities yet — level up to learn them.</div>
+              <div className="font-serif italic text-[14px] text-ink-faint">No abilities yet — level up to learn them.</div>
             ) : (
-              <div className="space-y-2">
+              <div className="flex flex-col gap-[10px]">
                 {abilities.map((a: any) => {
                   const needsTarget = a.kind === "attack" || a.kind === "dot";
                   const needsEnemy = needsTarget || a.kind === "aoe";
                   const canUse = a.ready && (!needsEnemy || monsters.length > 0);
-                  const icon = a.kind === "heal" ? " ✚" : a.kind === "aoe" ? " ✸" : a.kind === "dot" ? " ☠" : " ⚔";
-                  const hint = !a.ready ? `On cooldown (${a.remaining}s)` : (needsEnemy && monsters.length === 0 ? "No enemy here" : "Use");
+                  const status = !a.ready
+                    ? `Cooldown · ${a.remaining}s`
+                    : needsEnemy && monsters.length === 0 ? "Ready · no enemy here" : "Ready";
                   return (
-                    <div key={a.id} className="border border-green-900 p-1">
-                      <div className="flex justify-between items-center">
-                        <span className="text-green-300">{a.name}{icon}</span>
-                        <button disabled={!canUse} title={hint}
-                          className="text-xs px-1 border border-green-700 hover:bg-green-900 disabled:opacity-40"
+                    <div key={a.id} className="hb-inset" style={{ opacity: a.ready ? 1 : 0.55 }}>
+                      <div className="flex justify-between items-baseline gap-3">
+                        <span className="font-serif text-[16px] font-semibold">{a.name}</span>
+                        <span className={`text-[11px] font-bold tracking-[.06em] uppercase ${ABILITY_KIND_CLASS[a.kind] ?? "text-accent"}`}>
+                          {ABILITY_KIND_LABEL[a.kind] ?? a.kind}
+                        </span>
+                      </div>
+                      <div className="text-[12.5px] text-ink-muted mt-[2px]">{a.description}</div>
+                      <div className="flex justify-between items-center mt-2 gap-3">
+                        <span className="text-[12px] text-ink-faint">{status}</span>
+                        <button disabled={!canUse} className="hb-btn hb-btn-outline py-1"
                           onClick={() => onCommand(needsTarget && monsters.length > 0 ? `${a.id} ${monsters[0].id}` : a.id)}>
-                          {a.ready ? "use" : `${a.remaining}s`}
+                          Use
                         </button>
                       </div>
-                      <div className="text-[11px] text-green-700">{a.description}</div>
                     </div>
                   );
                 })}
               </div>
             )}
-          </Section>
+          </>
         )}
 
         {tab === "party" && (
           <>
+            {player.companion && (
+              <Section title="Companion">
+                <div className="hb-inset">
+                  <div className="flex justify-between items-baseline gap-3">
+                    <span className="font-serif text-[16px] font-semibold">{player.companion.name}</span>
+                    <span className="text-[11px] font-bold tracking-[.06em] uppercase text-accent">
+                      {COMPANION_TITLE[player.companion.archetype] ?? player.companion.archetype}
+                    </span>
+                  </div>
+                  <div className="text-[12.5px] text-ink-muted mt-[2px]">
+                    Level {1 + Math.floor(Math.min(player.companion.loyalty, 100) / 25)} · loyalty {player.companion.loyalty} / 100
+                  </div>
+                  <div className="mt-2">
+                    <button className="hb-link-danger" onClick={() => onCommand("dismiss")}>Dismiss</button>
+                  </div>
+                </div>
+              </Section>
+            )}
+
             {state.party ? (
               <Section title={state.party.name || "Party"}>
                 {state.party.members.map((member: any) => (
-                  <div key={member.player_id} className={member.online ? "" : "text-green-800"}>
-                    {member.online ? "● " : "○ "}{member.name}{member.is_leader ? " (Leader)" : ""}
-                    {!member.online && member.last_seen_text ? ` — ${member.last_seen_text}` : ""}
+                  <div key={member.player_id}
+                    className={`flex items-center gap-[10px] py-[6px] border-b border-dotted border-rule ${member.online ? "" : "text-ink-faint"}`}>
+                    <span className={`w-2 h-2 rounded-full shrink-0 ${member.online ? "bg-good" : "border border-ink-faint"}`} />
+                    <span className="font-serif text-[16px]">{member.name}</span>
+                    {member.is_leader && <span className="text-[11px] text-ink-faint">Leader</span>}
+                    {!member.online && member.last_seen_text && (
+                      <span className="text-[11px] text-ink-faint">{member.last_seen_text}</span>
+                    )}
                   </div>
                 ))}
-                <button className="text-red-400 hover:underline text-xs mt-1" onClick={() => onCommand("party leave")}>Leave Party</button>
+                <button className="hb-link-danger mt-[10px]" onClick={() => onCommand("party leave")}>Leave party</button>
               </Section>
-            ) : (<div className="text-green-700 text-xs">Not in a party.</div>)}
+            ) : (
+              <div className="font-serif italic text-[14px] text-ink-faint">You travel alone.</div>
+            )}
 
             {state.party_invites?.length > 0 && (
-              <Section title="Party Invites">
-                {state.party_invites.map((invite: any) => (
-                  <div key={invite.invite_id} className="text-xs mb-1 p-1 border border-green-600">
-                    <div>From {invite.from_player_name}</div>
-                    <button className="text-green-400 hover:underline text-xs mt-1" onClick={() => onCommand(`accept_party_invite ${invite.invite_id}`)}>Accept</button>
-                  </div>
-                ))}
+              <Section title="Invitations">
+                <div className="flex flex-col gap-2">
+                  {state.party_invites.map((invite: any) => (
+                    <div key={invite.invite_id} className="hb-inset">
+                      <div className="font-semibold">From {invite.from_player_name}</div>
+                      <div className="text-[12.5px] text-ink-muted">Asks you to join their party.</div>
+                      <div className="flex gap-2 mt-2">
+                        <button className="hb-btn hb-btn-accent"
+                          onClick={() => onCommand(`accept_party_invite ${invite.invite_id}`)}>Accept</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </Section>
             )}
 
             {(state.pending_trade_offers?.length > 0 || state.pending_trade_offers_sent?.length > 0) && (
-              <Section title="Trades">
-                {state.pending_trade_offers?.map((trade: any) => (
-                  <div key={trade.trade_id} className={`text-xs mb-1 p-1 border ${trade.can_accept ? "border-green-600" : "border-green-900 opacity-50"}`}>
-                    <div className="font-semibold">From {trade.from_player_name}:</div>
-                    <div>Offers: {Object.entries(trade.offered_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
-                    <div>Wants: {Object.entries(trade.requested_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
-                    {trade.can_accept ? (
-                      <button className="text-green-400 hover:underline text-xs mt-1" onClick={() => onCommand(`accept_trade ${trade.trade_id}`)}>Accept</button>
-                    ) : (<div className="text-green-800 text-xs mt-1">Cannot accept</div>)}
-                  </div>
-                ))}
-                {state.pending_trade_offers_sent?.map((trade: any) => (
-                  <div key={trade.trade_id} className={`text-xs mb-1 p-1 border ${trade.can_be_accepted ? "border-green-600" : "border-green-900 opacity-50"}`}>
-                    <div className="font-semibold">To {trade.to_player_name}:</div>
-                    <div>You offer: {Object.entries(trade.offered_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
-                    <div>You want: {Object.entries(trade.requested_items).map(([it, q]) => `${it}:${q}`).join(", ")}</div>
-                    <button className="text-red-400 hover:underline text-xs" onClick={() => onCommand(`cancel_trade ${trade.trade_id}`)}>Cancel</button>
-                  </div>
-                ))}
+              <Section title="Trade offers">
+                <div className="flex flex-col gap-2">
+                  {state.pending_trade_offers?.map((trade: any) => (
+                    <div key={trade.trade_id} className="hb-inset" style={{ opacity: trade.can_accept ? 1 : 0.55 }}>
+                      <div className="font-semibold">From {trade.from_player_name}</div>
+                      <div className="text-[12.5px] text-ink-muted">
+                        Offers {ItemsList(trade.offered_items) || "nothing"} · Wants {ItemsList(trade.requested_items) || "nothing"}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        {trade.can_accept ? (
+                          <button className="hb-btn hb-btn-accent" onClick={() => onCommand(`accept_trade ${trade.trade_id}`)}>Accept</button>
+                        ) : (
+                          <span className="text-[12px] text-ink-faint">You lack what they ask for.</span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                  {state.pending_trade_offers_sent?.map((trade: any) => (
+                    <div key={trade.trade_id} className="hb-inset" style={{ opacity: trade.can_be_accepted ? 1 : 0.55 }}>
+                      <div className="font-semibold">To {trade.to_player_name}</div>
+                      <div className="text-[12.5px] text-ink-muted">
+                        You offer {ItemsList(trade.offered_items) || "nothing"} · You want {ItemsList(trade.requested_items) || "nothing"}
+                      </div>
+                      <div className="flex gap-2 mt-2">
+                        <button className="hb-btn hb-btn-quiet" onClick={() => onCommand(`cancel_trade ${trade.trade_id}`)}>Cancel</button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </Section>
             )}
           </>
         )}
       </div>
     </div>
+  );
+}
+
+function StoryLog({ log, waiting, logRef }: { log: Line[]; waiting: boolean; logRef: React.RefObject<HTMLDivElement | null> }) {
+  return (
+    <div ref={logRef}
+      className="hb-card pt-[22px] px-[26px] pb-[18px] flex flex-col gap-3 font-serif text-[16.5px] leading-[1.55] max-h-[420px] overflow-y-auto">
+      {log.length === 0 && !waiting && (
+        <div className="italic text-ink-faint text-[15px]">The page is blank. Type a command, or look around.</div>
+      )}
+      {log.map((line) => {
+        const c = classifyLine(line.text);
+        if (c.kind === "cmd") {
+          return (
+            <div key={line.id} className="flex gap-3 items-baseline">
+              <span className="font-sans text-[11px] font-bold tracking-[.08em] uppercase text-ink-faint shrink-0">you</span>
+              <span className="italic text-[15px] text-ink-muted">{c.text}</span>
+            </div>
+          );
+        }
+        if (c.kind === "sys" || c.kind === "error") {
+          return (
+            <div key={line.id} className={`text-[13px] whitespace-pre-wrap ${c.kind === "error" ? "text-danger" : "text-ink-faint"}`}>
+              {c.text}
+            </div>
+          );
+        }
+        return <div key={line.id} className="text-ink whitespace-pre-wrap">{c.text}</div>;
+      })}
+      {waiting && (
+        <div className="flex gap-[6px] items-center text-ink-faint font-sans text-[12px]">
+          <span className="w-[6px] h-[6px] rounded-full bg-accent inline-block animate-blink" />
+          The world turns…
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SceneFrame({ image, loading, location }: { image: string | null; loading: boolean; location: any | null }) {
+  return (
+    <div className="relative w-full aspect-[16/7] rounded-[6px] overflow-hidden border border-rule shadow-frame bg-paper-inset">
+      {image ? (
+        <div className="absolute inset-0 bg-center bg-cover" style={{ backgroundImage: `url(${image})` }} />
+      ) : (
+        <div className="absolute inset-0 flex items-center justify-center font-serif italic text-ink-faint">
+          {loading ? "" : location ? "" : "No scene"}
+        </div>
+      )}
+      {loading && (
+        <div className="absolute inset-0 z-10 flex items-center justify-center bg-paper-inset/85">
+          <div className="animate-pulse font-serif italic text-ink-faint">Generating scene…</div>
+        </div>
+      )}
+      {location && (
+        <div className={`absolute left-0 right-0 bottom-0 px-[18px] py-[14px] pointer-events-none ${
+          image ? "text-paper" : "text-ink"
+        }`}
+          style={{ background: image ? "linear-gradient(to top, rgba(30,26,20,.72), rgba(30,26,20,0))" : undefined }}>
+          <div className="font-serif text-[24px] font-medium leading-[1.1]">{location.name}</div>
+          {location.description && (
+            <div className="font-serif italic text-[14px] opacity-85 line-clamp-2">{location.description}</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SubPage({ children }: { children: ReactNode }) {
+  return (
+    <div className="flex-1 w-full max-w-[1100px] mx-auto p-7 flex flex-col gap-4 box-border">
+      {children}
+    </div>
+  );
+}
+
+function PageTitle({ title, meta }: { title: string; meta?: ReactNode }) {
+  return (
+    <div className="flex justify-between items-baseline flex-wrap gap-2">
+      <h2 className="font-serif text-[32px] font-medium m-0 leading-tight">{title}</h2>
+      {meta && <div className="text-[13px] text-ink-muted">{meta}</div>}
+    </div>
+  );
+}
+
+function Pending({ text }: { text: string }) {
+  return <div className="font-serif italic text-ink-faint">{text}</div>;
+}
+
+function MapView({ mapData, thumbs }: { mapData: any | null; thumbs: Record<string, string> }) {
+  const visited = mapData ? mapData.locations.filter((n: any) => n.visited).length : 0;
+  const unexplored = mapData ? mapData.locations.length - visited : 0;
+  return (
+    <SubPage>
+      <PageTitle title="Known World"
+        meta={mapData ? `${visited} ${visited === 1 ? "place" : "places"} visited · ${unexplored} ${unexplored === 1 ? "path" : "paths"} unexplored` : null} />
+      <div className="hb-card p-4">
+        {mapData ? <MapGraph mapData={mapData} thumbs={thumbs} /> : <Pending text="Unrolling the map…" />}
+      </div>
+      <div className="font-serif italic text-[13px] text-ink-muted">
+        Solid ink marks the roads out of where you stand; faint lines are roads you know of elsewhere. Dashed places are yet unexplored.
+      </div>
+    </SubPage>
+  );
+}
+
+function JournalView({ journalData }: { journalData: any | null }) {
+  const buckets: [string, string, string, number][] = [
+    ["active", "Active", "text-accent", 1],
+    ["completed", "Ready to turn in", "text-good", 1],
+    ["archived", "Finished", "text-ink-faint", 0.7],
+  ];
+  const empty = journalData && buckets.every(([b]) => (journalData[b]?.length ?? 0) === 0);
+  return (
+    <SubPage>
+      <div className="flex flex-col gap-7">
+        <PageTitle title="Journal" />
+        {!journalData && <Pending text="Turning the pages…" />}
+        {empty && (
+          <div className="font-serif italic text-ink-faint">
+            No quests yet — talk to a quest giver (Warden, Huntmaster, Scholar).
+          </div>
+        )}
+        {journalData && buckets.map(([bucket, heading, colorClass, opacity]) => {
+          const items = journalData[bucket] ?? [];
+          if (items.length === 0) return null;
+          return (
+            <div key={bucket}>
+              <div className="flex items-center gap-3 mb-3">
+                <span className={`text-[11px] font-bold tracking-[.1em] uppercase ${colorClass}`}>{heading}</span>
+                <span className="flex-1 h-px bg-rule" />
+              </div>
+              <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(300px, 1fr))" }}>
+                {items.map((q: any) => {
+                  const reward = Object.entries(q.rewards || {})
+                    .map(([it, n]) => `${n} ${humanize(it)}`).join(", ");
+                  return (
+                    <div key={q.quest_id} className="hb-card px-5 py-[18px] flex flex-col gap-2" style={{ opacity }}>
+                      <div className="font-serif text-[20px] font-semibold leading-[1.2]">{q.name}</div>
+                      {q.description && (
+                        <div className="font-serif text-[15px] text-ink-muted leading-[1.45]">{q.description}</div>
+                      )}
+                      {q.total_stages && (
+                        <div className="text-[12px] font-semibold text-accent">
+                          Stage {q.stage} of {q.total_stages}{q.stage_description ? ` · ${q.stage_description}` : ""}
+                        </div>
+                      )}
+                      {q.objectives?.length > 0 && (
+                        <div className="flex flex-col gap-1">
+                          {q.objectives.map((o: any, i: number) => {
+                            const done = o.progress >= o.required;
+                            return (
+                              <div key={i} className="flex items-center gap-2 text-[13px]">
+                                <span className={`w-[14px] h-[14px] rounded-full shrink-0 box-border ${
+                                  done ? "bg-good border-[1.5px] border-good" : "border-[1.5px] border-rule-faint"
+                                }`} />
+                                <span className={`flex-1 ${done ? "text-ink-muted" : "text-ink"}`}>
+                                  {titleCase(o.type)} {humanize(o.target)}
+                                </span>
+                                <span className="tabular-nums text-ink-muted">{o.progress} / {o.required}</span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      {reward && (
+                        <div className="mt-1 pt-2 border-t border-dotted border-rule text-[12px] text-ink-faint">
+                          <span className="font-bold tracking-[.06em] uppercase">Reward</span> · {reward}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </SubPage>
+  );
+}
+
+function BestiaryView({ bestiaryData }: { bestiaryData: any | null }) {
+  const discovered: any[] = bestiaryData?.discovered ?? [];
+  const total: number = bestiaryData?.total ?? 0;
+  const blank = Math.max(0, total - discovered.length);
+  return (
+    <SubPage>
+      <div className="flex flex-col gap-5">
+        <PageTitle title="Bestiary"
+          meta={bestiaryData ? `${discovered.length} of ${total} creatures recorded` : null} />
+        {!bestiaryData && <Pending text="Opening the codex…" />}
+        {bestiaryData && discovered.length === 0 && (
+          <div className="font-serif italic text-ink-faint">
+            Nothing discovered yet — explore and fight to fill these pages.
+          </div>
+        )}
+        {bestiaryData && (
+          <div className="grid gap-3" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(240px, 1fr))" }}>
+            {discovered.map((e: any) => (
+              <div key={e.name} className="hb-card overflow-hidden flex flex-col">
+                <div className="h-[120px] bg-paper-inset-deep" />
+                <div className="px-4 pt-[14px] pb-4 flex flex-col gap-[6px]">
+                  <div className="font-serif text-[20px] font-semibold">{e.name}</div>
+                  <div className="flex gap-[14px] text-[12px] tabular-nums">
+                    <span className="whitespace-nowrap"><span className="text-ink-faint">HP</span> <b>{e.max_hp}</b></span>
+                    <span className="whitespace-nowrap"><span className="text-ink-faint">ATK</span> <b>{e.attack}</b></span>
+                    <span className="whitespace-nowrap"><span className="text-ink-faint">XP</span> <b>{e.xp_reward}</b></span>
+                  </div>
+                  {e.inflicts && (
+                    <span className="hb-tag self-start py-[2px]">Inflicts {humanize(e.inflicts)}</span>
+                  )}
+                  {e.locations?.length > 0 && (
+                    <div className="font-serif italic text-[13px] text-ink-muted">{e.locations.join(", ")}</div>
+                  )}
+                </div>
+              </div>
+            ))}
+            {blank > 0 && (
+              <div className="border-[1.5px] border-dashed border-rule rounded-[6px] min-h-[200px] flex items-center justify-center text-center p-5 font-serif italic text-ink-faint">
+                {blank} {blank === 1 ? "page remains" : "pages remain"} blank.<br />Explore and fight to fill {blank === 1 ? "it" : "them"}.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </SubPage>
   );
 }
 
@@ -840,14 +1333,14 @@ export default function Page() {
   const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
   const [lastState, setLastState] = useState<any | null>(null);
   const [currentSceneKey, setCurrentSceneKey] = useState<string | null>(null);
+  const [view, setView] = useState<View>("play");
+  const [tab, setTab] = useState<Tab>("here");
   const [mapData, setMapData] = useState<any | null>(null);
-  const [showMap, setShowMap] = useState(false);
   const [journalData, setJournalData] = useState<any | null>(null);
-  const [showJournal, setShowJournal] = useState(false);
   const [bestiaryData, setBestiaryData] = useState<any | null>(null);
-  const [showBestiary, setShowBestiary] = useState(false);
   const thumbsRef = useRef<Record<string, string>>({});
   const inputRef = useRef<HTMLInputElement>(null);
+  const logRef = useRef<HTMLDivElement>(null);
   const skipResumeLook = useRef(false);
 
   // Record a downscaled thumbnail for a location (first image we see wins).
@@ -858,7 +1351,6 @@ export default function Page() {
     saveThumbs(thumbsRef.current);
   }
 
-  const bottomRef = useRef<HTMLDivElement>(null);
   const lastPrefetchLoc = useRef<string | null>(null);
 
   // Warm Miriel description caches (this room + neighbors) once per room entry.
@@ -901,14 +1393,10 @@ export default function Page() {
   }
 
   useEffect(() => {
-    if (!isLoadingScene) {
+    if (!isLoadingScene && !isWaitingForResponse && view === "play") {
       inputRef.current?.focus();
     }
-  }, [isLoadingScene, log]);
-
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, []);
+  }, [isLoadingScene, isWaitingForResponse, log, view]);
 
   // Restore player_id + saved map thumbnails from localStorage
   useEffect(() => {
@@ -942,7 +1430,7 @@ export default function Page() {
           setHasSavedPlayer(false);
           setLog([{
             id: crypto.randomUUID(),
-            text: "Your hero is gone — the world has begun anew. Type: create <name> to forge a new one.",
+            text: "Your hero is gone — the world has begun anew. Forge a new one to continue.",
           }]);
           return;
         }
@@ -969,10 +1457,12 @@ export default function Page() {
     })();
   }, [playerId]);
 
-  // Auto-scroll log
+  // Auto-scroll the story log (the log scrolls inside its own card, so the
+  // page itself stays put).
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [log, isWaitingForResponse]);
+    const el = logRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+  }, [log, isWaitingForResponse, view]);
 
   function prefetchAdjacentScenes(state: any) {
     for (const scene of state.adjacent_scenes ?? []) {
@@ -1025,18 +1515,18 @@ export default function Page() {
         setLastState(resp.state);
       }
 
-      // Panel commands open their overlays with the returned structured data.
+      // Panel commands open their views with the returned structured data.
       if (resp.state?.map) {
         setMapData(resp.state.map);
-        setShowMap(true);
+        setView("map");
       }
       if (resp.state?.journal) {
         setJournalData(resp.state.journal);
-        setShowJournal(true);
+        setView("journal");
       }
       if (resp.state?.bestiary) {
         setBestiaryData(resp.state.bestiary);
-        setShowBestiary(true);
+        setView("bestiary");
       }
 
       // Capture player_id if returned
@@ -1093,209 +1583,194 @@ export default function Page() {
     }
   }
 
+  // Play-view actions (chips, panel buttons) always return to the tale.
+  function runFromPanel(command: string) {
+    setView("play");
+    runCommand(command);
+  }
+
+  // Map / Journal / Bestiary are full views: show what we have at once and
+  // refresh it through the ordinary command.
+  function openView(v: View) {
+    setView(v);
+    if (v !== "play") runCommand(v);
+  }
+
+  // Forget this hero on this device and start over at the first-run screen.
+  // The hero still exists on the server: typing the same name resumes them.
+  function newTale() {
+    if (playerId && !window.confirm("Close this tale and begin another? Your hero is kept — enter the same name later to resume.")) return;
+    localStorage.removeItem("player_id");
+    setPlayerId(null);
+    setHasSavedPlayer(false);
+    setLastState(null);
+    setLog([]);
+    setSceneImage(null);
+    setCurrentSceneKey(null);
+    setMapData(null);
+    setJournalData(null);
+    setBestiaryData(null);
+    setInput("");
+    setTab("here");
+    setView("play");
+    lastPrefetchLoc.current = null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     await runCommand(input);
   }
 
+  const firstRun = !playerId && !hasSavedPlayer;
+  const busy = isWaitingForResponse || isLoadingScene;
+  const suggestions = matchSuggestions(input, buildCandidates(lastState));
+
+  function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Tab" && suggestions[0]) {
+      e.preventDefault();
+      setInput(suggestions[0].cmd);
+    } else if (e.key === "Escape") {
+      setInput("");
+    }
+  }
+
+  const location = lastState?.location ?? null;
+  const campaign = lastState?.campaign;
+  const contextLine = location
+    ? campaign
+      ? `${campaign.complete ? "The Realm Restored" : `Act ${ROMAN[campaign.act_index] ?? campaign.act_index + 1}`} · ${location.name}`
+      : location.name
+    : "";
+
+  const bestiaryByName: Record<string, any> = {};
+  for (const e of bestiaryData?.discovered ?? []) bestiaryByName[e.name] = e;
+
+  const monsters = (lastState?.entities ?? []).filter((e: any) => e.type === "monster");
+  const npcs = (lastState?.entities ?? []).filter((e: any) => e.type === "npc" || e.type === "player");
+  const quickActions: [string, string][] = [
+    ["Look", "look"], ["Gather", "gather"], ["Heal", "heal"],
+  ];
+  if (monsters[0]) quickActions.push([`Attack ${monsters[0].name}`, `attack ${monsters[0].id}`]);
+  if (npcs[0]) quickActions.push([`Talk ${npcs[0].name}`, `talk ${npcs[0].id}`]);
+
+  const NAV: [View, string][] = [
+    ["play", "Tale"], ["map", "Map"], ["journal", "Journal"], ["bestiary", "Bestiary"],
+  ];
+
   return (
-    <div className="h-screen bg-black text-green-300 font-mono p-4 flex flex-col">
-      <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <h1 className="text-xl">QuestAI</h1>
-        <div className="flex flex-wrap gap-1">
-          {[
-            ["Look", "look"],
-            ["Gather", "gather"],
-            ["Heal", "heal"],
-            ["🗺 Map", "map"],
-            ["Journal", "journal"],
-            ["Bestiary", "bestiary"],
-          ].map(([label, cmd]) => (
-            <button
-              key={cmd}
-              className="border border-green-700 px-2 py-1 text-xs hover:bg-green-900 disabled:opacity-40"
-              onClick={() => runCommand(cmd)}
-              disabled={!playerId || isWaitingForResponse}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {showMap && mapData && (
-        <Modal title="World Map" onClose={() => setShowMap(false)}>
-          <MapGraph mapData={mapData} thumbs={thumbsRef.current} />
-          <div className="text-[11px] text-green-700 mt-3">
-            <span className="text-green-400">Bright green lines</span> are the exits
-            from where you are now; dim lines are paths elsewhere. Use the Exits
-            buttons (side panel) or type a direction to travel.
-          </div>
-        </Modal>
-      )}
-
-      {showJournal && journalData && (
-        <Modal title="Quest Journal" onClose={() => setShowJournal(false)}>
-          {["active", "completed", "archived"].map((bucket) => {
-            const items = journalData[bucket] ?? [];
-            if (items.length === 0) return null;
-            const heading =
-              bucket === "active"
-                ? "Active"
-                : bucket === "completed"
-                ? "Ready to turn in"
-                : "Finished";
-            return (
-              <div key={bucket} className="mb-4">
-                <div className="text-green-400 font-bold mb-1">{heading}</div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                  {items.map((q: any) => (
-                    <div key={q.quest_id} className="border border-green-800 p-2">
-                      <div className="text-green-300">{q.name}</div>
-                      <div className="text-[11px] text-green-700 mb-1">
-                        {q.description}
-                      </div>
-                      {q.total_stages && (
-                        <div className="text-[11px] text-green-500 mb-1">
-                          Stage {q.stage}/{q.total_stages}: {q.stage_description}
-                        </div>
-                      )}
-                      {q.objectives?.map((o: any, i: number) => {
-                        const done = o.progress >= o.required;
-                        return (
-                          <div
-                            key={i}
-                            className={`text-xs ${done ? "text-green-400" : "text-green-600"}`}
-                          >
-                            {done ? "✓" : "•"} {o.type} {o.target.replace(/_/g, " ")}:{" "}
-                            {o.progress}/{o.required}
-                          </div>
-                        );
-                      })}
-                      <div className="text-[10px] text-green-700 mt-1">
-                        reward:{" "}
-                        {Object.entries(q.rewards || {})
-                          .map(([it, n]) => `${n} ${it.replace(/_/g, " ")}`)
-                          .join(", ")}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-          })}
-          {(journalData.active?.length ?? 0) === 0 &&
-            (journalData.completed?.length ?? 0) === 0 &&
-            (journalData.archived?.length ?? 0) === 0 && (
-              <div className="text-green-700">
-                No quests yet — talk to a quest giver (Warden, Huntmaster, Scholar).
-              </div>
-            )}
-        </Modal>
-      )}
-
-      {showBestiary && bestiaryData && (
-        <Modal
-          title={`Bestiary — ${bestiaryData.discovered.length}/${bestiaryData.total} discovered`}
-          onClose={() => setShowBestiary(false)}
-        >
-          {bestiaryData.discovered.length === 0 ? (
-            <div className="text-green-700">
-              Nothing discovered yet — explore and fight to fill these pages.
-            </div>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-              {bestiaryData.discovered.map((e: any) => (
-                <div key={e.name} className="border border-green-800 p-2">
-                  <div className="text-green-300">{e.name}</div>
-                  <div className="text-xs text-green-600">
-                    HP {e.max_hp} · ATK {e.attack} · {e.xp_reward} XP
-                  </div>
-                  {e.inflicts && (
-                    <div className="text-[11px] text-red-400">
-                      inflicts {e.inflicts}
-                    </div>
-                  )}
-                  <div className="text-[10px] text-green-700 mt-1">
-                    found in: {e.locations.join(", ")}
-                  </div>
-                </div>
-              ))}
-            </div>
+    <div className="min-h-screen flex flex-col bg-paper-deep text-ink">
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-4 px-7 py-[14px] border-b border-rule bg-paper flex-wrap">
+        <div className="flex items-baseline gap-[14px] min-w-0">
+          <button className="font-serif text-[22px] font-semibold tracking-[-.01em] text-accent" onClick={() => setView("play")}>
+            QuestAI
+          </button>
+          {contextLine && (
+            <span className="font-serif italic text-[15px] text-ink-muted truncate">{contextLine}</span>
           )}
-        </Modal>
-      )}
+        </div>
+        {!firstRun && (
+          <div className="flex gap-1 flex-wrap">
+            {NAV.map(([v, label]) => (
+              <button key={v} onClick={() => openView(v)}
+                className={`px-3 py-[6px] font-semibold text-[13px] tracking-[.02em] uppercase border-b-2 ${
+                  view === v ? "text-accent border-accent" : "text-ink-faint border-transparent hover:text-accent"
+                }`}>
+                {label}
+              </button>
+            ))}
+            <button onClick={newTale}
+              className="px-3 py-[6px] font-semibold text-[13px] tracking-[.02em] uppercase text-ink-faint hover:text-accent border-b-2 border-transparent">
+              New tale
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* A newcomer sees the realm as it stands and forges a hero; the game
           proper waits until they have one. */}
-      {!playerId && !hasSavedPlayer && (
+      {firstRun && (
         <Welcome
           busy={isWaitingForResponse}
           onCreate={(name, path) => runCommand(`create ${name} ${path}`)}
         />
       )}
 
-      {/* Main area: left column (image over log) + full-height status pane */}
-      <div className={`flex-1 min-h-0 mb-2 flex gap-2 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
+      {!firstRun && view === "map" && <MapView mapData={mapData} thumbs={thumbsRef.current} />}
+      {!firstRun && view === "journal" && <JournalView journalData={journalData} />}
+      {!firstRun && view === "bestiary" && <BestiaryView bestiaryData={bestiaryData} />}
 
-        {/* Left column: scene image on top, log below */}
-        <div className="flex-[3] flex flex-col min-h-0 gap-2">
-          <div className="h-[420px] shrink-0 relative border border-green-700 overflow-hidden">
-            {isLoadingScene && (
-              <div className="absolute inset-0 z-10 flex items-center justify-center bg-black/80">
-                <div className="animate-pulse text-green-400">
-                  Generating scene…
+      {!firstRun && view === "play" && (
+        <>
+          <div className="flex-1 flex flex-wrap gap-5 px-7 pt-5 items-start">
+            {/* Left column: scene over the story log */}
+            <div className="flex flex-col gap-4 min-w-0" style={{ flex: "3 1 460px" }}>
+              <SceneFrame image={sceneImage} loading={isLoadingScene} location={location} />
+              <StoryLog log={log} waiting={isWaitingForResponse} logRef={logRef} />
+            </div>
+
+            {/* Right column: character card + tabbed panel */}
+            <div className="flex flex-col gap-[14px] min-w-0" style={{ flex: "1 1 280px" }}>
+              {lastState?.player && lastState?.location ? (
+                <>
+                  <CharacterCard state={lastState} onTab={setTab} />
+                  <StatusPane state={lastState} tab={tab} onTab={setTab} onCommand={runFromPanel} bestiaryByName={bestiaryByName} />
+                </>
+              ) : (
+                <div className="hb-card px-5 py-[18px] font-serif italic text-ink-faint">
+                  {playerId ? "Finding your place in the tale…" : "No character loaded."}
                 </div>
-              </div>
-            )}
-
-            {sceneImage ? (
-              <div
-                className="absolute inset-0 bg-center bg-cover"
-                style={{ backgroundImage: `url(${sceneImage})` }}
-              />
-            ) : (
-              // No art (image generation off, or a render failed): the place
-              // still has a face — its name and its description.
-              <div className="absolute inset-0 bg-gradient-to-b from-green-950 via-black to-black flex flex-col items-center justify-center p-6 text-center">
-                <div className="text-2xl text-green-300">{lastState?.location?.name ?? "QuestAI"}</div>
-                {lastState?.location?.description && (
-                  <div className="text-xs text-green-600 mt-2 max-w-xl">{lastState.location.description}</div>
-                )}
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
-          {/* Log area – fills remaining height, scrolls */}
-          <div className="flex-1 min-h-0 overflow-y-auto border border-green-700 p-2">
-            {log.map((line) => (
-              <div key={line.id}>{line.text}</div>
-            ))}
-            {isWaitingForResponse && (
-              <div className="animate-pulse text-green-500">...</div>
-            )}
-            <div ref={bottomRef} />
+          {/* Command bar */}
+          <div className="sticky bottom-0 mt-5 px-7 pt-[14px] pb-[18px]"
+            style={{ background: "linear-gradient(to bottom, rgba(233,225,207,0), #e9e1cf 30%)" }}>
+            <div className="max-w-[1400px] flex flex-col gap-[10px] relative">
+              <div className="flex gap-[6px] flex-wrap">
+                {quickActions.map(([label, cmd]) => (
+                  <button key={cmd} className="hb-pill" disabled={!playerId || busy} onClick={() => runCommand(cmd)}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {suggestions.length > 0 && (
+                <div className="absolute bottom-full left-0 mb-[6px] min-w-[280px] max-w-full bg-paper border border-rule rounded-[6px] shadow-dropdown overflow-hidden">
+                  {suggestions.map((s) => (
+                    <button key={s.cmd} type="button"
+                      className="flex justify-between gap-4 w-full text-left px-[14px] py-[9px] border-b border-rule-soft last:border-b-0 hover:bg-paper-inset"
+                      onMouseDown={(e) => e.preventDefault()}
+                      onClick={() => { setInput(s.cmd); inputRef.current?.focus(); }}>
+                      <span className="font-semibold text-accent">{s.cmd}</span>
+                      <span className="text-[12px] text-ink-faint truncate">{s.hint}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit}
+                className="flex items-center gap-3 px-4 h-12 bg-paper border border-rule rounded-[6px]"
+                style={{ boxShadow: "0 1px 0 #fff inset" }}>
+                <span className="font-serif italic text-ink-faint shrink-0 hidden sm:inline">What do you do?</span>
+                <input
+                  ref={inputRef}
+                  className="flex-1 min-w-0 border-0 outline-none bg-transparent font-serif text-[17px] text-ink disabled:text-ink-faint placeholder:text-ink-faint/70"
+                  placeholder={isWaitingForResponse ? "the world turns…" : isLoadingScene ? "painting the scene…" : "attack wolf, go north, talk huntmaster…"}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={onInputKey}
+                  disabled={busy}
+                  autoComplete="off"
+                  spellCheck={false}
+                />
+                <span className="text-[11px] font-semibold tracking-[.06em] text-ink-faint shrink-0">↵ ENTER</span>
+              </form>
+            </div>
           </div>
-        </div>
-
-        {/* Status pane – full height of the main area */}
-        <div className="flex-[1] min-h-0 p-3 border border-green-700 overflow-hidden">
-          <StatusPane state={lastState} onCommand={runCommand} />
-        </div>
-      </div>
-
-      {/* Input */}
-      <form onSubmit={handleSubmit} className={`flex gap-2 items-center border border-green-800 px-2 py-1 ${!playerId && !hasSavedPlayer ? "hidden" : ""}`}>
-        <span className="text-green-500">&gt;</span>
-        <input
-          ref={inputRef}
-          className="flex-1 bg-black text-green-300 outline-none disabled:text-green-700 placeholder:text-green-900"
-          placeholder={isWaitingForResponse ? "the world turns…" : isLoadingScene ? "painting the scene…" : "type a command — look · go <exit> · fight <foe> · talk <npc> · next"}
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          disabled={isLoadingScene || isWaitingForResponse}
-        />
-      </form>
+        </>
+      )}
     </div>
   );
 }
