@@ -224,6 +224,35 @@ _SCHEMA = {
     },
 }
 
+# The same shape in Miriel's response_format dialect (field -> "string" |
+# "integer" | "number" | "boolean" | nested object | [item]). With it the
+# answer IS the JSON object; without it live Miriel answers in prose.
+_WRONG_FORMAT = {
+    "title": "string", "blurb": "string", "deed_type": "string", "target": "string", "required": "integer",
+    "patron": "string", "location": "string", "restored": "string", "title_earned": "string", "righted_text": "string",
+}
+ACT_FORMAT = {
+    "name": "string", "blurb": "string", "act_title": "string", "completion_text": "string",
+    "wrongs": [_WRONG_FORMAT],
+    "climax": {
+        "name": "string", "title": "string", "blurb": "string", "description": "string", "lair_desc": "string",
+        "minion_name": "string", "phase_messages": ["string"], "trophy_name": "string", "relic_name": "string",
+        "relic_material": "string", "title_earned": "string", "completion_text": "string",
+    },
+}
+
+# Authoring calls carry their whole context in the dossier, so Miriel's own
+# retrieval is switched off for them: it costs ~20k tokens a call and makes
+# the model answer from memory instead of authoring.
+AUTHOR_PARAMS = {"num_results": 0}
+
+
+def _nullish(v: Any) -> Optional[str]:
+    """A structured answer writes 'null' / '' where the prompt allowed null."""
+    if v is None or (isinstance(v, str) and v.strip().lower() in ("", "null", "none")):
+        return None
+    return v
+
 
 def build_act_prompt(dossier: Dict[str, Any], problems: Optional[List[str]] = None) -> str:
     n = dossier["act_index"] + 1
@@ -357,10 +386,10 @@ def validate_act(raw: Any, index: int, dossier: Dict[str, Any], previous_acts: l
         patron = w.get("patron")
         if patron not in npcs:
             problems.append(f"{where}.patron '{patron}' is not an NPC name from the dossier")
-        location = w.get("location")
+        location = _nullish(w.get("location"))
         if location is not None and location not in locations:
             problems.append(f"{where}.location '{location}' is not a location id from the dossier")
-        restored = w.get("restored")
+        restored = _nullish(w.get("restored"))
         if location is not None:
             restored = _text(w, "restored", 20, 500, problems, where)
         wblurb = _text(w, "blurb", 10, 300, problems, where)
@@ -540,7 +569,8 @@ def _ask_miriel_for_act(index: int, dossier: Dict[str, Any], previous_acts: list
     problems: Optional[List[str]] = None
     for attempt in (1, 2):
         try:
-            resp = get_miriel_client().query(query=build_act_prompt(dossier, problems), project="questai")
+            resp = get_miriel_client().query(query=build_act_prompt(dossier, problems), project="questai",
+                                             response_format=ACT_FORMAT, **AUTHOR_PARAMS)
             answer = extract_answer(resp) or ""
             match = re.search(r"\{.*\}", answer, re.DOTALL)
             if not match:

@@ -1389,11 +1389,16 @@ export default function Page() {
     }
   }
 
-  async function handleSceneFromResponse(resp: any) {
+  // Scene art is decoration, never a gate: it renders in the background while
+  // the player reads and types. A sequence number lets a newer scene win over a
+  // slower, older render that finishes late.
+  const sceneSeq = useRef(0);
+  function handleSceneFromResponse(resp: any) {
     const newKey = computeSceneKeyFromResponse(resp);
     if (!newKey || newKey === currentSceneKey) return;
 
     setCurrentSceneKey(newKey);
+    const seq = ++sceneSeq.current;
 
     if (sceneImageCache.has(newKey)) {
       const cached = sceneImageCache.get(newKey)!;
@@ -1403,23 +1408,29 @@ export default function Page() {
     }
 
     setIsLoadingScene(true);
-    try {
-      // The key is the prompt; the server joins any render already underway.
-      const img = await renderSceneCached(newKey, newKey);
-      setSceneImage(img);
-      recordThumb(resp.state?.location?.id, img);
-    } catch {
-      // non-fatal
-    } finally {
-      setIsLoadingScene(false);
-    }
+    // The key is the prompt; the server joins any render already underway.
+    // Scene art is decoration, never a gate: it renders in the background
+    // while the player reads and types. A sequence number lets a newer scene
+    // win over a slower, older render that finishes late.
+    renderSceneCached(newKey, newKey)
+      .then((img) => {
+        if (seq !== sceneSeq.current) return; // a newer scene has since arrived
+        setSceneImage(img);
+        recordThumb(resp.state?.location?.id, img);
+      })
+      .catch(() => {
+        // non-fatal: the room keeps its name-and-description face
+      })
+      .finally(() => {
+        if (seq === sceneSeq.current) setIsLoadingScene(false);
+      });
   }
 
   useEffect(() => {
-    if (!isLoadingScene && !isWaitingForResponse && view === "play") {
+    if (!isWaitingForResponse && view === "play") {
       inputRef.current?.focus();
     }
-  }, [isLoadingScene, isWaitingForResponse, log, view]);
+  }, [isWaitingForResponse, log, view]);
 
   // Restore player_id + saved map thumbnails from localStorage
   useEffect(() => {
@@ -1460,7 +1471,7 @@ export default function Page() {
 
         if (resp.state) {
           setLastState(resp.state);
-          await handleSceneFromResponse(resp);
+          handleSceneFromResponse(resp);
           prefetchAdjacentScenes(resp.state);
           prefetchCombatVariants(resp.state);
           maybePrefetch(resp.state, playerId);
@@ -1521,7 +1532,7 @@ export default function Page() {
   }
 
   async function runCommand(command: string) {
-    if (isLoadingScene || isWaitingForResponse || !command.trim()) return;
+    if (isWaitingForResponse || !command.trim()) return;
 
     setInput("");
     setIsWaitingForResponse(true);
@@ -1573,20 +1584,7 @@ export default function Page() {
         ]);
       }
 
-      // Scene handling
-      if (resp.state?.scene_dirty) {
-        await handleSceneFromResponse(resp);
-      }
-
-      // Prefetch adjacent scenes + likely post-combat variants for this room,
-      // and warm Miriel description caches when we enter a new room.
-      if (resp.state?.location) {
-        prefetchAdjacentScenes(resp.state);
-        prefetchCombatVariants(resp.state);
-        maybePrefetch(resp.state, playerId);
-      }
-
-      // Print messages
+      // Print messages first: the words are the game; the picture follows.
       const messages = resp.messages ?? [];
       if (messages.length > 0) {
         setLog((l) => [
@@ -1596,6 +1594,19 @@ export default function Page() {
             text: m,
           })),
         ]);
+      }
+
+      // Scene handling (background; never holds the input)
+      if (resp.state?.scene_dirty) {
+        handleSceneFromResponse(resp);
+      }
+
+      // Prefetch adjacent scenes + likely post-combat variants for this room,
+      // and warm Miriel description caches when we enter a new room.
+      if (resp.state?.location) {
+        prefetchAdjacentScenes(resp.state);
+        prefetchCombatVariants(resp.state);
+        maybePrefetch(resp.state, playerId);
       }
     } catch {
       setLog((l) => [
@@ -1646,7 +1657,7 @@ export default function Page() {
   }
 
   const firstRun = !playerId && !hasSavedPlayer;
-  const busy = isWaitingForResponse || isLoadingScene;
+  const busy = isWaitingForResponse; // scene art never blocks play
   const suggestions = matchSuggestions(input, buildCandidates(lastState));
 
   function onInputKey(e: React.KeyboardEvent<HTMLInputElement>) {

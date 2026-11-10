@@ -55,14 +55,17 @@ def incursion_json(*, creature="Ash-Wolf", block="north_road", bad_location=Fals
     })
 
 
-def boon_json(effect="rest_double") -> str:
+def boon_json(effect="rest_double", duration=30) -> str:
+    # Long enough that no boon expires mid-check: the number of world turns the
+    # earlier fights take varies with combat rolls, so a short boon could lapse
+    # at a different moment each run.
     return json.dumps({
         "kind": "boon", "title": "The Festival of Lanterns",
         "blurb": "Lanterns hang in every street and the whole town sleeps easy.",
         "location": "town_square",
         "announce_text": "Lanterns go up across the town: the Festival of Lanterns begins.",
         "boon": {"effect": effect, "passing_text": "The last lanterns gutter out; the festival is over."},
-        "duration_turns": 8,
+        "duration_turns": duration,
     })
 
 
@@ -223,13 +226,16 @@ def main() -> None:
     from app.engine.actions.heal import heal_cost
     assert heal_cost() == 0
     assert len(active_incidents()) == 2
-    lore.answers = [incursion_json(creature="Bog Hound", leader="The Bog Alpha")]
+    lore.answers = [incursion_json(creature="Bog Hound", leader="The Bog Alpha").replace(
+        "Ash-Wolves on the North Road", "Hounds in the Bog")]
     spend_turns("a", 3)                                       # no room: nothing authored
     assert len(active_incidents()) == 2
+    assert lore.answers, "with no room, the loremaster must not even be asked"
+    lore.answers = []
     print("PASS  boons stack to the cap; the temple heals free under a blessing")
 
     # ...and they pass.
-    spend_turns("a", 9)
+    spend_turns("a", 31)
     assert not boon_active("rest_double") and not boon_active("free_heal")
     passed = [e for e in get_world_events(20) if e["event_type"] == "incident_expired" and "lanterns" in e["data"]["description"]]
     assert passed
