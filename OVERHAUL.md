@@ -368,6 +368,17 @@ begins: …" names an act that already exists. Generated climaxes are real raid
 bosses (`raids.py` looks up the act's spec before its authored rotation), and
 their trophies and relics are real generated items with recipes.
 
+**Talking to live Miriel.** Two things proved essential against the real
+service, and every authoring call (acts, region themes, incidents) uses both:
+`response_format`, in Miriel's own dialect (`{field: "string" | "integer" |
+"number" | "boolean" | {…} | [item]}`), without which the model answers a
+JSON request in prose; and `num_results=0`, which switches off Miriel's
+retrieval for that call — otherwise ~20k tokens of its own memory of the
+game are prepended and the model summarizes what it already knows instead of
+authoring. Short flourishes (a patron's voice, a Chronicle sentence) keep
+retrieval on, since memory is what makes them specific. A structured answer
+writes `"null"` where the prompt allowed null; the referees normalize it.
+
 **The Chronicle's voice.** When a wrong is righted, Miriel writes one sentence
 for the Chronicle about *that* righting — who, as what, with which companion —
 stored on the restoration row and read back in `campaign`, in the web ledger,

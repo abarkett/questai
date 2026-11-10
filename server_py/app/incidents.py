@@ -119,6 +119,15 @@ _SCHEMA = {
 }
 
 
+_INCIDENT_FORMAT = {
+    "kind": "string", "title": "string", "blurb": "string", "location": "string", "announce_text": "string",
+    "incursion": {"creature_name": "string", "count": "integer", "blocks_exit_to": "string",
+                  "resolution_text": "string", "consequence_text": "string", "leader_name": "string"},
+    "boon": {"effect": "string", "passing_text": "string"},
+    "duration_turns": "integer",
+}
+
+
 def _dossier() -> Dict[str, Any]:
     from .campaigngen import world_dossier
     from .restoration import _load_acts, current_act
@@ -246,6 +255,8 @@ def validate_incident(raw: Any, dossier: Dict[str, Any]) -> Dict[str, Any]:
         if not (2 <= count <= 3):
             problems.append("incursion.count must be 2 or 3")
         blocks = inc.get("blocks_exit_to")
+        if isinstance(blocks, str) and blocks.strip().lower() in ("", "null", "none"):
+            blocks = None
         if blocks is not None and (location not in locations or blocks not in locations[location]["exits"]):
             problems.append(f"incursion.blocks_exit_to '{blocks}' is not an exit of {location}")
         resolution = text(inc, "resolution_text", 10, 300, "incursion.")
@@ -273,7 +284,8 @@ def _ask_miriel(dossier: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     problems: Optional[List[str]] = None
     for attempt in (1, 2):
         try:
-            resp = get_miriel_client().query(query=build_incident_prompt(dossier, problems), project="questai")
+            resp = get_miriel_client().query(query=build_incident_prompt(dossier, problems), project="questai",
+                                             response_format=_INCIDENT_FORMAT, num_results=0)
             answer = extract_answer(resp) or ""
             match = re.search(r"\{.*\}", answer, re.DOTALL)
             if not match:

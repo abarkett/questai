@@ -509,6 +509,13 @@ _THEME_SCHEMA = {
 }
 
 
+_THEME_FORMAT = {
+    "name": "string", "outdoor": "boolean", "loc_names": ["string"], "scenery": ["string"], "monsters": ["string"],
+    "boss": "string", "boss_effect": "string", "material": "string", "weapon": "string", "armor": "string",
+    "npc": "string", "entry_flavor": "string",
+}
+
+
 def build_theme_prompt(dossier: Dict[str, Any], problems: Optional[List[str]] = None) -> str:
     parts = [
         THEME_MARKER,
@@ -648,7 +655,8 @@ def author_theme(*, tier: int, origin_location: str, flavor: str) -> Optional[Di
     problems: Optional[List[str]] = None
     for attempt in (1, 2):
         try:
-            resp = get_miriel_client().query(query=build_theme_prompt(dossier, problems), project="questai")
+            resp = get_miriel_client().query(query=build_theme_prompt(dossier, problems), project="questai",
+                                             response_format=_THEME_FORMAT, num_results=0)
             answer = extract_answer(resp) or ""
             match = re.search(r"\{.*\}", answer, re.DOTALL)
             if not match:
